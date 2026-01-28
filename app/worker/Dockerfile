@@ -1,11 +1,5 @@
 FROM python:3.10-slim
 
-# ---- System deps ----
-RUN apt-get update && apt-get install -y \
-    docker.io \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
 # ---- Python deps ----
 RUN pip install --no-cache-dir \
     boto3 \
@@ -14,7 +8,6 @@ RUN pip install --no-cache-dir \
 # ---- App code ----
 WORKDIR /app
 COPY app /app/app
-
 
 # ---- Runtime ----
 ENV PYTHONPATH=/app

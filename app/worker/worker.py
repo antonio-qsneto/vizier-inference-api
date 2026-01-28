@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.infra.sqs_client import receive_message, delete_message
 from app.worker.job import set_status, validate_input, validate_output
-from app.worker.docker_runner import run_biomedparse_container
+from app.worker.ecs_runner import run_biomedparse_task
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -48,10 +48,7 @@ def process_one_job(msg: dict):
         set_status(job_dir, "running")
         validate_input(job_dir)
 
-        # ------------------------------------------------------------------
-        # REAL EXECUTION (uncomment in production)
-        run_biomedparse_container(job_dir)
-        # ------------------------------------------------------------------
+        run_biomedparse_task(job_dir)
 
         validate_output(job_dir)
         set_status(job_dir, "completed")

@@ -1,0 +1,196 @@
+BIOEMDPARSE 3D — NPZ-ONLY ASYNC INFERENCE ON AWS (RECIPE / HANDOFF)
+==================================================================
+
+PURPOSE
+-------
+Build a production-grade, asynchronous (job-based) inference system for BiomedParse 3D segmentation.
+Django (or any backend) is the “client” and handles users + DICOM/NIfTI conversion.
+Inference service only accepts NPZ -> runs BiomedParse in Docker on GPU -> returns outputs (NPZ + optional NIfTI + metadata).
+
+CORE RULES (NON-NEGOTIABLE)
+---------------------------
+1) BiomedParse inference MUST run inside a Docker container.
+2) Inference is filesystem-based (input/output folders).
+3) API is asynchronous (job-based). Never run inference inside request threads.
+4) API accepts only input.npz (already prepared by Django).
+5) One container per inference job (isolation). Do NOT reuse a long-running container for multiple jobs.
+6) Do NOT launch a new EC2 per request. Use a persistent GPU node pool; each job triggers a new container/task.
+7) Do NOT expose filesystem paths publicly. Use artifacts retrieval endpoints or signed URLs (S3).
+8) No hardcoded AWS credentials. Use IAM roles + GitHub OIDC for CI/CD.
+
+HIGH-LEVEL COMPONENTS
+---------------------
+A) Django Backend (outside scope here)
+   - Handles: users/auth, DICOM/NIfTI upload, DICOM ZIP -> NIfTI, NIfTI -> NPZ + embedded prompt
+   - Sends: input.npz to Inference API
+
+B) Inference API (FastAPI, CPU)
+   - Receives input.npz
+   - Creates job folder
+   - Writes status
+   - Enqueues job to queue (SQS) or local background worker (dev only)
+   - Provides status + results endpoints
+
+C) Worker (GPU, ECS/EC2)
+   - Consumes jobs from SQS
+   - For each job: runs Docker container (biomedparse image) with volume mounts
+   - Produces pred_mask.npz in job output folder
+   - Exits (container destroyed)
+
+D) Storage
+   - Dev: local filesystem
+   - Prod: S3 for artifacts + DynamoDB for job status (optional but recommended)
+
+E) Infra
+   - Terraform in separate repo
+   - GitHub Actions with OIDC to apply/destroy infrastructure
+
+JOB DATA LAYOUT (MANDATORY)
+---------------------------
+data/jobs/{job_id}/
+├── status.txt                 # pending | running | completed | failed
+├── input/
+│   └── input.npz              # already contains imgs + text_prompts
+├── output/
+│   └── pred_mask.npz
+└── metadata.json              # viewer metadata (shape, spacing, affine, labels)
+
+NPZ INPUT FORMAT (MANDATORY)
+----------------------------
+The NPZ that Django sends must contain:
+- imgs: float32 3D volume (normalized)
+- text_prompts: {
+    "1": "<prompt text>",
+    "instance_label": 0
+  }
+
+IMPORTANT: Django is responsible for embedding the prompt into NPZ BEFORE inference.
+
+CONTAINER EXECUTION MODEL (IMPORTANT)
+-------------------------------------
+- GPU EC2 instances are long-lived (or autoscaled as a pool).
+- Each request/job triggers ONE new container execution.
+- Container mounts job folders and runs predict.sh, then exits.
+
+Example (conceptual):
+docker run --rm \
+  -v /data/jobs/{job_id}/input:/workspace/inputs \
+  -v /data/jobs/{job_id}/output:/workspace/outputs \
+  biomedparse:latest \
+  /bin/bash -c "export CUDA_VISIBLE_DEVICES=0 && sh predict.sh"
+
+DO NOT: create a “model API” that the inference API calls over HTTP.
+DO: run the model as a local process (container) inside the worker.
+
+API DESIGN (NPZ-ONLY)
+---------------------
+1) POST /infer
+   - multipart/form-data
+   - fields:
+       - file: input.npz
+       - external_job_id (optional)  # Django can pass its own ID
+   - response:
+       { "job_id": "<uuid>", "status": "submitted" }
+
+2) GET /status/{job_id}
+   - response:
+       { "job_id": "<uuid>", "status": "pending|running|completed|failed" }
+
+3) GET /result/{job_id}
+   - returns:
+       - pred_mask.npz (binary download or URLs)
+       - pred_mask.nii.gz (optional)
+       - metadata.json
+
+DEV VS PROD EXECUTION
+---------------------
+DEV (local testing):
+- FastAPI receives NPZ
+- Enqueue into local in-memory queue or simple background process
+- Worker runs Docker locally (if GPU is available) or CPU fallback if supported
+
+PROD (AWS):
+- FastAPI writes job folder artifacts to S3 (or EFS if you want shared filesystem)
+- Writes job status to DynamoDB (recommended)
+- Sends SQS message: job_id + S3 paths + params
+- GPU Worker (ECS on EC2 GPU instances) consumes SQS
+- Worker downloads NPZ -> runs container -> uploads outputs -> updates status
+
+INFRA REPOS (MANDATORY PRACTICE)
+-------------------------------
+Repo 1: biomedparse-inference-infra (Terraform only)
+- terraform/
+  - modules/ (network, iam, s3, sqs, dynamodb, ecs, api-gateway, ecr)
+  - envs/dev and envs/prod
+- GitHub Actions:
+  - terraform-plan.yml (PR)
+  - terraform-apply.yml (main)
+  - terraform-destroy.yml (manual trigger / protected)
+
+Repo 2: biomedparse-inference-api (App code)
+- FastAPI app + worker code + Docker helpers
+- GitHub Actions:
+  - build/push API image to ECR
+  - build/push worker image if needed
+  - deploy to ECS (update service/task def)
+
+GITHUB ACTIONS ACCESS (OIDC)
+----------------------------
+- Create IAM OIDC provider ONCE per account: token.actions.githubusercontent.com
+- Terraform should reference existing provider via data source (avoid “already exists” errors)
+- Create IAM role “github-actions-terraform” with trust policy restricted to:
+  repo:ORG/REPO:ref:refs/heads/main
+- No AWS keys stored in GitHub
+
+COST CONTROL (IMPORTANT)
+------------------------
+- Do NOT start GPU instances unless needed.
+- For dev: keep GPU ASG min=0, desired=0, max=1.
+- Prefer Spot instances for GPU inference (g4dn/g5) where feasible, with retry logic.
+
+Network cost tips:
+- NAT Gateway is expensive; avoid NAT in dev.
+- Use VPC endpoints minimal set to reduce cost:
+  Interface endpoints: ecr.api, ecr.dkr, logs, sqs, sts
+  Gateway endpoints: s3, dynamodb
+- Always destroy dev stacks when not in use:
+  terraform destroy (from env folder)
+
+OPERATIONAL NOTES (MEDICAL AI)
+------------------------------
+- Job isolation: one container per job to prevent cross-job state leakage.
+- Logging: write per-job logs; CloudWatch for prod.
+- Auditing: store job metadata and status; never store PHI in logs.
+- Outputs: include viewer metadata (shape, spacing, affine, labels) for web 3D viewer.
+
+RECOMMENDED NEXT IMPLEMENTATION STEPS (ORDER)
+---------------------------------------------
+1) Local reference pipeline (NPZ-only):
+   - create_job_folder(job_id)
+   - save input.npz
+   - run container and produce pred_mask.npz
+   - postprocess to pred_mask.nii.gz if needed + metadata.json
+
+2) Implement FastAPI NPZ-only endpoints:
+   - POST /infer: save NPZ, set status=pending, enqueue job
+   - GET /status/{job_id}: read status
+   - GET /result/{job_id}: serve artifacts or return URLs
+
+3) Replace local queue with SQS:
+   - queue message includes job_id + artifact locations
+   - worker consumes message, sets status running/completed/failed
+
+4) Deploy worker to ECS on EC2 GPU:
+   - ECS cluster + GPU ASG + capacity provider
+   - ECS tasks run biomedparse container per job
+
+5) Add S3 artifact storage + signed URLs:
+   - input.npz, pred_mask.npz, pred_mask.nii.gz, metadata.json
+
+DONE CRITERIA
+-------------
+- Django can POST input.npz + poll status + download results reliably.
+- Each job triggers a single container run on GPU capacity.
+- System remains stable, isolated, and cost-controlled.
+
+END
