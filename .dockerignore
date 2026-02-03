@@ -1,0 +1,6 @@
+.git
+**/__pycache__
+**/*.pyc
+app/
+api_service/app_common/
+worker_service/app_common/

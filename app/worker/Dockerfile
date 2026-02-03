@@ -1,17 +1,10 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# ---- Python deps ----
-RUN pip install --no-cache-dir \
-    boto3 \
-    python-dotenv
-
-# ---- App code ----
 WORKDIR /app
-COPY app /app/app
 
-# ---- Runtime ----
-ENV PYTHONPATH=/app
-ENV AWS_REGION=us-east-1
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Entry point = worker loop
-CMD ["python", "-m", "app.worker.worker"]
+COPY . .
+
+CMD ["python", "main.py"]

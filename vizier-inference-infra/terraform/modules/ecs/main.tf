@@ -65,12 +65,17 @@ resource "aws_ecs_service" "api" {
   cluster         = var.cluster_name
   task_definition = aws_ecs_task_definition.api.arn
   desired_count   = 1
-  launch_type     = "EC2"
 
   network_configuration {
     subnets         = var.subnet_ids
     security_groups = [var.security_group_id]
     assign_public_ip = false
+  }
+
+  capacity_provider_strategy {
+    capacity_provider = var.cpu_capacity_provider_name
+    weight            = 1
+    base              = 0
   }
 
   propagate_tags         = "TASK_DEFINITION"

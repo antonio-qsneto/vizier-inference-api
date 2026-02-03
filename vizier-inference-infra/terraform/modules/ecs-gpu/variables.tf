@@ -23,6 +23,11 @@ variable "instance_type" {
   default = "g4dn.xlarge"
 }
 
+variable "cpu_instance_type" {
+  type    = string
+  default = "t3.medium"
+}
+
 variable "asg_min" {
   type    = number
   default = 0
@@ -36,6 +41,21 @@ variable "asg_desired" {
 variable "asg_max" {
   type    = number
   default = 1
+}
+
+variable "cpu_asg_min" {
+  type    = number
+  default = 1
+}
+
+variable "cpu_asg_desired" {
+  type    = number
+  default = 1
+}
+
+variable "cpu_asg_max" {
+  type    = number
+  default = 2
 }
 
 variable "tags" {

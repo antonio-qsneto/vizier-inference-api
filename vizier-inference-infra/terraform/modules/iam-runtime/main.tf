@@ -83,7 +83,13 @@ resource "aws_iam_role" "api_task_role" {
 
 data "aws_iam_policy_document" "api_task_policy" {
   statement {
-    actions   = ["sqs:SendMessage"]
+    actions = [
+      "sqs:SendMessage",
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:GetQueueAttributes",
+      "sqs:ChangeMessageVisibility"
+    ]
     resources = [var.sqs_queue_arn]
   }
 }
@@ -91,6 +97,24 @@ data "aws_iam_policy_document" "api_task_policy" {
 resource "aws_iam_role_policy" "api_task" {
   role   = aws_iam_role.api_task_role.id
   policy = data.aws_iam_policy_document.api_task_policy.json
+}
+
+# ECS Exec permissions for API task (ssmmessages channels)
+data "aws_iam_policy_document" "api_task_exec" {
+  statement {
+    actions = [
+      "ssmmessages:CreateControlChannel",
+      "ssmmessages:CreateDataChannel",
+      "ssmmessages:OpenControlChannel",
+      "ssmmessages:OpenDataChannel"
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "api_task_exec" {
+  role   = aws_iam_role.api_task_role.id
+  policy = data.aws_iam_policy_document.api_task_exec.json
 }
 
 # Allow API task to mount/write to EFS via access point IAM auth

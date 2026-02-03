@@ -18,6 +18,8 @@ variable "sqs_queue_url" { type = string }
 
 variable "aws_region" { type = string }
 
+variable "cpu_capacity_provider_name" { type = string }
+
 variable "tags" {
   type    = map(string)
   default = {}

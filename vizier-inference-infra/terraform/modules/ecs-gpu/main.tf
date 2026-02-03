@@ -70,6 +70,62 @@ resource "aws_autoscaling_group" "gpu" {
   }
 }
 
+resource "aws_launch_template" "cpu" {
+  name_prefix   = "${var.cluster_name}-cpu-"
+  image_id      = data.aws_ami.ecs_gpu.id
+  instance_type = var.cpu_instance_type
+
+  iam_instance_profile {
+    name = var.instance_profile_name
+  }
+
+  vpc_security_group_ids = [var.ecs_sg_id]
+  user_data              = base64encode(local.user_data)
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = merge(var.tags, {
+      Name = "${var.cluster_name}-cpu"
+    })
+  }
+}
+
+resource "aws_autoscaling_group" "cpu" {
+  name                = "${var.cluster_name}-cpu-asg"
+  min_size            = var.cpu_asg_min
+  desired_capacity    = var.cpu_asg_desired
+  max_size            = var.cpu_asg_max
+  vpc_zone_identifier = var.private_subnet_ids
+
+  launch_template {
+    id      = aws_launch_template.cpu.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "AmazonECSManaged"
+    value               = "true"
+    propagate_at_launch = true
+  }
+}
+
+resource "aws_ecs_capacity_provider" "cpu" {
+  name = "${var.cluster_name}-cpu-cp"
+
+  auto_scaling_group_provider {
+    auto_scaling_group_arn = aws_autoscaling_group.cpu.arn
+
+    managed_scaling {
+      status                    = "ENABLED"
+      target_capacity           = 100
+      minimum_scaling_step_size = 1
+      maximum_scaling_step_size = 1
+    }
+
+    managed_termination_protection = "DISABLED"
+  }
+}
+
 resource "aws_ecs_capacity_provider" "gpu" {
   name = "${var.cluster_name}-gpu-cp"
 
@@ -89,10 +145,13 @@ resource "aws_ecs_capacity_provider" "gpu" {
 
 resource "aws_ecs_cluster_capacity_providers" "this" {
   cluster_name       = aws_ecs_cluster.this.name
-  capacity_providers = [aws_ecs_capacity_provider.gpu.name]
+  capacity_providers = [
+    aws_ecs_capacity_provider.gpu.name,
+    aws_ecs_capacity_provider.cpu.name
+  ]
 
   default_capacity_provider_strategy {
-    capacity_provider = aws_ecs_capacity_provider.gpu.name
+    capacity_provider = aws_ecs_capacity_provider.cpu.name
     weight            = 1
     base              = 0
   }
@@ -105,7 +164,7 @@ resource "aws_ecs_service" "worker" {
   desired_count   = 1
 
   capacity_provider_strategy {
-    capacity_provider = aws_ecs_capacity_provider.gpu.name
+    capacity_provider = aws_ecs_capacity_provider.cpu.name
     weight            = 1
   }
 

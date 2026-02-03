@@ -65,7 +65,7 @@ resource "aws_ecs_task_definition" "biomedparse" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["EC2"]
   cpu                      = "4096"
-  memory                   = "32768"
+  memory                   = "14336"
 
   execution_role_arn = var.worker_task_execution_role_arn
   task_role_arn      = var.worker_task_role_arn
