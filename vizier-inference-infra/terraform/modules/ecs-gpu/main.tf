@@ -57,6 +57,8 @@ resource "aws_autoscaling_group" "gpu" {
   desired_capacity    = var.asg_desired
   max_size            = var.asg_max
   vpc_zone_identifier = var.private_subnet_ids
+  default_cooldown    = 60
+  health_check_grace_period = 60
 
   launch_template {
     id      = aws_launch_template.gpu.id
@@ -120,6 +122,7 @@ resource "aws_ecs_capacity_provider" "cpu" {
       target_capacity           = 100
       minimum_scaling_step_size = 1
       maximum_scaling_step_size = 1
+      instance_warmup_period    = 60
     }
 
     managed_termination_protection = "DISABLED"
