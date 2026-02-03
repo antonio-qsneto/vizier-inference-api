@@ -17,6 +17,23 @@ module "network" {
   vpc_cidr             = var.vpc_cidr
   enable_nat_gateway   = false
   enable_vpc_endpoints = true
+  availability_zone    = var.availability_zone
+}
+
+# CloudWatch log groups for ECS services
+resource "aws_cloudwatch_log_group" "ecs_api" {
+  name              = "/ecs/vizier-api"
+  retention_in_days = 14
+}
+
+resource "aws_cloudwatch_log_group" "ecs_worker" {
+  name              = "/ecs/vizier-worker"
+  retention_in_days = 14
+}
+
+resource "aws_cloudwatch_log_group" "ecs_biomedparse" {
+  name              = "/ecs/vizier-biomedparse"
+  retention_in_days = 14
 }
 
 # -----------------------------
@@ -120,6 +137,7 @@ module "ecs" {
 
   # Deploy API into the SAME cluster created above
   cluster_name = module.ecs_gpu.cluster_name
+  cpu_capacity_provider_name = module.ecs_gpu.cpu_capacity_provider_name
 
   subnet_ids        = [module.network.private_subnet_id]
   security_group_id = module.network.ecs_security_group_id
