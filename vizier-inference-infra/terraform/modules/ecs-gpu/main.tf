@@ -70,6 +70,14 @@ resource "aws_autoscaling_group" "gpu" {
     value               = "true"
     propagate_at_launch = true
   }
+
+  warm_pool {
+    pool_state        = "Stopped"
+    min_size          = var.warm_pool_min_size
+    instance_reuse_policy {
+      reuse_on_scale_in = true
+    }
+  }
 }
 
 resource "aws_launch_template" "cpu" {

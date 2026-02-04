@@ -10,6 +10,10 @@ output "asg_name" {
   value = aws_autoscaling_group.gpu.name
 }
 
+output "warm_pool_min_size" {
+  value = var.warm_pool_min_size
+}
+
 output "cpu_capacity_provider_name" {
   value = aws_ecs_capacity_provider.cpu.name
 }

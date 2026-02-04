@@ -108,7 +108,7 @@ module "ecs_gpu" {
   instance_type = "g4dn.xlarge"
   asg_min        = 0
   asg_desired    = 0
-  asg_max        = 1
+  asg_max        = 2
 
   # EFS mount info for worker task definition
   efs_id              = module.efs.efs_id
