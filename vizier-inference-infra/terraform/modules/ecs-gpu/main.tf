@@ -181,7 +181,7 @@ resource "aws_ecs_service" "worker" {
   name            = "vizier-worker"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.worker.arn
-  desired_count   = 1
+  desired_count   = 2
 
   capacity_provider_strategy {
     capacity_provider = aws_ecs_capacity_provider.cpu.name

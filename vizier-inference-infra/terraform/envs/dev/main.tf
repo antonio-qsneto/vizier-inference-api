@@ -109,6 +109,7 @@ module "ecs_gpu" {
   asg_min        = 0
   asg_desired    = 0
   asg_max        = 2
+  warm_pool_min_size = 0
 
   # EFS mount info for worker task definition
   efs_id              = module.efs.efs_id
