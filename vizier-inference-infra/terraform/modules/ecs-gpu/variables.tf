@@ -18,6 +18,12 @@ variable "instance_profile_name" {
   type = string
 }
 
+variable "gpu_ami_id" {
+  type        = string
+  description = "Pre-baked ECS GPU AMI ID"
+  default     = "ami-0593ad7dabdac4c5c"
+}
+
 variable "instance_type" {
   type    = string
   default = "g4dn.xlarge"

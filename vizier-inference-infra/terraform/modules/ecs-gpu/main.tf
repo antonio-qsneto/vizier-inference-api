@@ -1,6 +1,7 @@
 data "aws_region" "current" {}
 
-data "aws_ami" "ecs_gpu" {
+# Keep the original ECS GPU AMI lookup for non-baked instances (CPU LT uses it).
+data "aws_ami" "ecs_gpu_default" {
   most_recent = true
   owners      = ["amazon"]
 
@@ -10,13 +11,21 @@ data "aws_ami" "ecs_gpu" {
   }
 }
 
+
 resource "aws_ecs_cluster" "this" {
   name = var.cluster_name
   tags = var.tags
 }
 
 locals {
-  user_data = <<-EOF
+  gpu_user_data = <<-EOF
+              #!/bin/bash
+              echo "ECS_CLUSTER=${var.cluster_name}" >> /etc/ecs/ecs.config
+              echo "ECS_IMAGE_PULL_BEHAVIOR=prefer-cached" >> /etc/ecs/ecs.config
+              echo "ECS_DISABLE_IMAGE_CLEANUP=true" >> /etc/ecs/ecs.config
+              EOF
+
+  cpu_user_data = <<-EOF
               #!/bin/bash
               echo "ECS_CLUSTER=${var.cluster_name}" >> /etc/ecs/ecs.config
               EOF
@@ -24,7 +33,7 @@ locals {
 
 resource "aws_launch_template" "gpu" {
   name_prefix   = "${var.cluster_name}-gpu-"
-  image_id      = data.aws_ami.ecs_gpu.id
+  image_id      = var.gpu_ami_id
   instance_type = var.instance_type
 
   iam_instance_profile {
@@ -32,7 +41,7 @@ resource "aws_launch_template" "gpu" {
   }
 
   vpc_security_group_ids = [var.ecs_sg_id]
-  user_data              = base64encode(local.user_data)
+  user_data              = base64encode(local.gpu_user_data)
 
   block_device_mappings {
     device_name = "/dev/xvda"
@@ -72,7 +81,7 @@ resource "aws_autoscaling_group" "gpu" {
   }
 
   warm_pool {
-    pool_state        = "Stopped"
+    pool_state        = "Running"
     min_size          = var.warm_pool_min_size
     instance_reuse_policy {
       reuse_on_scale_in = true
@@ -82,7 +91,7 @@ resource "aws_autoscaling_group" "gpu" {
 
 resource "aws_launch_template" "cpu" {
   name_prefix   = "${var.cluster_name}-cpu-"
-  image_id      = data.aws_ami.ecs_gpu.id
+  image_id      = data.aws_ami.ecs_gpu_default.id
   instance_type = var.cpu_instance_type
 
   iam_instance_profile {
@@ -90,7 +99,7 @@ resource "aws_launch_template" "cpu" {
   }
 
   vpc_security_group_ids = [var.ecs_sg_id]
-  user_data              = base64encode(local.user_data)
+  user_data              = base64encode(local.cpu_user_data)
 
   tag_specifications {
     resource_type = "instance"
