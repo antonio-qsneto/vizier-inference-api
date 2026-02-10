@@ -108,7 +108,7 @@ module "ecs_gpu" {
   instance_type = "g4dn.xlarge"
   asg_min        = 0
   asg_desired    = 0
-  asg_max        = 2
+  asg_max        = 1
   warm_pool_min_size = 0
 
   # EFS mount info for worker task definition
