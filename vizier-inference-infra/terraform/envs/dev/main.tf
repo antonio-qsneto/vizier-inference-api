@@ -98,17 +98,17 @@ module "efs" {
 # and must mount EFS.
 # -----------------------------
 module "ecs_gpu" {
-  source                 = "../../modules/ecs-gpu"
-  cluster_name           = "vizier-dev"
-  vpc_id                 = module.network.vpc_id
-  private_subnet_ids     = [module.network.private_subnet_id]
-  ecs_sg_id              = module.network.ecs_security_group_id
-  instance_profile_name  = module.iam_runtime.ecs_instance_profile_name
+  source                = "../../modules/ecs-gpu"
+  cluster_name          = "vizier-dev"
+  vpc_id                = module.network.vpc_id
+  private_subnet_ids    = [module.network.private_subnet_id]
+  ecs_sg_id             = module.network.ecs_security_group_id
+  instance_profile_name = module.iam_runtime.ecs_instance_profile_name
 
-  instance_type = "g4dn.xlarge"
-  asg_min        = 0
-  asg_desired    = 0
-  asg_max        = 1
+  instance_type      = "g4dn.xlarge"
+  asg_min            = 0
+  asg_desired        = 0
+  asg_max            = 1
   warm_pool_min_size = 0
 
   # EFS mount info for worker task definition
@@ -120,7 +120,7 @@ module "ecs_gpu" {
   worker_task_role_arn           = module.iam_runtime.worker_task_role_arn
 
   # Images (set these variables in terraform.tfvars)
-  worker_image = var.worker_image
+  worker_image      = var.worker_image
   biomedparse_image = var.biomedparse_image
 
   sqs_queue_url = module.sqs.queue_url
@@ -137,9 +137,10 @@ module "ecs" {
   source = "../../modules/ecs"
 
   # Deploy API into the SAME cluster created above
-  cluster_name = module.ecs_gpu.cluster_name
+  cluster_name               = module.ecs_gpu.cluster_name
   cpu_capacity_provider_name = module.ecs_gpu.cpu_capacity_provider_name
 
+  vpc_id            = module.network.vpc_id
   subnet_ids        = [module.network.private_subnet_id]
   security_group_id = module.network.ecs_security_group_id
 
@@ -157,6 +158,9 @@ module "ecs" {
   # Queue/env
   sqs_queue_url = module.sqs.queue_url
   aws_region    = var.aws_region
+
+  service_discovery_namespace_name = "internal"
+  service_discovery_service_name   = "api"
 
   tags = local.tags
 }

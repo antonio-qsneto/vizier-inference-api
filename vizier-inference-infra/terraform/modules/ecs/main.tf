@@ -41,9 +41,9 @@ resource "aws_ecs_task_definition" "api" {
       ]
 
       environment = [
-        { name = "JOB_BASE_DIR",  value = "/mnt/efs/jobs" },
+        { name = "JOB_BASE_DIR", value = "/mnt/efs/jobs" },
         { name = "SQS_QUEUE_URL", value = var.sqs_queue_url },
-        { name = "AWS_REGION",    value = var.aws_region }
+        { name = "AWS_REGION", value = var.aws_region }
       ]
 
       logConfiguration = {
@@ -60,6 +60,37 @@ resource "aws_ecs_task_definition" "api" {
   tags = var.tags
 }
 
+resource "aws_service_discovery_private_dns_namespace" "this" {
+  count = var.service_discovery_namespace_id == "" ? 1 : 0
+
+  name = var.service_discovery_namespace_name
+  vpc  = var.vpc_id
+  tags = var.tags
+}
+
+locals {
+  service_discovery_namespace_id = var.service_discovery_namespace_id != "" ? var.service_discovery_namespace_id : aws_service_discovery_private_dns_namespace.this[0].id
+}
+
+resource "aws_service_discovery_service" "api" {
+  name = var.service_discovery_service_name
+
+  dns_config {
+    namespace_id   = local.service_discovery_namespace_id
+    routing_policy = "MULTIVALUE"
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+  }
+
+  health_check_custom_config {
+  }
+
+  tags = var.tags
+}
+
 resource "aws_ecs_service" "api" {
   name            = "vizier-api"
   cluster         = var.cluster_name
@@ -67,9 +98,15 @@ resource "aws_ecs_service" "api" {
   desired_count   = 1
 
   network_configuration {
-    subnets         = var.subnet_ids
-    security_groups = [var.security_group_id]
+    subnets          = var.subnet_ids
+    security_groups  = [var.security_group_id]
     assign_public_ip = false
+  }
+
+  service_registries {
+    registry_arn   = aws_service_discovery_service.api.arn
+    container_name = "api"
+    container_port = 8000
   }
 
   capacity_provider_strategy {
