@@ -1,0 +1,8 @@
+{
+  "id": 1,
+  "name": "Brain",
+  "type": "anatomy",
+  "anatomical_region": "central_nervous_system",
+  "modality_preference": ["MRI", "CT"],
+  "prompt": "segment the brain parenchyma"
+}

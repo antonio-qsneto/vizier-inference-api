@@ -17,6 +17,12 @@ router = APIRouter()
 def job_results(job_id: str):
     output_dir = Path(settings.JOB_BASE_DIR) / job_id / "output"
 
+    print(f"[API] Fetching results for job {job_id}")
+    print(f"[API] Output dir: {output_dir}")
+    print(f"[API] Dir exists: {output_dir.exists()}")
+    if output_dir.exists():
+        print(f"[API] Files in dir: {list(output_dir.glob('*'))}")
+        
     # Prefer the most common filename, but be resilient to different model outputs.
     candidates = [
         output_dir / "input.npz",

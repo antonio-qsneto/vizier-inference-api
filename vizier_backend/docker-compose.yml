@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: vizier_med
+      POSTGRES_USER: vizier_user
+      POSTGRES_PASSWORD: vizier_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vizier_network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vizier_network
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+    environment:
+      DEBUG: "True"
+      DATABASE_URL: postgresql://vizier_user:vizier_password@db:5432/vizier_med
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: dev-secret-key-change-in-production
+      ALLOWED_HOSTS: localhost,127.0.0.1,web
+      COGNITO_REGION: us-east-1
+      AWS_REGION: us-east-1
+      S3_BUCKET: vizier-med-bucket
+
+      # SSM Port Forward geralmente faz bind em 127.0.0.1 (host).
+      # Para o container acessar, exponha via socat:
+      #   socat TCP-LISTEN:18001,fork TCP:127.0.0.1:18000
+      INFERENCE_API_URL: http://172.18.0.1:18001
+      INFERENCE_API_TIMEOUT: 300
+
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vizier_network
+
+
+
+volumes:
+  postgres_data:
+
+networks:
+  vizier_network:
+    driver: bridge

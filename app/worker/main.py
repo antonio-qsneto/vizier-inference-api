@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 from threading import Thread, Semaphore
 from services.sqs import receive_message, delete_message
 from services.jobs import write_status, validate_output
@@ -42,7 +43,16 @@ def process_one(msg):
         wait_for_task(task_arn)
 
         if not validate_output(job_dir):
+            # ADD THIS:
+            output_dir = Path(job_dir) / "output"
+            print(f"[WORKER] Output validation failed for {job_id}")
+            print(f"[WORKER] Output dir: {output_dir}")
+            print(f"[WORKER] Dir exists: {output_dir.exists()}")
+            if output_dir.exists():
+                print(f"[WORKER] Files: {list(output_dir.glob('*'))}")
+            
             raise RuntimeError("pred_mask.npz not found")
+
 
         write_status(job_dir, "completed")
         delete_message(receipt)

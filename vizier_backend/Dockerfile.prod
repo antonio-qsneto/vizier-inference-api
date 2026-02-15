@@ -1,0 +1,79 @@
+# Stage 1: Builder - Compilar dependências
+FROM python:3.11-slim as builder
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Instalar dependências de build
+# Nota: GDCM não está disponível no Debian Trixie
+# Usamos pydicom (Python) ao invés de GDCM (C++)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Criar diretório de trabalho
+WORKDIR /build
+
+# Copiar requirements
+COPY requirements.txt .
+
+# Instalar dependências Python em /build/lib
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --target=/build/lib -r requirements.txt
+
+# Stage 2: Runtime - Imagem final otimizada
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app:/app/lib \
+    PATH=/app/bin:$PATH
+
+# Instalar apenas dependências de runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Criar usuário não-root
+RUN useradd -m -u 1000 -s /bin/bash appuser
+
+# Definir diretório de trabalho
+WORKDIR /app
+
+# Copiar dependências compiladas do builder
+COPY --from=builder --chown=appuser:appuser /build/lib /app/lib
+
+# Copiar código da aplicação
+COPY --chown=appuser:appuser . .
+
+# Criar diretórios necessários
+RUN mkdir -p /app/logs /app/staticfiles /app/media && \
+    chown -R appuser:appuser /app
+
+# Mudar para usuário não-root
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/api/health/ || exit 1
+
+# Expor porta
+EXPOSE 8000
+
+# Comando padrão: Gunicorn
+CMD ["gunicorn", \
+     "--bind", "0.0.0.0:8000", \
+     "--workers", "4", \
+     "--worker-class", "sync", \
+     "--worker-tmp-dir", "/dev/shm", \
+     "--max-requests", "1000", \
+     "--max-requests-jitter", "50", \
+     "--timeout", "120", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-", \
+     "--log-level", "info", \
+     "vizier_backend.wsgi:application"]

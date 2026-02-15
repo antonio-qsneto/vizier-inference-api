@@ -1,0 +1,161 @@
+# Generate the guide as a plain .txt file for download
+text_content = """AWS SSM Port Forwarding – Guia Completo para Desenvolvimento Local
+
+Este guia explica como conectar uma aplicação Django rodando localmente (Docker)
+a uma API FastAPI rodando em ECS (EC2 launch type, networkMode=awsvpc)
+dentro de uma VPC privada usando AWS SSM Port Forwarding.
+
+============================================================
+ARQUITETURA
+============================================================
+Django (Docker local)
+        ↓
+SSM Tunnel
+        ↓
+EC2 (instância gerenciada pelo SSM)
+        ↓
+ECS Task (IP privado)
+        ↓
+FastAPI
+
+
+============================================================
+1) PRÉ-REQUISITOS
+============================================================
+- AWS CLI configurado (aws configure)
+- Session Manager Plugin instalado
+- Instância EC2 com role AmazonSSMManagedInstanceCore
+- Task ECS rodando com networkMode: awsvpc
+- FastAPI escutando em 0.0.0.0:8000
+
+
+============================================================
+2) DESCOBRIR O IP PRIVADO DA TASK ECS
+============================================================
+Comandos:
+
+aws ecs describe-tasks \\
+  --cluster NOME_DO_CLUSTER \\
+  --tasks TASK_ID \\
+  --query "tasks[0].attachments[0].details"
+
+Procure por:
+  privateIPv4Address
+
+Exemplo:
+  "privateIPv4Address": "10.0.10.38"
+
+
+============================================================
+3) ABRIR TÚNEL SSM ATÉ A TASK (awsvpc)
+============================================================
+Substitua o IP e, se necessário, a porta do FastAPI.
+
+aws ssm start-session \\
+  --target i-0b736eebc3e17c3e7 \\
+  --document-name AWS-StartPortForwardingSessionToRemoteHost \\
+  --parameters "host=['10.0.10.38'],portNumber=['8000'],localPortNumber=['18000']"
+
+Isso cria:
+  localhost:18000 -> 10.0.10.38:8000
+
+IMPORTANTE: mantenha esse terminal aberto (ele mantém o túnel).
+
+
+============================================================
+4) TESTAR NO HOST (FORA DO DOCKER)
+============================================================
+Em outro terminal:
+
+curl http://localhost:18000
+
+Resposta esperada (se você bateu em /):
+  {"detail":"Not Found"}
+
+Se você tiver uma rota health, use:
+  curl http://localhost:18000/health
+  (ou a rota real da sua API)
+
+
+============================================================
+5) EXPOR A PORTA DO TÚNEL PARA O DOCKER (LINUX)
+============================================================
+O SSM faz bind em 127.0.0.1 por padrão. Containers na bridge NÃO alcançam 127.0.0.1 do host.
+Então usamos socat para publicar uma porta acessível pelo Docker.
+
+Instale socat:
+  sudo apt install socat
+
+Em outro terminal, rode:
+  socat TCP-LISTEN:18001,fork TCP:127.0.0.1:18000
+
+Agora temos:
+  0.0.0.0:18001 -> 127.0.0.1:18000
+
+
+============================================================
+6) DESCOBRIR O GATEWAY DO DOCKER (NO CONTAINER)
+============================================================
+Entre no container do Django:
+  docker exec -it vizier_backend-web-1 sh
+
+Veja a rota:
+  cat /proc/net/route
+
+Exemplo de saída (Gateway em hex little-endian):
+  Gateway = 010012AC
+
+Converta:
+  010012AC -> bytes invertidos: AC 12 00 01 -> 172.18.0.1
+
+Então o IP do host (gateway da bridge) costuma ser:
+  172.18.0.1
+(ou outro 172.xx dependendo da sua rede docker)
+
+
+============================================================
+7) AJUSTAR docker-compose.yml (SEM network_mode: host)
+============================================================
+No serviço web, ajuste apenas a URL para o gateway + porta do socat.
+
+Exemplo:
+  INFERENCE_API_URL=http://172.18.0.1:18001
+
+Mantenha DATABASE_URL apontando para db e REDIS_URL para redis, como já está:
+  DATABASE_URL=postgresql://vizier_user:vizier_password@db:5432/vizier_med
+  REDIS_URL=redis://redis:6379/0
+
+
+============================================================
+8) RECRIAR CONTAINERS
+============================================================
+  docker-compose down -v
+  docker-compose up -d --build
+
+
+============================================================
+9) TESTE FINAL DENTRO DO CONTAINER
+============================================================
+  docker exec -it vizier_backend-web-1 curl http://172.18.0.1:18001
+
+Resposta esperada (se bateu em /):
+  {"detail":"Not Found"}
+
+Ou teste uma rota real da sua API.
+
+
+============================================================
+FLUXO DIÁRIO DE DEV
+============================================================
+1) Abrir túnel SSM (passo 3)
+2) Rodar socat (passo 5)
+3) Subir docker-compose (passo 8)
+4) Desenvolver normalmente
+
+FIM.
+"""
+out_path = "/mnt/data/aws-ssm-port-forwarding-dev-guide.txt"
+with open(out_path, "w", encoding="utf-8") as f:
+    f.write(text_content)
+
+out_path

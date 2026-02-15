@@ -1,0 +1,114 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: vizier_med_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-django pytest-cov
+    
+    - name: Run migrations
+      env:
+        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/vizier_med_test
+        SECRET_KEY: test-secret-key
+        DEBUG: "False"
+      run: |
+        python manage.py migrate
+    
+    - name: Run tests
+      env:
+        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/vizier_med_test
+        SECRET_KEY: test-secret-key
+        DEBUG: "False"
+      run: |
+        python manage.py test --parallel --keepdb
+    
+    - name: Run linting
+      run: |
+        pip install flake8 black isort
+        flake8 apps/ vizier_backend/ services/ --max-line-length=120 --exclude=migrations
+        black --check apps/ vizier_backend/ services/
+        isort --check-only apps/ vizier_backend/ services/
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.xml
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to ECR
+      uses: aws-actions/amazon-ecr-login@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ secrets.ECR_REGISTRY }}/vizier-med-backend:latest
+          ${{ secrets.ECR_REGISTRY }}/vizier-med-backend:${{ github.sha }}
+        cache-from: type=registry,ref=${{ secrets.ECR_REGISTRY }}/vizier-med-backend:buildcache
+        cache-to: type=registry,ref=${{ secrets.ECR_REGISTRY }}/vizier-med-backend:buildcache,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Deploy to AWS
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      run: |
+        # Deploy using CloudFormation or ECS
+        echo "Deploying to AWS..."

@@ -1,0 +1,118 @@
+service: vizier-med-backend
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.11
+  region: us-east-1
+  environment:
+    DEBUG: false
+    DJANGO_SETTINGS_MODULE: vizier_backend.settings
+    DATABASE_URL: ${ssm:/vizier-med/database-url}
+    SECRET_KEY: ${ssm:/vizier-med/secret-key}
+    COGNITO_REGION: ${self:provider.region}
+    COGNITO_USER_POOL_ID: ${ssm:/vizier-med/cognito-user-pool-id}
+    COGNITO_CLIENT_ID: ${ssm:/vizier-med/cognito-client-id}
+    AWS_REGION: ${self:provider.region}
+    S3_BUCKET: ${ssm:/vizier-med/s3-bucket}
+    INFERENCE_API_URL: ${ssm:/vizier-med/inference-api-url}
+    INFERENCE_API_TIMEOUT: 300
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+          Resource: arn:aws:s3:::${ssm:/vizier-med/s3-bucket}/*
+        - Effect: Allow
+          Action:
+            - ssm:GetParameter
+          Resource: arn:aws:ssm:${self:provider.region}:*:parameter/vizier-med/*
+        - Effect: Allow
+          Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+          Resource: arn:aws:logs:${self:provider.region}:*:*
+        - Effect: Allow
+          Action:
+            - ec2:CreateNetworkInterface
+            - ec2:DescribeNetworkInterfaces
+            - ec2:DeleteNetworkInterface
+          Resource: "*"
+
+functions:
+  api:
+    handler: vizier_backend.wsgi.application
+    events:
+      - httpApi:
+          path: /{proxy+}
+          method: ANY
+      - httpApi:
+          path: /
+          method: ANY
+    timeout: 120
+    memorySize: 1024
+    layers:
+      - arn:aws:lambda:${self:provider.region}:${aws:accountId}:layer:vizier-med-dependencies:1
+
+plugins:
+  - serverless-python-requirements
+  - serverless-wsgi
+
+custom:
+  pythonRequirements:
+    dockerizePip: true
+    slim: true
+    strip: false
+    layer: true
+  wsgi:
+    app: vizier_backend.wsgi.application
+    packRequirements: false
+
+resources:
+  Resources:
+    VizieMedDatabase:
+      Type: AWS::RDS::DBInstance
+      Properties:
+        DBInstanceIdentifier: vizier-med-db
+        Engine: postgres
+        EngineVersion: '15.1'
+        DBInstanceClass: db.t3.micro
+        AllocatedStorage: 20
+        StorageType: gp2
+        MasterUsername: vizier_user
+        MasterUserPassword: ${ssm:/vizier-med/db-password}
+        DBName: vizier_med
+        VPCSecurityGroups:
+          - !Ref VizieMedSecurityGroup
+        MultiAZ: false
+        BackupRetentionPeriod: 7
+
+    VizieMedSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Security group for Vizier Med RDS
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 5432
+            ToPort: 5432
+            CidrIp: 0.0.0.0/0
+
+    VizieMedS3Bucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${ssm:/vizier-med/s3-bucket}
+        VersioningConfiguration:
+          Status: Enabled
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
