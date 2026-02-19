@@ -4,8 +4,8 @@ provider "aws" {
 
 locals {
   tags = {
-    Project = "vizier-inference"
-    Env     = "dev"
+    Project = var.project_name
+    Env     = var.environment
   }
 }
 
@@ -163,4 +163,16 @@ module "ecs" {
   service_discovery_service_name   = "api"
 
   tags = local.tags
+}
+
+module "cognito" {
+  source = "../../modules/cognito"
+
+  project_name      = var.project_name
+  environment       = var.environment
+  callback_urls     = var.cognito_callback_urls
+  logout_urls       = var.cognito_logout_urls
+  mfa_configuration = var.cognito_mfa_configuration
+  ses_source_arn    = var.cognito_ses_source_arn
+  tags              = local.tags
 }
