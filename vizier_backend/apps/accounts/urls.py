@@ -12,5 +12,6 @@ router.register(r'categories', views.CategoriesViewSet, basename='category')
 
 urlpatterns = [
     path('me/', views.UserViewSet.as_view({'get': 'me'}), name='user-me'),
+    path('cognito/callback/', views.CognitoCallbackView.as_view(), name='cognito-callback'),
     path('', include(router.urls)),
 ]
