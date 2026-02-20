@@ -99,11 +99,16 @@ class CognitoJWTAuthentication(TokenAuthentication):
             clinic_id = claims.get('custom:clinic_id')
             email = self._extract_email_from_claims(claims)
 
+            if not email:
+                # Access tokens can be sparse; try Cognito /oauth2/userInfo.
+                email = self._fetch_email_from_userinfo(token)
+
             if not cognito_sub:
                 raise AuthenticationFailed('Invalid token claims: missing sub')
 
             if not email:
-                raise AuthenticationFailed('Invalid token claims: missing email/username')
+                # Last-resort deterministic identity for local user model.
+                email = self._build_fallback_email(cognito_sub)
 
             user, _ = User.objects.update_or_create(
                 cognito_sub=cognito_sub,
@@ -159,6 +164,40 @@ class CognitoJWTAuthentication(TokenAuthentication):
         return None
 
     @staticmethod
+    def _fetch_email_from_userinfo(token: str) -> str | None:
+        """
+        Fetch email from Cognito userinfo endpoint using access token.
+        """
+        userinfo_url = getattr(settings, 'COGNITO_USERINFO_URL', None)
+        if not userinfo_url:
+            return None
+
+        try:
+            response = requests.get(
+                userinfo_url,
+                headers={'Authorization': f'Bearer {token}'},
+                timeout=5,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            email = payload.get('email')
+            if isinstance(email, str) and email:
+                return email
+        except requests.RequestException as exc:
+            logger.warning('Failed to fetch userinfo from Cognito: %s', exc)
+        except ValueError:
+            logger.warning('Invalid JSON response from Cognito userinfo endpoint')
+
+        return None
+
+    @staticmethod
+    def _build_fallback_email(cognito_sub: str) -> str:
+        """
+        Deterministic synthetic email when Cognito doesn't expose one.
+        """
+        return f'{cognito_sub}@cognito.local'
+
+    @staticmethod
     @lru_cache(maxsize=1)
     def _get_jwks():
         """
@@ -201,9 +240,7 @@ class CognitoJWTAuthentication(TokenAuthentication):
 
         if not key:
             raise AuthenticationFailed('Token signing key not found')
-        
-        # Verify signature/issuer, then validate Cognito audience semantics.
-        # Cognito ID tokens carry "aud", while access tokens carry "client_id".
+
         try:
             claims = jwt.decode(
                 token,
@@ -240,6 +277,5 @@ class CognitoJWTAuthentication(TokenAuthentication):
                 raise AuthenticationFailed('Invalid token audience')
             return
 
-        # Fallback for non-standard tokens: accept either claim.
         if claims.get('aud') != expected_client_id and claims.get('client_id') != expected_client_id:
             raise AuthenticationFailed('Invalid token audience')
