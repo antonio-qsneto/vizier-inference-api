@@ -174,6 +174,7 @@ S3_BUCKET = config('S3_BUCKET', default='vizier-med-results')
 COGNITO_REGION = config('COGNITO_REGION', default='us-east-1')
 COGNITO_USER_POOL_ID = config('COGNITO_USER_POOL_ID', default=None)
 COGNITO_CLIENT_ID = config('COGNITO_CLIENT_ID', default=None)
+COGNITO_DOMAIN = config('COGNITO_DOMAIN', default=None)
 
 # Construct Cognito URLs from config
 if COGNITO_USER_POOL_ID:
@@ -184,6 +185,13 @@ else:
     COGNITO_ISSUER = None
     COGNITO_AUDIENCE = None
     COGNITO_JWKS_URL = None
+
+if COGNITO_DOMAIN:
+    COGNITO_TOKEN_URL = f'https://{COGNITO_DOMAIN}/oauth2/token'
+    COGNITO_USERINFO_URL = f'https://{COGNITO_DOMAIN}/oauth2/userInfo'
+else:
+    COGNITO_TOKEN_URL = config('COGNITO_TOKEN_URL', default=None)
+    COGNITO_USERINFO_URL = config('COGNITO_USERINFO_URL', default=None)
 
 # JWT Cache (in-memory, use Redis for production)
 COGNITO_JWT_CACHE_TIMEOUT = 3600  # 1 hour
