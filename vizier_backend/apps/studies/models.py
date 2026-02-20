@@ -26,7 +26,9 @@ class Study(models.Model):
     clinic = models.ForeignKey(
         'tenants.Clinic',
         on_delete=models.CASCADE,
-        related_name='studies'
+        related_name='studies',
+        null=True,
+        blank=True,
     )
     owner = models.ForeignKey(
         'accounts.User',
