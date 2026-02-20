@@ -51,8 +51,10 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         serializer = StudyCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Validate clinic
-        if not request.user.clinic:
+        # Access rules:
+        # - clinic users: studies are attached to their clinic
+        # - INDIVIDUAL users: studies are personal and clinic-less
+        if not request.user.clinic and request.user.role != 'INDIVIDUAL':
             return Response(
                 {'error': 'User must belong to a clinic'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -117,7 +119,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             
             # Create Study record
             study = Study.objects.create(
-                clinic=request.user.clinic,
+                clinic=request.user.clinic if request.user.clinic else None,
                 owner=request.user,
                 category=category_name,
                 status='SUBMITTED',
@@ -135,7 +137,8 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             
             # Save original NPZ to storage (for later JOIN with mask)
             s3_utils = S3Utils()
-            original_npz_key = f"uploads/{study.clinic.id}/{study.id}/file.npz"
+            owner_scope = str(study.clinic.id) if study.clinic_id else f"individual/{study.owner_id}"
+            original_npz_key = f"uploads/{owner_scope}/{study.id}/file.npz"
             logger.info(f"Saving original NPZ to storage: {original_npz_key}")
             
             if not s3_utils.upload_file(npz_path, original_npz_key, 'application/octet-stream'):
@@ -193,7 +196,12 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         study = self.get_object()
         
         # Check permission
-        if study.clinic != request.user.clinic:
+        if request.user.clinic:
+            allowed = study.clinic == request.user.clinic
+        else:
+            allowed = study.owner_id == request.user.id
+
+        if not allowed:
             return Response(
                 {'error': 'Permission denied'},
                 status=status.HTTP_403_FORBIDDEN
@@ -363,7 +371,12 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         study = self.get_object()
         
         # Check permission
-        if study.clinic != request.user.clinic:
+        if request.user.clinic:
+            allowed = study.clinic == request.user.clinic
+        else:
+            allowed = study.owner_id == request.user.id
+
+        if not allowed:
             return Response(
                 {'error': 'Permission denied'},
                 status=status.HTTP_403_FORBIDDEN

@@ -79,8 +79,12 @@ class TenantQuerySetMixin:
         if not self.request.user or not self.request.user.is_authenticated:
             return queryset.none()
         
-        # Filter by clinic
+        # Clinic members: tenant-scoped access.
         if self.request.user.clinic:
             return queryset.filter(clinic=self.request.user.clinic)
-        
+
+        # Individual users (no clinic): owner-scoped access when supported.
+        if hasattr(queryset.model, 'owner'):
+            return queryset.filter(owner=self.request.user)
+
         return queryset.none()
