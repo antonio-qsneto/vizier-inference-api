@@ -1,4 +1,4 @@
-.PHONY: help build up down logs shell migrate test lint format clean
+.PHONY: help build up down logs shell migrate test lint format clean cognito-env
 
 help:
 	@echo "Vizier Med Backend - Docker Commands"
@@ -11,6 +11,7 @@ help:
 	@echo "  make logs           View logs (web service)"
 	@echo "  make shell          Open Django shell"
 	@echo "  make bash           Open bash shell in web container"
+	@echo "  make cognito-env    Sync Cognito values from Terraform into .env"
 	@echo ""
 	@echo "Database:"
 	@echo "  make migrate        Run Django migrations"
@@ -161,6 +162,10 @@ collectstatic:
 
 health:
 	curl http://localhost:8000/api/health/
+
+# Sync Terraform outputs into vizier_backend/.env
+cognito-env:
+	python3 scripts/sync_cognito_env_from_terraform.py --write
 
 # Docker Hub / ECR
 push-hub:
