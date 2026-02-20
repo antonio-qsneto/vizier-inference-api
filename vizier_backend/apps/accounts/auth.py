@@ -193,17 +193,44 @@ class CognitoJWTAuthentication(TokenAuthentication):
         if not key:
             raise AuthenticationFailed('Token signing key not found')
         
-        # Verify and decode
+        # Verify signature/issuer, then validate Cognito audience semantics.
+        # Cognito ID tokens carry "aud", while access tokens carry "client_id".
         try:
             claims = jwt.decode(
                 token,
                 key,
                 algorithms=['RS256'],
                 issuer=settings.COGNITO_ISSUER,
-                audience=settings.COGNITO_AUDIENCE,
+                options={'verify_aud': False},
             )
+            CognitoJWTAuthentication._validate_cognito_audience(claims)
             return claims
         except jwt.InvalidIssuerError:
             raise AuthenticationFailed('Invalid token issuer')
         except jwt.InvalidAudienceError:
+            raise AuthenticationFailed('Invalid token audience')
+
+    @staticmethod
+    def _validate_cognito_audience(claims: dict) -> None:
+        """
+        Validate audience/client_id based on Cognito token type.
+        """
+        expected_client_id = getattr(settings, 'COGNITO_AUDIENCE', None)
+        if not expected_client_id:
+            raise AuthenticationFailed('Cognito not configured')
+
+        token_use = claims.get('token_use')
+
+        if token_use == 'access':
+            if claims.get('client_id') != expected_client_id:
+                raise AuthenticationFailed('Invalid token audience')
+            return
+
+        if token_use == 'id':
+            if claims.get('aud') != expected_client_id:
+                raise AuthenticationFailed('Invalid token audience')
+            return
+
+        # Fallback for non-standard tokens: accept either claim.
+        if claims.get('aud') != expected_client_id and claims.get('client_id') != expected_client_id:
             raise AuthenticationFailed('Invalid token audience')
