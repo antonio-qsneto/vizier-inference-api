@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'django_filters',
+    'django_extensions',
     
     # Local apps
     'apps.accounts.apps.AccountsConfig',
@@ -190,8 +191,17 @@ if COGNITO_DOMAIN:
     COGNITO_TOKEN_URL = f'https://{COGNITO_DOMAIN}/oauth2/token'
     COGNITO_USERINFO_URL = f'https://{COGNITO_DOMAIN}/oauth2/userInfo'
 else:
+    # Primary explicit overrides.
     COGNITO_TOKEN_URL = config('COGNITO_TOKEN_URL', default=None)
     COGNITO_USERINFO_URL = config('COGNITO_USERINFO_URL', default=None)
+
+    # Backwards-compatible env keys synced from Terraform (see scripts/sync_cognito_env_from_terraform.py).
+    if not COGNITO_TOKEN_URL:
+        COGNITO_TOKEN_URL = config('COGNITO_OAUTH_TOKEN_URL', default=None)
+    if not COGNITO_USERINFO_URL:
+        hosted_ui_base_url = config('COGNITO_HOSTED_UI_BASE_URL', default=None)
+        if hosted_ui_base_url:
+            COGNITO_USERINFO_URL = hosted_ui_base_url.rstrip('/') + '/oauth2/userInfo'
 
 # JWT Cache (in-memory, use Redis for production)
 COGNITO_JWT_CACHE_TIMEOUT = 3600  # 1 hour

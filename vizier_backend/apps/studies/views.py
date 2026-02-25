@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
+from django.db import IntegrityError
 from django.utils import timezone
 from .models import Study, Job
 from .serializers import StudySerializer, StudyCreateSerializer, StudyStatusSerializer, StudyResultSerializer
@@ -118,12 +119,25 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                 raise ValueError(f"Unsupported upload_type: {upload_type}")
             
             # Create Study record
-            study = Study.objects.create(
-                clinic=request.user.clinic if request.user.clinic else None,
-                owner=request.user,
-                category=category_name,
-                status='SUBMITTED',
-            )
+            try:
+                study = Study.objects.create(
+                    clinic=request.user.clinic if request.user.clinic else None,
+                    owner=request.user,
+                    category=category_name,
+                    status='SUBMITTED',
+                )
+            except IntegrityError as exc:
+                if (
+                    request.user.role == 'INDIVIDUAL'
+                    and not getattr(request.user, 'clinic_id', None)
+                    and 'clinic_id' in str(exc)
+                    and 'violates not-null constraint' in str(exc)
+                ):
+                    raise ValueError(
+                        "Database schema is out of date (Study.clinic must be nullable). "
+                        "Run `python manage.py migrate` and restart the server."
+                    ) from exc
+                raise
             logger.info(f"Created Study: {study.id}")
 
             if getattr(settings, 'SAVE_ANALYSIS_ARTIFACTS', False):
@@ -137,7 +151,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             
             # Save original NPZ to storage (for later JOIN with mask)
             s3_utils = S3Utils()
-            owner_scope = str(study.clinic.id) if study.clinic_id else f"individual/{study.owner_id}"
+            owner_scope = study.get_owner_scope()
             original_npz_key = f"uploads/{owner_scope}/{study.id}/file.npz"
             logger.info(f"Saving original NPZ to storage: {original_npz_key}")
             
@@ -276,9 +290,10 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             logger.info(f"Created analysis directory: {analysis_dir}")
             
             # 1. Download original NPZ (file.npz)
+            owner_scope = study.get_owner_scope()
             original_npz_key_candidates = [
-                f"uploads/{study.clinic.id}/{study.id}/file.npz",
-                f"uploads/{study.clinic.id}/{study.id}/input.npz",  # legacy
+                f"uploads/{owner_scope}/{study.id}/file.npz",
+                f"uploads/{owner_scope}/{study.id}/input.npz",  # legacy
             ]
             original_npz_key = next(
                 (k for k in original_npz_key_candidates if s3_utils.object_exists(k)),
@@ -310,8 +325,10 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                 logger.warning(f"Could not download mask: {e}")
             
             # 3. Download visualization NIfTI files (image.nii.gz + mask.nii.gz)
-            image_nifti_key = f"results/{study.clinic.id}/{study.id}/image.nii.gz"
-            mask_nifti_key = f"results/{study.clinic.id}/{study.id}/mask.nii.gz"
+            default_image_key = f"results/{owner_scope}/{study.id}/image.nii.gz"
+            default_mask_key = f"results/{owner_scope}/{study.id}/mask.nii.gz"
+            image_nifti_key = study.image_s3_key or default_image_key
+            mask_nifti_key = study.mask_s3_key or default_mask_key
 
             image_nifti_path = analysis_dir / "image.nii.gz"
             mask_nifti_path = analysis_dir / "mask.nii.gz"
@@ -391,8 +408,11 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                 )
             
             s3_utils = S3Utils()
-            image_s3_key = study.image_s3_key or f"results/{study.clinic.id}/{study.id}/image.nii.gz"
-            mask_s3_key = study.mask_s3_key or f"results/{study.clinic.id}/{study.id}/mask.nii.gz"
+            owner_scope = study.get_owner_scope()
+            default_image_key = f"results/{owner_scope}/{study.id}/image.nii.gz"
+            default_mask_key = f"results/{owner_scope}/{study.id}/mask.nii.gz"
+            image_s3_key = study.image_s3_key or default_image_key
+            mask_s3_key = study.mask_s3_key or default_mask_key
 
             # Ensure files exist (generate if missing)
             if not (s3_utils.object_exists(image_s3_key) and s3_utils.object_exists(mask_s3_key)):
@@ -446,8 +466,11 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         try:
             # Check if visualization files already exist
             s3_utils = S3Utils()
-            image_s3_key = f"results/{study.clinic.id}/{study.id}/image.nii.gz"
-            mask_s3_key = f"results/{study.clinic.id}/{study.id}/mask.nii.gz"
+            owner_scope = study.get_owner_scope()
+            default_image_key = f"results/{owner_scope}/{study.id}/image.nii.gz"
+            default_mask_key = f"results/{owner_scope}/{study.id}/mask.nii.gz"
+            image_s3_key = study.image_s3_key or default_image_key
+            mask_s3_key = study.mask_s3_key or default_mask_key
 
             if s3_utils.object_exists(image_s3_key) and s3_utils.object_exists(mask_s3_key):
                 # In dev mode we can validate local artifacts to avoid returning legacy 4D NIfTI files.
@@ -490,8 +513,8 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             
             # Retrieve original image from storage
             original_npz_key_candidates = [
-                f"uploads/{study.clinic.id}/{study.id}/file.npz",
-                f"uploads/{study.clinic.id}/{study.id}/input.npz",  # legacy
+                f"uploads/{owner_scope}/{study.id}/file.npz",
+                f"uploads/{owner_scope}/{study.id}/input.npz",  # legacy
             ]
             original_npz_key = next(
                 (k for k in original_npz_key_candidates if s3_utils.object_exists(k)),

@@ -77,6 +77,7 @@ class DoctorInvitation(models.Model):
     STATUS_CHOICES = [
         ('PENDING', 'Pending'),
         ('ACCEPTED', 'Accepted'),
+        ('REMOVED', 'Removed'),
         ('REJECTED', 'Rejected'),
         ('EXPIRED', 'Expired'),
     ]

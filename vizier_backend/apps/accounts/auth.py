@@ -8,6 +8,7 @@ from functools import lru_cache
 import jwt
 import requests
 from django.conf import settings
+from django.utils import timezone
 from rest_framework.authentication import TokenAuthentication, get_authorization_header
 from rest_framework.exceptions import AuthenticationFailed
 
@@ -95,7 +96,7 @@ class CognitoJWTAuthentication(TokenAuthentication):
             claims = self._validate_token(token)
 
             cognito_sub = claims.get('sub')
-            role = claims.get('custom:role', 'INDIVIDUAL')
+            token_role = claims.get('custom:role')
             clinic_id = claims.get('custom:clinic_id')
             email = self._extract_email_from_claims(claims)
 
@@ -110,14 +111,28 @@ class CognitoJWTAuthentication(TokenAuthentication):
                 # Last-resort deterministic identity for local user model.
                 email = self._build_fallback_email(cognito_sub)
 
-            user, _ = User.objects.update_or_create(
-                cognito_sub=cognito_sub,
-                defaults={
+            email = email.strip().lower()
+
+            # Create or update user but only overwrite role when the token
+            # explicitly provides a `custom:role` claim. This prevents JIT
+            # provisioning from downgrading a user (e.g. clinic owner) when
+            # the token does not include role information.
+            user_qs = User.objects.filter(cognito_sub=cognito_sub)
+            if not user_qs.exists():
+                defaults = {
                     'email': email,
-                    'role': role,
                     'is_active': True,
+                    'role': token_role or 'INDIVIDUAL',
                 }
-            )
+                user = User.objects.create(cognito_sub=cognito_sub, **defaults)
+            else:
+                user = user_qs.first()
+                user.email = email
+                user.is_active = True
+                # Only update role if the token provides it.
+                if token_role:
+                    user.role = token_role
+                user.save(update_fields=['email', 'is_active', 'role', 'updated_at'])
 
             if clinic_id:
                 from apps.tenants.models import Clinic
@@ -127,6 +142,43 @@ class CognitoJWTAuthentication(TokenAuthentication):
                     user.save(update_fields=['clinic', 'updated_at'])
                 except Clinic.DoesNotExist:
                     logger.warning("Clinic %s not found for user %s", clinic_id, email)
+            
+            # Auto-accept pending invitations if user doesn't belong to a clinic
+            if not user.clinic and user.role == 'INDIVIDUAL':
+                from apps.tenants.models import DoctorInvitation
+                now = timezone.now()
+
+                # Tidy up expired invitations to avoid repeatedly iterating over them.
+                DoctorInvitation.objects.filter(
+                    email=user.email,
+                    status='PENDING',
+                    expires_at__lte=now,
+                ).update(status='EXPIRED')
+
+                valid_invitations = list(
+                    DoctorInvitation.objects.filter(
+                        email=user.email,
+                        status='PENDING',
+                        expires_at__gt=now,
+                    ).order_by('-created_at')[:2]
+                )
+
+                # Only auto-accept when the match is unambiguous.
+                if len(valid_invitations) == 1:
+                    invitation = valid_invitations[0]
+                    try:
+                        invitation.accept()
+                        user.clinic = invitation.clinic
+                        user.role = 'CLINIC_DOCTOR'
+                        user.save(update_fields=['clinic', 'role', 'updated_at'])
+                        logger.info(
+                            "Auto-accepted invitation %s for %s to clinic %s",
+                            invitation.id,
+                            user.email,
+                            invitation.clinic_id,
+                        )
+                    except Exception:
+                        logger.error("Failed to auto-accept invitation %s", invitation.id, exc_info=True)
 
             from apps.audit.services import AuditService
             AuditService.log_login(user)

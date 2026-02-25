@@ -102,6 +102,17 @@ class Study(models.Model):
     
     def __str__(self):
         return f"Study {self.id} - {self.category}"
+
+    def get_owner_scope(self) -> str:
+        """
+        Return a stable storage scope for this study.
+
+        - Clinic studies: "<clinic_uuid>"
+        - Individual studies: "individual/<owner_id>"
+        """
+        if self.clinic_id:
+            return str(self.clinic_id)
+        return f"individual/{self.owner_id}"
     
     def is_completed(self):
         """Check if study processing is completed."""

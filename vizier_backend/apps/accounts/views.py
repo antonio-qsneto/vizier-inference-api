@@ -26,6 +26,27 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        """
+        Filter users based on user's role and clinic.
+        
+        - Staff/Superuser: see all users
+        - Clinic Admin (CLINIC_ADMIN): see users in their clinic
+        - Clinic Doctor, Individual Doctor: see only themselves
+        """
+        user = self.request.user
+        
+        # Staff/Superuser can see all users
+        if user.is_staff or user.is_superuser:
+            return User.objects.all()
+        
+        # Clinic admin can see users in their clinic
+        if user.role == 'CLINIC_ADMIN' and user.clinic:
+            return User.objects.filter(clinic=user.clinic)
+        
+        # Clinic doctors, individual doctors, and others see only themselves
+        return User.objects.filter(id=user.id)
+
     @action(detail=False, methods=['get'])
     def me(self, request):
         """

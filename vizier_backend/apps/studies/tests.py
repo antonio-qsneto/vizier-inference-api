@@ -2,6 +2,8 @@ from django.test import TestCase, RequestFactory
 
 from apps.accounts.models import User
 from apps.accounts.permissions import TenantQuerySetMixin
+from apps.audit.models import AuditLog
+from apps.audit.services import AuditService
 from apps.studies.models import Study
 from apps.tenants.models import Clinic
 
@@ -50,6 +52,17 @@ class StudyOwnershipModelTest(TestCase):
 
         self.assertIsNone(study.clinic)
         self.assertEqual(study.owner, self.individual)
+        self.assertEqual(study.get_owner_scope(), f"individual/{self.individual.id}")
+
+    def test_clinic_study_owner_scope_is_clinic_id(self):
+        study = Study.objects.create(
+            clinic=self.clinic,
+            owner=self.clinic_owner,
+            category='clinic-study',
+            status='SUBMITTED',
+        )
+
+        self.assertEqual(study.get_owner_scope(), str(self.clinic.id))
 
     def test_tenant_mixin_filters_individual_by_owner(self):
         mine = Study.objects.create(
@@ -103,3 +116,33 @@ class StudyOwnershipModelTest(TestCase):
 
         self.assertEqual(queryset.count(), 1)
         self.assertEqual(queryset.first(), clinic_study)
+
+    def test_audit_skips_study_events_without_clinic(self):
+        study = Study.objects.create(
+            clinic=None,
+            owner=self.individual,
+            category='mine',
+            status='SUBMITTED',
+        )
+
+        AuditService.log_study_submit(study)
+        AuditService.log_study_status_check(study)
+        AuditService.log_result_download(study, self.individual)
+
+        self.assertEqual(AuditLog.objects.count(), 0)
+
+    def test_audit_logs_study_submit_for_clinic_study(self):
+        study = Study.objects.create(
+            clinic=self.clinic,
+            owner=self.clinic_owner,
+            category='clinic',
+            status='SUBMITTED',
+        )
+
+        AuditService.log_study_submit(study)
+
+        self.assertEqual(AuditLog.objects.count(), 1)
+        audit_log = AuditLog.objects.first()
+        self.assertEqual(audit_log.clinic, self.clinic)
+        self.assertEqual(audit_log.action, 'STUDY_SUBMIT')
+        self.assertEqual(audit_log.resource_id, str(study.id))

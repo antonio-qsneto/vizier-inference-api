@@ -64,6 +64,8 @@ class AuditService:
     @staticmethod
     def log_study_submit(study):
         """Log study submission."""
+        if not getattr(study, 'clinic_id', None):
+            return
         AuditService.log_action(
             clinic=study.clinic,
             action='STUDY_SUBMIT',
@@ -75,6 +77,8 @@ class AuditService:
     @staticmethod
     def log_study_status_check(study):
         """Log study status check."""
+        if not getattr(study, 'clinic_id', None):
+            return
         AuditService.log_action(
             clinic=study.clinic,
             action='STUDY_STATUS_CHECK',
@@ -86,6 +90,8 @@ class AuditService:
     @staticmethod
     def log_result_download(study, user):
         """Log result download."""
+        if not getattr(study, 'clinic_id', None):
+            return
         AuditService.log_action(
             clinic=study.clinic,
             action='RESULT_DOWNLOAD',
