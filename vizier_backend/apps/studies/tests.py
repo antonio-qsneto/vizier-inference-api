@@ -1,4 +1,10 @@
 from django.test import TestCase, RequestFactory
+from django.test import override_settings
+import os
+import tempfile
+import numpy as np
+import json
+from pathlib import Path
 
 from apps.accounts.models import User
 from apps.accounts.permissions import TenantQuerySetMixin
@@ -6,6 +12,8 @@ from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
 from apps.studies.models import Study
 from apps.tenants.models import Clinic
+from apps.studies.views import StudyViewSet
+from services.dicom_pipeline import DicomZipToNpzService
 
 
 class _BaseQueryView:
@@ -146,3 +154,70 @@ class StudyOwnershipModelTest(TestCase):
         self.assertEqual(audit_log.clinic, self.clinic)
         self.assertEqual(audit_log.action, 'STUDY_SUBMIT')
         self.assertEqual(audit_log.resource_id, str(study.id))
+
+
+class NpzPreprocessingServiceTest(TestCase):
+    @override_settings(DICOM_TARGET_HW=(64, 64), DICOM_TARGET_SLICES=32)
+    def test_preprocess_existing_npz_resizes_and_resamples(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            npz_path = os.path.join(tmpdir, 'file.npz')
+            volume = np.random.rand(120, 321, 321).astype(np.float32)
+
+            np.savez_compressed(
+                npz_path,
+                image=volume,
+                spacing=np.array((1.0, 1.0, 1.0), dtype=np.float32),
+                text_prompts=np.array({'1': 'segment brain', 'instance_label': 0}, dtype=object),
+            )
+
+            service = DicomZipToNpzService()
+            service.preprocess_existing_npz(npz_path=npz_path)
+
+            with np.load(npz_path, allow_pickle=True) as data:
+                self.assertEqual(set(data.files), {'imgs', 'spacing', 'text_prompts'})
+                self.assertEqual(tuple(data['imgs'].shape), (32, 64, 64))
+                self.assertEqual(data['imgs'].dtype, np.float16)
+
+
+class CategoryResolutionTest(TestCase):
+    def test_resolve_category_from_modality_target_catalog(self):
+        catalog = {
+            "version": "test",
+            "modalities": [
+                {
+                    "id": "ct",
+                    "name": "CT",
+                    "targets": [
+                        {
+                            "id": "ct_liver_tumors",
+                            "name": "liver tumors",
+                            "prompt": "Visualization of liver tumors in CT",
+                        }
+                    ],
+                },
+                {
+                    "id": "mri",
+                    "name": "MRI",
+                    "targets": [
+                        {
+                            "id": "mri_glioma",
+                            "name": "glioma",
+                            "prompt": "Visualization of glioma in MRI",
+                        }
+                    ],
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_dir = Path(tmpdir)
+            data_dir = base_dir / 'data'
+            data_dir.mkdir(parents=True, exist_ok=True)
+            with open(data_dir / 'categories.json', 'w') as f:
+                json.dump(catalog, f)
+
+            with override_settings(BASE_DIR=base_dir):
+                category_name, prompt = StudyViewSet._resolve_category_and_prompt('mri_glioma')
+
+        self.assertEqual(category_name, 'MRI: glioma')
+        self.assertEqual(prompt, 'Visualization of glioma in MRI')

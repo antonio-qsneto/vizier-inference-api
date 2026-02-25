@@ -112,6 +112,10 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                         "NPZ must contain image data under one of keys: imgs, image, images, data"
                     )
 
+                # Normalize uploaded NPZ to the same target shape policy used in ZIP uploads.
+                dicom_service = DicomZipToNpzService()
+                npz_path = dicom_service.preprocess_existing_npz(npz_path=npz_path)
+
                 # Ensure prompts exist for inference contract (only if missing)
                 self._ensure_npz_text_prompts(npz_path=npz_path, text_prompts=text_prompts)
 
@@ -603,19 +607,63 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         Resolve a category selection into a stored category name and a prompt text.
 
         Supports `data/categories.json` being either:
-        - a single object dict, or
-        - a list of category dicts.
+        - v2 catalog: {"modalities": [{"name": "...", "targets": [...]}]}
+        - legacy flat catalog: single dict or list of category dicts.
         """
         categories_path = settings.BASE_DIR / 'data' / 'categories.json'
 
-        categories: list[dict] = []
+        options: list[dict] = []
         try:
             with open(categories_path, 'r') as f:
                 loaded = json.load(f)
-            if isinstance(loaded, list):
-                categories = loaded
-            elif isinstance(loaded, dict):
-                categories = [loaded]
+
+            if isinstance(loaded, dict) and isinstance(loaded.get('modalities'), list):
+                for modality in loaded.get('modalities', []):
+                    modality_name = str(modality.get('name') or modality.get('id') or '').strip()
+                    if not modality_name:
+                        continue
+
+                    targets = modality.get('targets') or []
+                    for target in targets:
+                        target_name = str(target.get('name') or target.get('label') or '').strip()
+                        if not target_name:
+                            continue
+
+                        target_id = str(target.get('id') or '').strip()
+                        prompt_text = (
+                            str(target.get('prompt') or '').strip()
+                            or f"Visualization of {target_name} in {modality_name}"
+                        )
+                        display_name = f"{modality_name}: {target_name}"
+                        options.append(
+                            {
+                                'id': target_id,
+                                'name': target_name,
+                                'modality': modality_name,
+                                'display_name': display_name,
+                                'prompt': prompt_text,
+                            }
+                        )
+            else:
+                legacy_categories = []
+                if isinstance(loaded, list):
+                    legacy_categories = loaded
+                elif isinstance(loaded, dict):
+                    legacy_categories = [loaded]
+
+                for cat in legacy_categories:
+                    cat_name = str(cat.get('name') or '').strip()
+                    if not cat_name:
+                        continue
+                    options.append(
+                        {
+                            'id': str(cat.get('id') or '').strip(),
+                            'name': cat_name,
+                            'modality': str(cat.get('modality') or '').strip(),
+                            'display_name': cat_name,
+                            'prompt': str(cat.get('prompt') or '').strip() or f"segment {cat_name}",
+                        }
+                    )
         except Exception as e:
             logger.warning(f"Failed to load categories from {categories_path}: {e}")
 
@@ -623,20 +671,36 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         category_id_normalized = str(category_id or '').strip()
 
         if category_id_normalized:
-            for cat in categories:
-                cat_id = cat.get('id')
-                cat_name = cat.get('name')
-                if cat_id is not None and str(cat_id) == category_id_normalized:
-                    selected = cat
-                    break
-                if cat_name and str(cat_name).strip().lower() == category_id_normalized.lower():
+            query = category_id_normalized.lower()
+            for cat in options:
+                candidates = [
+                    cat.get('id'),
+                    cat.get('name'),
+                    cat.get('display_name'),
+                ]
+                modality = str(cat.get('modality') or '').strip()
+                name = str(cat.get('name') or '').strip()
+                if modality and name:
+                    candidates.extend(
+                        [
+                            f"{modality}:{name}",
+                            f"{modality}|{name}",
+                        ]
+                    )
+
+                if any(str(c or '').strip().lower() == query for c in candidates):
                     selected = cat
                     break
 
-        if selected is None and categories:
-            selected = categories[0]
+        if selected is None:
+            if category_id_normalized:
+                category_name = category_id_normalized
+                prompt_text = f"segment {category_name}"
+                return category_name, prompt_text
+            if options:
+                selected = options[0]
 
-        category_name = (selected or {}).get('name') or (category_id_normalized or 'Unknown')
+        category_name = (selected or {}).get('display_name') or (category_id_normalized or 'Unknown')
         prompt_text = (selected or {}).get('prompt') or f"segment {category_name}"
         return category_name, prompt_text
 

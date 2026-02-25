@@ -5,6 +5,7 @@ Handles ZIP extraction, DICOM loading, preprocessing, and NPZ creation.
 
 import os
 import shutil
+import tempfile
 import zipfile
 import numpy as np
 import pydicom
@@ -110,6 +111,54 @@ class DicomZipToNpzService:
         Backward-compatible alias for ZIP → NPZ conversion.
         """
         return self.convert_zip_to_npz(zip_path=zip_path, text_prompts=text_prompts)
+
+    def preprocess_existing_npz(
+        self,
+        npz_path: str,
+        output_npz_path: str | None = None,
+    ) -> str:
+        """
+        Normalize an uploaded NPZ to the inference-friendly contract.
+
+        Input may contain image data in one of: imgs, image, images, data.
+        Output is rewritten as:
+        - imgs: 3D float16 volume resized to target HW and target slices
+        - spacing: preserved if present
+        - text_prompts: preserved if present
+        """
+        with np.load(npz_path, allow_pickle=True) as data:
+            image_key = next(
+                (k for k in ['imgs', 'image', 'images', 'data'] if k in data.files),
+                None,
+            )
+            if image_key is None:
+                raise ValueError(
+                    "NPZ must contain image data under one of keys: imgs, image, images, data"
+                )
+
+            volume = np.asarray(data[image_key])
+            spacing = data['spacing'] if 'spacing' in data.files else None
+            text_prompts = data['text_prompts'] if 'text_prompts' in data.files else None
+
+        volume = self._coerce_3d_volume(volume)
+        original_shape = tuple(volume.shape)
+
+        volume = volume.astype(np.float32, copy=False)
+        volume = self._resize_xy(volume)
+        volume = self._resample_slices(volume)
+        volume = volume.astype(np.float16, copy=False)
+
+        payload = {'imgs': volume}
+        if spacing is not None:
+            payload['spacing'] = spacing
+        if text_prompts is not None:
+            payload['text_prompts'] = text_prompts
+
+        out_path = output_npz_path or npz_path
+        self._save_npz_payload(out_path, payload)
+
+        logger.info("Preprocessed uploaded NPZ shape %s -> %s", original_shape, tuple(volume.shape))
+        return out_path
     
     @staticmethod
     def _unzip(zip_path: str, extract_to: str) -> str:
@@ -223,6 +272,44 @@ class DicomZipToNpzService:
         mean = volume.mean()
         std = volume.std()
         return (volume - mean) / (std + 1e-8)
+
+    @staticmethod
+    def _coerce_3d_volume(volume: np.ndarray) -> np.ndarray:
+        """
+        Coerce common singleton-channel layouts into (Z, H, W).
+        """
+        if volume.ndim == 3:
+            return volume
+
+        squeezed = np.squeeze(volume)
+        if squeezed.ndim == 3:
+            return squeezed
+
+        raise ValueError(f"Expected a 3D volume, got shape {tuple(volume.shape)}")
+
+    @staticmethod
+    def _save_npz_payload(npz_path: str, payload: dict) -> None:
+        """
+        Save NPZ atomically to avoid partial files.
+        """
+        tmp_path = None
+        try:
+            tmp_file = tempfile.NamedTemporaryFile(
+                dir=os.path.dirname(npz_path) or '.',
+                suffix='.npz',
+                delete=False,
+            )
+            tmp_path = tmp_file.name
+            tmp_file.close()
+
+            np.savez_compressed(tmp_path, **payload)
+            os.replace(tmp_path, npz_path)
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
     
     @staticmethod
     def _save_npz(npz_path: str, volume: np.ndarray, spacing, text_prompts: dict):
