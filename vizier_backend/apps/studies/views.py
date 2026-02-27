@@ -8,6 +8,7 @@ import tempfile
 import shutil
 from pathlib import Path
 import numpy as np
+import nibabel as nib
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -79,12 +80,15 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         try:
             upload_file = serializer.validated_data.get('upload_file')
             upload_type = serializer.validated_data.get('upload_type')
+            original_nifti_path = None
+            original_nifti_ext = '.nii.gz'
 
             # Create temp directory for processing
             temp_dir = tempfile.mkdtemp(prefix='dicom_')
             logger.info(f"Created temp directory: {temp_dir}")
 
             npz_path = os.path.join(temp_dir, 'file.npz')
+            generated_original_nifti_path = os.path.join(temp_dir, 'original_image.nii.gz')
 
             if upload_type == 'zip':
                 # Save uploaded ZIP
@@ -102,9 +106,12 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                     zip_path=zip_path,
                     text_prompts=text_prompts,
                     output_npz_path=npz_path,
+                    output_original_nifti_path=generated_original_nifti_path,
                     exam_modality=normalized_modality,
                     category_hint=category_id,
                 )
+                original_nifti_path = generated_original_nifti_path
+                original_nifti_ext = '.nii.gz'
                 logger.info(f"Converted to NPZ: {npz_path} ({os.path.getsize(npz_path)} bytes)")
 
             elif upload_type == 'npz':
@@ -124,6 +131,13 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
 
                 # Normalize uploaded NPZ to the same target shape policy used in ZIP uploads.
                 dicom_service = DicomZipToNpzService()
+                dicom_service.convert_npz_to_nifti(
+                    npz_path=npz_path,
+                    output_nifti_path=generated_original_nifti_path,
+                )
+                original_nifti_path = generated_original_nifti_path
+                original_nifti_ext = '.nii.gz'
+
                 npz_path = dicom_service.preprocess_existing_npz(
                     npz_path=npz_path,
                     exam_modality=normalized_modality,
@@ -144,6 +158,8 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                     for chunk in upload_file.chunks():
                         f.write(chunk)
                 logger.info(f"Saved uploaded NIfTI: {nifti_path}")
+                original_nifti_path = nifti_path
+                original_nifti_ext = '.nii.gz' if nifti_filename.lower().endswith('.nii.gz') else '.nii'
 
                 dicom_service = DicomZipToNpzService()
                 npz_path = dicom_service.convert_nifti_to_npz(
@@ -190,6 +206,9 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                 analysis_dir.mkdir(parents=True, exist_ok=True)
                 try:
                     shutil.copy2(npz_path, analysis_dir / "file.npz")
+                    if original_nifti_path and os.path.exists(original_nifti_path):
+                        target_name = f"original_image{original_nifti_ext}"
+                        shutil.copy2(original_nifti_path, analysis_dir / target_name)
                     logger.info(f"Saved analysis original NPZ: {analysis_dir / 'file.npz'}")
                 except Exception:
                     logger.warning("Failed to save analysis original NPZ", exc_info=True)
@@ -198,6 +217,18 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             s3_utils = S3Utils()
             owner_scope = study.get_owner_scope()
             original_npz_key = f"uploads/{owner_scope}/{study.id}/file.npz"
+            original_nifti_key = f"uploads/{owner_scope}/{study.id}/original_image{original_nifti_ext}"
+            if not original_nifti_path or not os.path.exists(original_nifti_path):
+                raise FileNotFoundError("Original-resolution NIfTI was not generated")
+
+            original_nifti_content_type = (
+                'application/gzip' if original_nifti_key.endswith('.nii.gz') else 'application/octet-stream'
+            )
+            logger.info(f"Saving original NIfTI to storage: {original_nifti_key}")
+            if not s3_utils.upload_file(original_nifti_path, original_nifti_key, original_nifti_content_type):
+                raise Exception("Failed to save original NIfTI to storage")
+            logger.info("Original NIfTI saved to storage")
+
             logger.info(f"Saving original NPZ to storage: {original_npz_key}")
             
             if not s3_utils.upload_file(npz_path, original_npz_key, 'application/octet-stream'):
@@ -563,53 +594,72 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             # Create temp directory
             temp_dir = tempfile.mkdtemp(prefix='results_')
             logger.info(f"Created temp directory: {temp_dir}")
-            
-            # Retrieve original image from storage
-            original_npz_key_candidates = [
-                f"uploads/{owner_scope}/{study.id}/file.npz",
-                f"uploads/{owner_scope}/{study.id}/input.npz",  # legacy
-            ]
-            original_npz_key = next(
-                (k for k in original_npz_key_candidates if s3_utils.object_exists(k)),
-                original_npz_key_candidates[0],
-            )
-            original_npz_path = os.path.join(temp_dir, "file.npz")
-            
-            logger.info(f"Retrieving original image from storage: {original_npz_key}")
-            if not s3_utils.download_file(original_npz_key, original_npz_path):
-                raise FileNotFoundError(f"Original NPZ not found: {original_npz_key}")
-            logger.info(f"Original image retrieved: {original_npz_path}")
-            
-            # Download mask from inference API
-            mask_npz_path = os.path.join(temp_dir, "mask.npz")
-            logger.info(f"Downloading mask from inference API to: {mask_npz_path}")
-            
-            inference_client = InferenceClient()
-            if not inference_client.get_results(study.inference_job_id, mask_npz_path):
-                raise Exception("Failed to download mask from inference API")
-            logger.info(f"Mask downloaded successfully: {mask_npz_path}")
-            
-            # Convert image NPZ -> NIfTI image
+
+            # Retrieve original-resolution NIfTI (preferred), fallback to legacy NPZ.
             image_nifti_path = os.path.join(temp_dir, "image.nii.gz")
-            logger.info("Converting image NPZ to NIfTI: %s", image_nifti_path)
-            if not NiftiConverter.npz_to_nifti(original_npz_path, image_nifti_path):
-                raise Exception("Failed to convert image NPZ to NIfTI")
-            if not os.path.exists(image_nifti_path):
-                raise FileNotFoundError(f"Image NIfTI file not created: {image_nifti_path}")
+            original_nifti_key_candidates = [
+                f"uploads/{owner_scope}/{study.id}/original_image.nii.gz",
+                f"uploads/{owner_scope}/{study.id}/original_image.nii",
+            ]
+            original_nifti_key = next(
+                (k for k in original_nifti_key_candidates if s3_utils.object_exists(k)),
+                None,
+            )
 
-            # Convert mask NPZ -> NIfTI labelmap (mask-only conversion; no joining)
+            original_npz_key = None
+            original_npz_path = os.path.join(temp_dir, "file.npz")
+            if original_nifti_key:
+                logger.info("Retrieving original NIfTI from storage: %s", original_nifti_key)
+                if not s3_utils.download_file(original_nifti_key, image_nifti_path):
+                    raise FileNotFoundError(f"Original NIfTI not found: {original_nifti_key}")
+                logger.info("Original NIfTI retrieved: %s", image_nifti_path)
+            else:
+                original_npz_key_candidates = [
+                    f"uploads/{owner_scope}/{study.id}/file.npz",
+                    f"uploads/{owner_scope}/{study.id}/input.npz",  # legacy
+                ]
+                original_npz_key = next(
+                    (k for k in original_npz_key_candidates if s3_utils.object_exists(k)),
+                    original_npz_key_candidates[0],
+                )
+                logger.info("Original NIfTI not found; falling back to NPZ key: %s", original_npz_key)
+                if not s3_utils.download_file(original_npz_key, original_npz_path):
+                    raise FileNotFoundError(f"Original NPZ not found: {original_npz_key}")
+                logger.info("Original NPZ retrieved: %s", original_npz_path)
+
+                logger.info("Converting legacy image NPZ to NIfTI: %s", image_nifti_path)
+                if not NiftiConverter.npz_to_nifti(original_npz_path, image_nifti_path):
+                    raise Exception("Failed to convert image NPZ to NIfTI")
+                if not os.path.exists(image_nifti_path):
+                    raise FileNotFoundError(f"Image NIfTI file not created: {image_nifti_path}")
+
+            # Retrieve mask NPZ (reduced resolution from inference API)
+            mask_npz_path = os.path.join(temp_dir, "mask.npz")
+            if s3_utils.object_exists(default_mask_npz_key):
+                logger.info("Retrieving mask NPZ from storage: %s", default_mask_npz_key)
+                if not s3_utils.download_file(default_mask_npz_key, mask_npz_path):
+                    raise FileNotFoundError(f"Mask NPZ not found: {default_mask_npz_key}")
+            else:
+                logger.info("Downloading mask NPZ from inference API to: %s", mask_npz_path)
+                inference_client = InferenceClient()
+                job_id = study.inference_job_id or getattr(study.job, 'external_job_id', None)
+                if not job_id:
+                    raise ValueError("Missing inference job id to retrieve mask")
+                if not inference_client.get_results(job_id, mask_npz_path):
+                    raise Exception("Failed to download mask from inference API")
+                logger.info("Mask downloaded successfully: %s", mask_npz_path)
+                if not s3_utils.upload_file(mask_npz_path, default_mask_npz_key, 'application/octet-stream'):
+                    logger.warning("Failed to upload mask NPZ to storage: %s", default_mask_npz_key)
+
+            # Convert reduced mask NPZ -> original-resolution NIfTI labelmap
             mask_nifti_path = os.path.join(temp_dir, "mask.nii.gz")
-            logger.info("Converting mask NPZ to NIfTI: %s", mask_nifti_path)
-            mask_spacing = None
-            try:
-                with np.load(original_npz_path, allow_pickle=True) as img_data:
-                    if 'spacing' in img_data.files:
-                        mask_spacing = img_data['spacing']
-            except Exception:
-                logger.warning("Could not read spacing from original NPZ; using defaults", exc_info=True)
-
-            if not NiftiConverter.segs_npz_to_nifti(mask_npz_path, mask_nifti_path, spacing=mask_spacing):
-                raise Exception("Failed to convert mask NPZ to NIfTI")
+            logger.info("Converting mask NPZ to original-resolution NIfTI: %s", mask_nifti_path)
+            if not self._convert_mask_npz_to_reference_nifti(
+                mask_npz_path=mask_npz_path,
+                reference_nifti_path=image_nifti_path,
+                output_nifti_path=mask_nifti_path,
+            ):
+                raise Exception("Failed to convert mask NPZ to original-resolution NIfTI")
             if not os.path.exists(mask_nifti_path):
                 raise FileNotFoundError(f"Mask NIfTI file not created: {mask_nifti_path}")
 
@@ -633,10 +683,42 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                 analysis_dir = self._get_analysis_dir(study_id=str(study.id))
                 analysis_dir.mkdir(parents=True, exist_ok=True)
                 try:
-                    shutil.copy2(original_npz_path, analysis_dir / "file.npz")
-                    shutil.copy2(mask_npz_path, analysis_dir / "mask.npz")
-                    shutil.copy2(image_nifti_path, analysis_dir / "image.nii.gz")
-                    shutil.copy2(mask_nifti_path, analysis_dir / "mask.nii.gz")
+                    analysis_original_npz_path = analysis_dir / "file.npz"
+                    if os.path.exists(original_npz_path):
+                        shutil.copy2(original_npz_path, analysis_original_npz_path)
+                    else:
+                        npz_key_candidates = [
+                            original_npz_key,
+                            f"uploads/{owner_scope}/{study.id}/file.npz",
+                            f"uploads/{owner_scope}/{study.id}/input.npz",  # legacy
+                        ]
+                        download_npz_key = next(
+                            (k for k in npz_key_candidates if k and s3_utils.object_exists(k)),
+                            None,
+                        )
+                        if download_npz_key:
+                            if not s3_utils.download_file(download_npz_key, str(analysis_original_npz_path)):
+                                logger.warning(
+                                    "Failed to download original NPZ for analysis artifacts: %s",
+                                    download_npz_key,
+                                )
+                        else:
+                            logger.info(
+                                "Original NPZ artifact not found for study %s; continuing without file.npz",
+                                study.id,
+                            )
+
+                    artifact_pairs = [
+                        (mask_npz_path, analysis_dir / "mask.npz"),
+                        (image_nifti_path, analysis_dir / "image.nii.gz"),
+                        (mask_nifti_path, analysis_dir / "mask.nii.gz"),
+                    ]
+                    for src_path, dst_path in artifact_pairs:
+                        if os.path.exists(src_path):
+                            shutil.copy2(src_path, dst_path)
+                        else:
+                            logger.warning("Analysis artifact source missing, skipping copy: %s", src_path)
+
                     logger.info(f"Saved analysis artifacts to: {analysis_dir}")
                 except Exception:
                     logger.warning("Failed to save analysis artifacts", exc_info=True)
@@ -1064,6 +1146,85 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             )
         finally:
             cleanup_temp_files(temp_dir)
+
+    @staticmethod
+    def _load_mask_labels_from_npz(mask_npz_path: str) -> np.ndarray:
+        """Load segmentation labels array from mask NPZ."""
+        with np.load(mask_npz_path, allow_pickle=False) as data:
+            segs = None
+            for key in ('segs', 'mask', 'result', 'imgs'):
+                if key in data.files:
+                    segs = data[key]
+                    break
+            if segs is None:
+                raise ValueError("Mask NPZ does not contain a supported segmentation key")
+
+        segs = np.asarray(segs)
+        if segs.ndim == 4 and segs.shape[0] == 1:
+            segs = segs[0]
+        if segs.ndim == 4 and segs.shape[-1] == 1:
+            segs = segs[..., 0]
+        if segs.ndim != 3:
+            raise ValueError(f"Expected 3D mask volume, got shape {segs.shape}")
+
+        if segs.dtype.kind not in ('i', 'u'):
+            segs = np.nan_to_num(segs, nan=0.0, posinf=0.0, neginf=0.0)
+            segs = np.rint(segs)
+        return segs.astype(np.uint16, copy=False)
+
+    @staticmethod
+    def _resample_labels_nearest(volume: np.ndarray, target_shape: tuple[int, int, int]) -> np.ndarray:
+        """Nearest-neighbor 3D resampling for label maps."""
+        if tuple(volume.shape) == tuple(target_shape):
+            return volume
+        z_idx = np.round(np.linspace(0, volume.shape[0] - 1, target_shape[0])).astype(np.int64)
+        y_idx = np.round(np.linspace(0, volume.shape[1] - 1, target_shape[1])).astype(np.int64)
+        x_idx = np.round(np.linspace(0, volume.shape[2] - 1, target_shape[2])).astype(np.int64)
+        return volume[np.ix_(z_idx, y_idx, x_idx)]
+
+    @staticmethod
+    def _convert_mask_npz_to_reference_nifti(
+        mask_npz_path: str,
+        reference_nifti_path: str,
+        output_nifti_path: str,
+    ) -> bool:
+        """
+        Convert reduced mask NPZ into a NIfTI aligned to a reference image NIfTI.
+        """
+        try:
+            segs = StudyViewSet._load_mask_labels_from_npz(mask_npz_path)
+            ref_img = nib.load(reference_nifti_path)
+            ref_shape = tuple(int(v) for v in ref_img.shape[:3])
+
+            # Standard path: directly resample to reference shape.
+            target_shape = ref_shape
+            needs_inverse_transpose = (
+                len(ref_shape) == 3
+                and ref_shape[2] == segs.shape[0]
+                and ref_shape[0] != segs.shape[0]
+            )
+            if needs_inverse_transpose:
+                # NIfTI uploads are converted as XYZ -> ZYX during inference preprocessing.
+                # Rebuild mask in ZYX then transpose back to XYZ to align with original NIfTI.
+                target_shape = (ref_shape[2], ref_shape[1], ref_shape[0])
+
+            segs_resampled = StudyViewSet._resample_labels_nearest(segs, target_shape)
+            if needs_inverse_transpose:
+                segs_resampled = np.transpose(segs_resampled, (2, 1, 0))
+
+            if tuple(segs_resampled.shape) != ref_shape:
+                raise ValueError(
+                    f"Resampled mask shape {segs_resampled.shape} does not match reference {ref_shape}"
+                )
+
+            header = ref_img.header.copy()
+            header.set_data_dtype(np.uint16)
+            out = nib.Nifti1Image(segs_resampled.astype(np.uint16, copy=False), ref_img.affine, header=header)
+            nib.save(out, output_nifti_path)
+            return True
+        except Exception:
+            logger.warning("Failed to align mask NPZ to original-resolution NIfTI", exc_info=True)
+            return False
 
     @staticmethod
     def _get_analysis_dir(study_id: str | None) -> Path:

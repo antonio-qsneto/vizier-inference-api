@@ -40,6 +40,7 @@ class DicomZipToNpzService:
         zip_path: str,
         text_prompts: dict | None = None,
         output_npz_path: str | None = None,
+        output_original_nifti_path: str | None = None,
         exam_modality: str | None = None,
         category_hint: str | None = None,
     ) -> str:
@@ -93,6 +94,13 @@ class DicomZipToNpzService:
             # Load series
             volume, spacing = self._load_series(series_path)
             logger.info(f"Loaded volume shape: {volume.shape}")
+
+            if output_original_nifti_path:
+                self._save_volume_as_nifti(
+                    volume=volume,
+                    output_nifti_path=output_original_nifti_path,
+                    spacing_zyx=spacing,
+                )
 
             # Preprocess
             volume = self._preprocess(
@@ -241,6 +249,34 @@ class DicomZipToNpzService:
 
         logger.info("Preprocessed uploaded NPZ shape %s -> %s", original_shape, tuple(volume.shape))
         return out_path
+
+    def convert_npz_to_nifti(
+        self,
+        npz_path: str,
+        output_nifti_path: str,
+    ) -> str:
+        """
+        Convert uploaded NPZ image volume to NIfTI preserving original resolution.
+        """
+        with np.load(npz_path, allow_pickle=True) as data:
+            image_key = next(
+                (k for k in ['imgs', 'image', 'images', 'data'] if k in data.files),
+                None,
+            )
+            if image_key is None:
+                raise ValueError(
+                    "NPZ must contain image data under one of keys: imgs, image, images, data"
+                )
+            volume = np.asarray(data[image_key])
+            spacing = data['spacing'] if 'spacing' in data.files else None
+
+        volume = self._coerce_3d_volume(volume)
+        self._save_volume_as_nifti(
+            volume=volume,
+            output_nifti_path=output_nifti_path,
+            spacing_zyx=spacing,
+        )
+        return output_nifti_path
     
     @staticmethod
     def _unzip(zip_path: str, extract_to: str) -> str:
@@ -434,6 +470,46 @@ class DicomZipToNpzService:
         scaled = (volume - source_min) / span
         scaled = scaled * 255.0
         return np.clip(scaled, 0.0, 255.0).astype(np.float32, copy=False)
+
+    @staticmethod
+    def _save_volume_as_nifti(
+        volume: np.ndarray,
+        output_nifti_path: str,
+        spacing_zyx=None,
+    ) -> None:
+        """
+        Save a 3D volume as NIfTI preserving original matrix size.
+
+        The data layout is preserved as-is (commonly Z,Y,X in this pipeline).
+        """
+        volume_3d = DicomZipToNpzService._coerce_3d_volume(np.asarray(volume))
+        volume_3d = volume_3d.astype(np.float32, copy=False)
+
+        spacing_tuple = None
+        if spacing_zyx is not None:
+            spacing_arr = np.asarray(spacing_zyx).reshape(-1)
+            if spacing_arr.size >= 3:
+                spacing_tuple = (
+                    float(spacing_arr[0]),
+                    float(spacing_arr[1]),
+                    float(spacing_arr[2]),
+                )
+
+        affine = np.eye(4, dtype=np.float32)
+        if spacing_tuple is not None:
+            affine[0, 0] = spacing_tuple[0]
+            affine[1, 1] = spacing_tuple[1]
+            affine[2, 2] = spacing_tuple[2]
+
+        nii = nib.Nifti1Image(volume_3d, affine)
+        if spacing_tuple is not None:
+            try:
+                nii.header.set_zooms(spacing_tuple)
+            except Exception:
+                logger.warning("Failed to set NIfTI zooms for original volume", exc_info=True)
+
+        nib.save(nii, output_nifti_path)
+        logger.info("Saved original-resolution NIfTI: %s", output_nifti_path)
 
     @staticmethod
     def _coerce_3d_volume(volume: np.ndarray) -> np.ndarray:

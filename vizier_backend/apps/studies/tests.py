@@ -253,6 +253,31 @@ class SegmentationLegendTest(TestCase):
         label = StudyViewSet._extract_label_from_prompt('Custom Label Format')
         self.assertEqual(label, 'Custom Label Format')
 
+    def test_convert_mask_npz_to_reference_nifti_preserves_reference_shape(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            reference_path = os.path.join(tmpdir, 'reference.nii.gz')
+            mask_npz_path = os.path.join(tmpdir, 'mask.npz')
+            out_mask_path = os.path.join(tmpdir, 'mask_resampled.nii.gz')
+
+            reference = np.random.rand(20, 64, 64).astype(np.float32)
+            nib.save(nib.Nifti1Image(reference, np.eye(4)), reference_path)
+
+            segs_small = np.zeros((10, 32, 32), dtype=np.uint8)
+            segs_small[2:8, 8:20, 8:24] = 3
+            np.savez(mask_npz_path, segs=segs_small)
+
+            ok = StudyViewSet._convert_mask_npz_to_reference_nifti(
+                mask_npz_path=mask_npz_path,
+                reference_nifti_path=reference_path,
+                output_nifti_path=out_mask_path,
+            )
+
+            self.assertTrue(ok)
+            out_img = nib.load(out_mask_path)
+            self.assertEqual(tuple(out_img.shape), (20, 64, 64))
+            out_data = np.asanyarray(out_img.dataobj)
+            self.assertIn(3, np.unique(out_data))
+
 
 class IntensityNormalizationServiceTest(TestCase):
     def test_ct_lung_window_rescales_to_0_255(self):
@@ -375,6 +400,20 @@ class NiftiConversionServiceTest(TestCase):
                 self.assertEqual(tuple(data['imgs'].shape), (40, 64, 64))
                 self.assertEqual(data['imgs'].dtype, np.float16)
                 np.testing.assert_allclose(data['spacing'], np.array([2.5, 1.2, 1.0]), rtol=1e-6)
+
+    def test_convert_npz_to_nifti_keeps_original_shape(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            npz_path = os.path.join(tmpdir, 'input.npz')
+            nifti_path = os.path.join(tmpdir, 'original.nii.gz')
+
+            volume = np.random.rand(25, 90, 70).astype(np.float32)
+            np.savez(npz_path, imgs=volume, spacing=np.array([1.5, 0.8, 0.8], dtype=np.float32))
+
+            service = DicomZipToNpzService()
+            service.convert_npz_to_nifti(npz_path=npz_path, output_nifti_path=nifti_path)
+
+            nii = nib.load(nifti_path)
+            self.assertEqual(tuple(nii.shape), (25, 90, 70))
 
 
 class StudyCreateSerializerValidationTest(TestCase):
