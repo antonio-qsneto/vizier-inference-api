@@ -1,196 +1,53 @@
 {
-  "version": "2026-02-25",
-  "modalities": [
-    {
-      "id": "ct",
-      "name": "CT",
-      "targets": [
-        {
-          "id": "ct_adrenocortical_carcinoma",
-          "name": "adrenocortical carcinoma",
-          "prompt": "Visualization of adrenocortical carcinoma in CT"
-        },
-        {
-          "id": "ct_kidney_lesions",
-          "name": "kidney lesions",
-          "prompt": "Visualization of kidney lesions in CT"
-        },
-        {
-          "id": "ct_kidney_cysts",
-          "name": "kidney cysts",
-          "prompt": "Visualization of kidney cysts in CT"
-        },
-        {
-          "id": "ct_liver_tumors",
-          "name": "liver tumors",
-          "prompt": "Visualization of liver tumors in CT"
-        },
-        {
-          "id": "ct_lung_lesions",
-          "name": "lung lesions",
-          "prompt": "Visualization of lung lesions in CT"
-        },
-        {
-          "id": "ct_pancreas_tumors",
-          "name": "pancreas tumors",
-          "prompt": "Visualization of pancreas tumors in CT"
-        },
-        {
-          "id": "ct_head_neck_cancer",
-          "name": "head-neck cancer",
-          "prompt": "Visualization of head-neck cancer in CT"
-        },
-        {
-          "id": "ct_colon_cancer_primaries",
-          "name": "colon cancer primaries",
-          "prompt": "Visualization of colon cancer primaries in CT"
-        },
-        {
-          "id": "ct_covid_19",
-          "name": "COVID-19",
-          "prompt": "Visualization of COVID-19 lesions in CT"
-        },
-        {
-          "id": "ct_whole_body_lesion",
-          "name": "whole-body lesion",
-          "prompt": "Visualization of whole-body lesion in CT"
-        },
-        {
-          "id": "ct_lymphadenopathy",
-          "name": "lymphadenopathy",
-          "prompt": "Visualization of lymphadenopathy in CT"
-        }
-      ]
-    },
-    {
-      "id": "mri",
-      "name": "MRI",
-      "targets": [
-        {
-          "id": "mri_prostate_lesion",
-          "name": "prostate lesion",
-          "prompt": "Visualization of prostate lesion in MRI"
-        },
-        {
-          "id": "mri_brain_tumor",
-          "name": "brain tumor",
-          "prompt": "Visualization of brain tumor in MRI"
-        },
-        {
-          "id": "mri_stroke_lesion",
-          "name": "stroke lesion",
-          "prompt": "Visualization of stroke lesion in MRI"
-        },
-        {
-          "id": "mri_gross_tumor_volume_primary_nodal",
-          "name": "gross tumor volume (primary/nodal)",
-          "prompt": "Visualization of gross tumor volume (primary/nodal) in MRI"
-        },
-        {
-          "id": "mri_vestibular_schwannoma_intra_extra_meatal",
-          "name": "vestibular schwannoma (intra-/extra-meatal)",
-          "prompt": "Visualization of vestibular schwannoma (intra-/extra-meatal) in MRI"
-        },
-        {
-          "id": "mri_glioma",
-          "name": "glioma",
-          "prompt": "Visualization of glioma in MRI"
-        },
-        {
-          "id": "mri_non_enhancing_tumor_core",
-          "name": "non-enhancing tumor core",
-          "prompt": "Visualization of non-enhancing tumor core in MRI"
-        },
-        {
-          "id": "mri_non_enhancing_flair_hyperintensity",
-          "name": "non-enhancing FLAIR hyperintensity",
-          "prompt": "Visualization of non-enhancing FLAIR hyperintensity in MRI"
-        },
-        {
-          "id": "mri_enhancing_tumor_tissue",
-          "name": "enhancing tumor tissue",
-          "prompt": "Visualization of enhancing tumor tissue in MRI"
-        },
-        {
-          "id": "mri_resection_cavity",
-          "name": "resection cavity",
-          "prompt": "Visualization of resection cavity in MRI"
-        },
-        {
-          "id": "mri_white_matter_hyperintensities",
-          "name": "white matter hyperintensities",
-          "prompt": "Visualization of white matter hyperintensities in MRI"
-        }
-      ]
-    },
-    {
-      "id": "ultrasound",
-      "name": "Ultrasound",
-      "targets": [
-        {
-          "id": "ultrasound_brain_tumor",
-          "name": "brain tumor",
-          "prompt": "Visualization of brain tumor in Ultrasound"
-        }
-      ]
-    },
-    {
-      "id": "pet",
-      "name": "PET",
-      "targets": [
-        {
-          "id": "pet_whole_body_lesion",
-          "name": "whole-body lesion",
-          "prompt": "Visualization of whole-body lesion in PET"
-        }
-      ]
-    },
-    {
-      "id": "electron_microscopy",
-      "name": "Electron Microscopy",
-      "targets": [
-        {
-          "id": "em_mitochondrial_abnormalities",
-          "name": "mitochondrial abnormalities",
-          "prompt": "Visualization of mitochondrial abnormalities in Electron Microscopy"
-        },
-        {
-          "id": "em_nuclear_abnormalities",
-          "name": "nuclear abnormalities",
-          "prompt": "Visualization of nuclear abnormalities in Electron Microscopy"
-        },
-        {
-          "id": "em_neuronal_ultrastructural_abnormalities",
-          "name": "neuronal ultrastructural abnormalities",
-          "prompt": "Visualization of neuronal ultrastructural abnormalities in Electron Microscopy"
-        },
-        {
-          "id": "em_synaptic_pathology",
-          "name": "synaptic pathology",
-          "prompt": "Visualization of synaptic pathology in Electron Microscopy"
-        },
-        {
-          "id": "em_axonal_pathology",
-          "name": "axonal pathology",
-          "prompt": "Visualization of axonal pathology in Electron Microscopy"
-        }
-      ]
-    },
-    {
-      "id": "lightsheet_microscopy",
-      "name": "Lightsheet Microscopy",
-      "targets": [
-        {
-          "id": "lightsheet_alzheimers_plaque",
-          "name": "Alzheimer's plaque",
-          "prompt": "Visualization of Alzheimer's plaque in Lightsheet Microscopy"
-        },
-        {
-          "id": "lightsheet_vascular_pathology",
-          "name": "vascular pathology",
-          "prompt": "Visualization of vascular pathology in Lightsheet Microscopy"
-        }
-      ]
-    }
-  ]
+  "CT": {
+    "head": [
+      "head-neck cancer"
+    ],
+    "torax": [
+      "lung lesions",
+      "COVID-19"
+    ],
+    "abdomen": [
+      "adrenocortical carcinoma",
+      "kidney lesions/cysts L/R",
+      "liver tumors",
+      "pancreas tumors",
+      "colon cancer primaries"
+    ],
+    "whole-body": [
+      "whole-body lesion",
+      "lymph nodes"
+    ]
+  },
+  "MRI": {
+    "head": [
+      "brain tumor",
+      "stroke lesion",
+      "GTVp/GTVn tumor",
+      "vestibular schwannoma intra/extra-meatal",
+      "non-enhancing tumor core",
+      "non-enhancing FLAIR hyperintensity",
+      "enhancing tissue",
+      "resection cavity",
+      "WM hyperintensities FLAIR/T1"
+    ],
+    "GU": [
+      "prostate lesion"
+    ]
+  },
+  "Ultrasound": {
+    "head": [
+      "brain tumor"
+    ]
+  },
+  "PET": {
+    "whole-body": [
+      "whole-body lesion"
+    ]
+  },
+  "Lightsheet Microscopy": {
+    "head": [
+      "Alzheimer's plaque"
+    ]
+  }
 }

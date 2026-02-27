@@ -34,6 +34,11 @@ class StudySerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'category',
+            'case_identification',
+            'patient_name',
+            'age',
+            'exam_source',
+            'exam_modality',
             'status',
             'owner_email',
             'job',
@@ -64,23 +69,62 @@ class StudyCreateSerializer(serializers.Serializer):
     
     dicom_zip = serializers.FileField(required=False)
     npz_file = serializers.FileField(required=False)
+    nifti_file = serializers.FileField(required=False)
     file = serializers.FileField(required=False)  # backward-compat alias
-    category_id = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    case_identification = serializers.CharField(max_length=255)
+    patient_name = serializers.CharField(max_length=255)
+    age = serializers.IntegerField(min_value=0, max_value=130)
+    exam_source = serializers.CharField(max_length=255)
+    exam_modality = serializers.CharField(max_length=100)
+    category_id = serializers.CharField(max_length=255)
 
     def validate(self, attrs):
-        upload = attrs.get('dicom_zip') or attrs.get('npz_file') or attrs.get('file')
+        errors = {}
+        upload = attrs.get('dicom_zip') or attrs.get('npz_file') or attrs.get('nifti_file') or attrs.get('file')
         if not upload:
-            raise serializers.ValidationError(
-                "Provide a file using 'dicom_zip' (.zip) or 'npz_file' (.npz)."
+            received_file_like_keys = sorted(
+                key
+                for key in getattr(self, 'initial_data', {}).keys()
+                if (
+                    'file' in str(key).lower()
+                    or 'zip' in str(key).lower()
+                    or 'nii' in str(key).lower()
+                    or 'nifti' in str(key).lower()
+                )
             )
+            expected_keys = "'file', 'dicom_zip', 'npz_file', 'nifti_file'"
+            if received_file_like_keys:
+                errors['file'] = (
+                    f"Upload field not recognized. Use one of {expected_keys}. "
+                    f"Received file-like keys: {', '.join(received_file_like_keys)}."
+                )
+            else:
+                errors['file'] = (
+                    f"Missing upload file. Send one of {expected_keys} "
+                    "with extensions .zip, .npz, .nii or .nii.gz."
+                )
 
-        name = (getattr(upload, 'name', '') or '').lower()
-        if name.endswith('.zip'):
-            attrs['upload_type'] = 'zip'
-        elif name.endswith('.npz'):
-            attrs['upload_type'] = 'npz'
-        else:
-            raise serializers.ValidationError("File must be a ZIP (.zip) or NPZ (.npz).")
+        for field_name in ['case_identification', 'patient_name', 'exam_source', 'exam_modality', 'category_id']:
+            value = attrs.get(field_name)
+            if isinstance(value, str):
+                cleaned = value.strip()
+                if not cleaned:
+                    errors[field_name] = 'This field may not be blank.'
+                attrs[field_name] = cleaned
+
+        if upload:
+            name = (getattr(upload, 'name', '') or '').lower()
+            if name.endswith('.zip'):
+                attrs['upload_type'] = 'zip'
+            elif name.endswith('.npz'):
+                attrs['upload_type'] = 'npz'
+            elif name.endswith('.nii') or name.endswith('.nii.gz'):
+                attrs['upload_type'] = 'nifti'
+            else:
+                errors['file'] = "Invalid extension. File must be ZIP (.zip), NPZ (.npz), or NIfTI (.nii/.nii.gz)."
+
+        if errors:
+            raise serializers.ValidationError(errors)
 
         attrs['upload_file'] = upload
         return attrs
@@ -110,6 +154,7 @@ class StudyResultSerializer(serializers.Serializer):
     study_id = serializers.CharField()
     image_url = serializers.CharField()
     mask_url = serializers.CharField()
+    segments_legend = serializers.ListField(child=serializers.DictField(), required=False)
     expires_in = serializers.IntegerField()
     image_file_name = serializers.CharField()
     mask_file_name = serializers.CharField()

@@ -13,6 +13,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.exceptions import ValidationError
 from django.conf import settings
 from django.db import IntegrityError
 from django.utils import timezone
@@ -60,6 +61,18 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                 {'error': 'User must belong to a clinic'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Resolve category (name + prompt) before heavy file processing.
+        # Return field-specific errors for easier API testing/debugging.
+        category_id = serializer.validated_data['category_id']
+        exam_modality = serializer.validated_data['exam_modality']
+        try:
+            category_name, text_prompts, normalized_modality = self._resolve_category_and_prompt(
+                category_id=category_id,
+                exam_modality=exam_modality,
+            )
+        except ValueError as exc:
+            raise ValidationError(self._map_upload_metadata_error(str(exc)))
         
         temp_dir = None
         study = None
@@ -70,11 +83,6 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             # Create temp directory for processing
             temp_dir = tempfile.mkdtemp(prefix='dicom_')
             logger.info(f"Created temp directory: {temp_dir}")
-
-            # Resolve category (name + prompt)
-            category_id = serializer.validated_data.get('category_id') or ''
-            category_name, prompt_text = self._resolve_category_and_prompt(category_id)
-            text_prompts = {"1": prompt_text, "instance_label": 0}
 
             npz_path = os.path.join(temp_dir, 'file.npz')
 
@@ -94,6 +102,8 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                     zip_path=zip_path,
                     text_prompts=text_prompts,
                     output_npz_path=npz_path,
+                    exam_modality=normalized_modality,
+                    category_hint=category_id,
                 )
                 logger.info(f"Converted to NPZ: {npz_path} ({os.path.getsize(npz_path)} bytes)")
 
@@ -114,10 +124,36 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
 
                 # Normalize uploaded NPZ to the same target shape policy used in ZIP uploads.
                 dicom_service = DicomZipToNpzService()
-                npz_path = dicom_service.preprocess_existing_npz(npz_path=npz_path)
+                npz_path = dicom_service.preprocess_existing_npz(
+                    npz_path=npz_path,
+                    exam_modality=normalized_modality,
+                    category_hint=category_id,
+                )
 
-                # Ensure prompts exist for inference contract (only if missing)
-                self._ensure_npz_text_prompts(npz_path=npz_path, text_prompts=text_prompts)
+                # Keep inference prompts aligned with the selected modality/category.
+                self._ensure_npz_text_prompts(
+                    npz_path=npz_path,
+                    text_prompts=text_prompts,
+                    overwrite=True,
+                )
+
+            elif upload_type == 'nifti':
+                nifti_filename = os.path.basename(getattr(upload_file, 'name', 'input.nii.gz') or 'input.nii.gz')
+                nifti_path = os.path.join(temp_dir, nifti_filename)
+                with open(nifti_path, 'wb') as f:
+                    for chunk in upload_file.chunks():
+                        f.write(chunk)
+                logger.info(f"Saved uploaded NIfTI: {nifti_path}")
+
+                dicom_service = DicomZipToNpzService()
+                npz_path = dicom_service.convert_nifti_to_npz(
+                    nifti_path=nifti_path,
+                    text_prompts=text_prompts,
+                    output_npz_path=npz_path,
+                    exam_modality=normalized_modality,
+                    category_hint=category_id,
+                )
+                logger.info(f"Converted NIfTI to NPZ: {npz_path} ({os.path.getsize(npz_path)} bytes)")
 
             else:
                 raise ValueError(f"Unsupported upload_type: {upload_type}")
@@ -128,6 +164,11 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                     clinic=request.user.clinic if request.user.clinic else None,
                     owner=request.user,
                     category=category_name,
+                    case_identification=serializer.validated_data['case_identification'],
+                    patient_name=serializer.validated_data['patient_name'],
+                    age=serializer.validated_data['age'],
+                    exam_source=serializer.validated_data['exam_source'],
+                    exam_modality=normalized_modality,
                     status='SUBMITTED',
                 )
             except IntegrityError as exc:
@@ -434,6 +475,12 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             mask_url = s3_utils.generate_presigned_url(mask_s3_key)
             logger.info("Generated signed URLs for visualization files: %s %s", image_s3_key, mask_s3_key)
 
+            segments_legend = []
+            try:
+                segments_legend = self._build_segments_legend_for_study(study=study, s3_utils=s3_utils)
+            except Exception:
+                logger.warning("Failed to build segmentation legend for study %s", study.id, exc_info=True)
+
             # Log audit
             AuditService.log_result_download(study, request.user)
 
@@ -441,6 +488,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                 'study_id': str(study.id),
                 'image_url': image_url,
                 'mask_url': mask_url,
+                'segments_legend': segments_legend,
                 'expires_in': 3600,
                 'image_file_name': f"study_{study.id}_image.nii.gz",
                 'mask_file_name': f"study_{study.id}_mask.nii.gz",
@@ -473,6 +521,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             owner_scope = study.get_owner_scope()
             default_image_key = f"results/{owner_scope}/{study.id}/image.nii.gz"
             default_mask_key = f"results/{owner_scope}/{study.id}/mask.nii.gz"
+            default_mask_npz_key = f"results/{owner_scope}/{study.id}/mask.npz"
             image_s3_key = study.image_s3_key or default_image_key
             mask_s3_key = study.mask_s3_key or default_mask_key
 
@@ -570,6 +619,8 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                 raise Exception(f"Failed to upload file to storage: {image_s3_key}")
             if not s3_utils.upload_file(mask_nifti_path, mask_s3_key, 'application/gzip'):
                 raise Exception(f"Failed to upload file to storage: {mask_s3_key}")
+            if not s3_utils.upload_file(mask_npz_path, default_mask_npz_key, 'application/octet-stream'):
+                logger.warning("Failed to upload mask NPZ to storage: %s", default_mask_npz_key)
 
             # Update study
             study.image_s3_key = image_s3_key
@@ -602,107 +653,417 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
     @staticmethod
-    def _resolve_category_and_prompt(category_id: str) -> tuple[str, str]:
-        """
-        Resolve a category selection into a stored category name and a prompt text.
+    def _map_upload_metadata_error(message: str) -> dict:
+        """Map catalog validation errors to field-level API errors."""
+        normalized = str(message or '').strip()
+        if normalized.startswith("Invalid exam_modality:") or normalized == "exam_modality is required":
+            return {"exam_modality": [normalized]}
+        if normalized.startswith("Invalid category_id:") or normalized == "category_id is required":
+            return {"category_id": [normalized]}
+        if normalized in {
+            "Selected target does not belong to exam_modality",
+            "Selected category does not belong to exam_modality",
+        }:
+            return {
+                "category_id": [normalized],
+                "exam_modality": ["Selected modality does not match target/category"],
+            }
+        return {"non_field_errors": [normalized or "Invalid metadata"]}
 
-        Supports `data/categories.json` being either:
-        - v2 catalog: {"modalities": [{"name": "...", "targets": [...]}]}
-        - legacy flat catalog: single dict or list of category dicts.
+    @staticmethod
+    def _resolve_category_and_prompt(category_id: str, exam_modality: str) -> tuple[str, dict, str]:
+        """
+        Resolve category-group and modality into canonical category name + prompts.
+
+        Returns:
+            (category_display_name, text_prompts, normalized_modality_name)
+
+        Raises:
+            ValueError: When modality/category is invalid or mismatched.
         """
         categories_path = settings.BASE_DIR / 'data' / 'categories.json'
+        if not str(exam_modality or '').strip():
+            raise ValueError("exam_modality is required")
+        if not str(category_id or '').strip():
+            raise ValueError("category_id is required")
 
-        options: list[dict] = []
         try:
             with open(categories_path, 'r') as f:
                 loaded = json.load(f)
-
-            if isinstance(loaded, dict) and isinstance(loaded.get('modalities'), list):
-                for modality in loaded.get('modalities', []):
-                    modality_name = str(modality.get('name') or modality.get('id') or '').strip()
-                    if not modality_name:
-                        continue
-
-                    targets = modality.get('targets') or []
-                    for target in targets:
-                        target_name = str(target.get('name') or target.get('label') or '').strip()
-                        if not target_name:
-                            continue
-
-                        target_id = str(target.get('id') or '').strip()
-                        prompt_text = (
-                            str(target.get('prompt') or '').strip()
-                            or f"Visualization of {target_name} in {modality_name}"
-                        )
-                        display_name = f"{modality_name}: {target_name}"
-                        options.append(
-                            {
-                                'id': target_id,
-                                'name': target_name,
-                                'modality': modality_name,
-                                'display_name': display_name,
-                                'prompt': prompt_text,
-                            }
-                        )
-            else:
-                legacy_categories = []
-                if isinstance(loaded, list):
-                    legacy_categories = loaded
-                elif isinstance(loaded, dict):
-                    legacy_categories = [loaded]
-
-                for cat in legacy_categories:
-                    cat_name = str(cat.get('name') or '').strip()
-                    if not cat_name:
-                        continue
-                    options.append(
-                        {
-                            'id': str(cat.get('id') or '').strip(),
-                            'name': cat_name,
-                            'modality': str(cat.get('modality') or '').strip(),
-                            'display_name': cat_name,
-                            'prompt': str(cat.get('prompt') or '').strip() or f"segment {cat_name}",
-                        }
-                    )
         except Exception as e:
             logger.warning(f"Failed to load categories from {categories_path}: {e}")
+            raise ValueError("Failed to load categories catalog") from e
 
-        selected: dict | None = None
-        category_id_normalized = str(category_id or '').strip()
+        raw_modalities = None
+        if isinstance(loaded, dict) and isinstance(loaded.get('modalities'), dict):
+            raw_modalities = loaded.get('modalities')
+        elif isinstance(loaded, dict) and isinstance(loaded.get('modalities'), list):
+            raw_modalities = {}
+            for item in loaded.get('modalities', []):
+                if not isinstance(item, dict):
+                    continue
+                modality_name = str(item.get('name') or item.get('id') or '').strip()
+                if not modality_name:
+                    continue
+                raw_modalities[modality_name] = {
+                    'default': item.get('targets') or [],
+                }
+        elif isinstance(loaded, dict):
+            raw_modalities = {k: v for k, v in loaded.items() if isinstance(v, dict)}
 
-        if category_id_normalized:
-            query = category_id_normalized.lower()
-            for cat in options:
-                candidates = [
-                    cat.get('id'),
-                    cat.get('name'),
-                    cat.get('display_name'),
-                ]
-                modality = str(cat.get('modality') or '').strip()
-                name = str(cat.get('name') or '').strip()
-                if modality and name:
-                    candidates.extend(
-                        [
-                            f"{modality}:{name}",
-                            f"{modality}|{name}",
-                        ]
+        if not raw_modalities:
+            raise ValueError("Failed to load categories catalog")
+
+        modalities: list[dict] = []
+        for modality_key, modality_value in raw_modalities.items():
+            modality_display = str(modality_key).strip()
+            modality_aliases = {modality_display}
+            groups_payload = None
+
+            if isinstance(modality_value, dict) and any(
+                field in modality_value for field in ['groups', 'categories', 'regions']
+            ):
+                modality_display = str(modality_value.get('name') or modality_display).strip() or modality_display
+                modality_id = str(modality_value.get('id') or '').strip()
+                if modality_id:
+                    modality_aliases.add(modality_id)
+                groups_payload = (
+                    modality_value.get('groups')
+                    or modality_value.get('categories')
+                    or modality_value.get('regions')
+                    or {}
+                )
+            elif isinstance(modality_value, dict):
+                groups_payload = modality_value
+
+            if not isinstance(groups_payload, dict):
+                continue
+
+            groups: list[dict] = []
+            for group_key, group_value in groups_payload.items():
+                group_key_text = str(group_key).strip()
+                group_display = group_key_text
+                targets = group_value
+                if isinstance(group_value, dict):
+                    group_display = str(group_value.get('name') or group_display).strip() or group_display
+                    targets = group_value.get('targets') or []
+                if not group_key_text or not isinstance(targets, list):
+                    continue
+                groups.append(
+                    {
+                        'key': group_key_text,
+                        'name': group_display,
+                        'targets': targets,
+                    }
+                )
+
+            if groups:
+                modalities.append(
+                    {
+                        'name': modality_display,
+                        'aliases': modality_aliases,
+                        'groups': groups,
+                    }
+                )
+
+        if not modalities:
+            raise ValueError("Failed to load categories catalog")
+
+        modality_query = StudyViewSet._normalize_catalog_token(exam_modality)
+        category_query = StudyViewSet._normalize_catalog_token(category_id)
+
+        selected_modality = None
+        for modality in modalities:
+            candidates = {
+                StudyViewSet._normalize_catalog_token(modality.get('name')),
+                *(StudyViewSet._normalize_catalog_token(alias) for alias in modality.get('aliases', set())),
+            }
+            candidates.discard('')
+            if modality_query in candidates:
+                selected_modality = modality
+                break
+
+        if selected_modality is None:
+            available_modalities = ", ".join(sorted(str(m.get('name')) for m in modalities))
+            raise ValueError(f"Invalid exam_modality: {exam_modality}. Available: {available_modalities}")
+
+        modality_name = str(selected_modality.get('name') or exam_modality).strip()
+        modality_token = StudyViewSet._normalize_catalog_token(modality_name)
+        selected_group = None
+
+        for group in selected_modality.get('groups', []):
+            group_key = str(group.get('key') or '').strip()
+            group_name = str(group.get('name') or group_key).strip() or group_key
+            group_tokens = {
+                StudyViewSet._normalize_catalog_token(group_key),
+                StudyViewSet._normalize_catalog_token(group_name),
+                f"{modality_token}{StudyViewSet._normalize_catalog_token(group_key)}",
+                f"{modality_token}{StudyViewSet._normalize_catalog_token(group_name)}",
+            }
+            group_tokens.discard('')
+            if category_query in group_tokens:
+                selected_group = group
+                break
+
+        # Backward compatibility: category_id may still come as a target name/id.
+        if selected_group is None:
+            for group in selected_modality.get('groups', []):
+                for target_item in group.get('targets', []):
+                    target_name, _ = StudyViewSet._extract_target_name_and_prompt(
+                        target_item=target_item,
+                        modality_name=modality_name,
+                        category_name=str(group.get('name') or group.get('key') or '').strip(),
                     )
-
-                if any(str(c or '').strip().lower() == query for c in candidates):
-                    selected = cat
+                    if not target_name:
+                        continue
+                    target_token = StudyViewSet._normalize_catalog_token(target_name)
+                    target_tokens = {
+                        target_token,
+                        f"{modality_token}{target_token}",
+                    }
+                    target_tokens.discard('')
+                    if category_query in target_tokens:
+                        selected_group = group
+                        break
+                if selected_group is not None:
                     break
 
-        if selected is None:
-            if category_id_normalized:
-                category_name = category_id_normalized
-                prompt_text = f"segment {category_name}"
-                return category_name, prompt_text
-            if options:
-                selected = options[0]
+        if selected_group is None:
+            for other_modality in modalities:
+                other_name = str(other_modality.get('name') or '').strip()
+                other_token = StudyViewSet._normalize_catalog_token(other_name)
+                if other_token == modality_token:
+                    continue
+                for group in other_modality.get('groups', []):
+                    group_key = str(group.get('key') or '').strip()
+                    group_name = str(group.get('name') or group_key).strip()
+                    group_tokens = {
+                        StudyViewSet._normalize_catalog_token(group_key),
+                        StudyViewSet._normalize_catalog_token(group_name),
+                        f"{other_token}{StudyViewSet._normalize_catalog_token(group_key)}",
+                        f"{other_token}{StudyViewSet._normalize_catalog_token(group_name)}",
+                    }
+                    group_tokens.discard('')
+                    if category_query in group_tokens:
+                        raise ValueError("Selected category does not belong to exam_modality")
 
-        category_name = (selected or {}).get('display_name') or (category_id_normalized or 'Unknown')
-        prompt_text = (selected or {}).get('prompt') or f"segment {category_name}"
-        return category_name, prompt_text
+            available_groups = ", ".join(
+                sorted(str(group.get('name') or group.get('key') or '').strip() for group in selected_modality.get('groups', []))
+            )
+            raise ValueError(
+                f"Invalid category_id: {category_id}. Available categories for {modality_name}: {available_groups}"
+            )
+
+        group_name = str(selected_group.get('name') or selected_group.get('key') or category_id).strip()
+        category_display = f"{modality_name}: {group_name}"
+
+        text_prompts = {}
+        prompt_index = 1
+        for target_item in selected_group.get('targets', []):
+            _, prompt_text = StudyViewSet._extract_target_name_and_prompt(
+                target_item=target_item,
+                modality_name=modality_name,
+                category_name=group_name,
+            )
+            if not prompt_text:
+                continue
+            text_prompts[str(prompt_index)] = prompt_text
+            prompt_index += 1
+
+        if prompt_index == 1:
+            raise ValueError(f"Invalid category_id: {category_id}. Selected category has no targets")
+
+        text_prompts['instance_label'] = 0
+        return category_display, text_prompts, modality_name
+
+    @staticmethod
+    def _extract_target_name_and_prompt(target_item, modality_name: str, category_name: str) -> tuple[str, str]:
+        """Extract target name/prompt from catalog item (str or dict)."""
+        target_name = ''
+        prompt_text = ''
+        if isinstance(target_item, dict):
+            target_name = str(target_item.get('name') or target_item.get('label') or '').strip()
+            prompt_text = str(target_item.get('prompt') or '').strip()
+        else:
+            target_name = str(target_item or '').strip()
+
+        if not target_name:
+            return '', ''
+        if not prompt_text:
+            prompt_text = StudyViewSet._build_default_prompt(
+                modality_name=modality_name,
+                category_name=category_name,
+                target_name=target_name,
+            )
+        return target_name, prompt_text
+
+    @staticmethod
+    def _build_default_prompt(modality_name: str, category_name: str, target_name: str) -> str:
+        """Build default text prompt when not explicitly provided in catalog."""
+        modality_token = StudyViewSet._normalize_catalog_token(modality_name)
+        modality_label = 'MR' if modality_token == 'mri' else modality_name
+        return f"Visualization of {target_name} in {category_name} {modality_label}"
+
+    @staticmethod
+    def _normalize_catalog_token(value) -> str:
+        """Lowercase/alphanumeric token for flexible catalog matching."""
+        raw = str(value or '').strip().lower()
+        return ''.join(ch for ch in raw if ch.isalnum())
+
+    @staticmethod
+    def _extract_label_from_prompt(prompt_text: str) -> str:
+        """Extract a concise label from an inference prompt sentence."""
+        text = str(prompt_text or '').strip()
+        if not text:
+            return ''
+
+        lowered = text.lower()
+        for prefix in ('visualization of ', 'segmentation of '):
+            if lowered.startswith(prefix):
+                in_idx = lowered.find(' in ')
+                if in_idx > len(prefix):
+                    return text[len(prefix):in_idx].strip()
+        return text
+
+    @staticmethod
+    def _legend_color_for_label(label_id: int) -> str:
+        """Deterministic color assignment per label id."""
+        palette = [
+            '#e11d48', '#2563eb', '#059669', '#f59e0b', '#7c3aed',
+            '#db2777', '#0891b2', '#16a34a', '#dc2626', '#8b5cf6',
+            '#0ea5e9', '#84cc16',
+        ]
+        index = int(label_id) % len(palette)
+        return palette[index]
+
+    @staticmethod
+    def _parse_text_prompts(raw_prompts) -> tuple[dict, int]:
+        """
+        Parse NPZ text_prompts payload into a dict and instance/background label.
+        """
+        payload = raw_prompts
+        if isinstance(payload, np.ndarray):
+            if payload.shape == ():
+                payload = payload.item()
+            elif payload.size == 1:
+                payload = payload.reshape(()).item()
+
+        if not isinstance(payload, dict):
+            return {}, 0
+
+        prompt_map = {}
+        for key, value in payload.items():
+            key_text = str(key).strip()
+            if key_text == 'instance_label':
+                continue
+            prompt_map[key_text] = str(value).strip()
+
+        instance_label_raw = payload.get('instance_label', 0)
+        try:
+            instance_label = int(instance_label_raw)
+        except Exception:
+            instance_label = 0
+        return prompt_map, instance_label
+
+    @staticmethod
+    def _build_segments_legend_from_arrays(segs: np.ndarray, text_prompts: dict, instance_label: int = 0) -> list[dict]:
+        """
+        Build frontend legend data by cross-referencing seg IDs with text prompts.
+        """
+        if segs is None:
+            return []
+        segs = np.asarray(segs)
+        if segs.size == 0:
+            return []
+
+        if segs.dtype.kind not in ('i', 'u'):
+            segs = np.nan_to_num(segs, nan=float(instance_label), posinf=float(instance_label), neginf=float(instance_label))
+            segs = np.rint(segs).astype(np.int32, copy=False)
+
+        unique_vals, counts = np.unique(segs, return_counts=True)
+        total_voxels = int(segs.size)
+        legend = []
+
+        for val, count in zip(unique_vals, counts):
+            label_id = int(val)
+            if label_id == int(instance_label):
+                continue
+
+            prompt = str(text_prompts.get(str(label_id)) or '').strip()
+            label = StudyViewSet._extract_label_from_prompt(prompt) or f"Label {label_id}"
+            fraction = float(count) / float(total_voxels) if total_voxels else 0.0
+
+            legend.append(
+                {
+                    'id': label_id,
+                    'label': label,
+                    'prompt': prompt,
+                    'voxels': int(count),
+                    'fraction': fraction,
+                    'percentage': round(fraction * 100.0, 4),
+                    'color': StudyViewSet._legend_color_for_label(label_id),
+                }
+            )
+
+        legend.sort(key=lambda item: item['voxels'], reverse=True)
+        return legend
+
+    def _build_segments_legend_for_study(self, study, s3_utils: S3Utils) -> list[dict]:
+        """
+        Build legend for a study by reading original prompts and mask labels.
+        """
+        owner_scope = study.get_owner_scope()
+        original_npz_key_candidates = [
+            f"uploads/{owner_scope}/{study.id}/file.npz",
+            f"uploads/{owner_scope}/{study.id}/input.npz",
+        ]
+        original_npz_key = next(
+            (k for k in original_npz_key_candidates if s3_utils.object_exists(k)),
+            original_npz_key_candidates[0],
+        )
+        mask_npz_key = f"results/{owner_scope}/{study.id}/mask.npz"
+
+        temp_dir = tempfile.mkdtemp(prefix='legend_')
+        try:
+            original_npz_path = os.path.join(temp_dir, 'file.npz')
+            mask_npz_path = os.path.join(temp_dir, 'mask.npz')
+
+            if not s3_utils.download_file(original_npz_key, original_npz_path):
+                logger.warning("Cannot build legend: missing original NPZ key %s", original_npz_key)
+                return []
+
+            if not s3_utils.download_file(mask_npz_key, mask_npz_path):
+                job_id = study.inference_job_id or getattr(study.job, 'external_job_id', None)
+                if not job_id:
+                    logger.warning("Cannot build legend: missing mask NPZ and job id for study %s", study.id)
+                    return []
+                inference_client = InferenceClient()
+                if not inference_client.get_results(job_id, mask_npz_path):
+                    logger.warning("Cannot build legend: failed to fetch mask NPZ for job %s", job_id)
+                    return []
+                s3_utils.upload_file(mask_npz_path, mask_npz_key, 'application/octet-stream')
+
+            with np.load(original_npz_path, allow_pickle=True) as image_npz:
+                raw_prompts = image_npz['text_prompts'] if 'text_prompts' in image_npz.files else {}
+            prompt_map, instance_label = self._parse_text_prompts(raw_prompts)
+
+            with np.load(mask_npz_path, allow_pickle=False) as mask_npz:
+                segs = None
+                for key in ('segs', 'mask', 'result', 'imgs'):
+                    if key in mask_npz.files:
+                        segs = mask_npz[key]
+                        break
+                if segs is None:
+                    logger.warning("Cannot build legend: mask NPZ has no segmentation key")
+                    return []
+
+            return self._build_segments_legend_from_arrays(
+                segs=segs,
+                text_prompts=prompt_map,
+                instance_label=instance_label,
+            )
+        finally:
+            cleanup_temp_files(temp_dir)
 
     @staticmethod
     def _get_analysis_dir(study_id: str | None) -> Path:
@@ -710,15 +1071,18 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         return root / (study_id or "_pending")
 
     @staticmethod
-    def _ensure_npz_text_prompts(npz_path: str, text_prompts: dict) -> None:
+    def _ensure_npz_text_prompts(npz_path: str, text_prompts: dict, overwrite: bool = False) -> None:
         """
         Ensure the NPZ contains a `text_prompts` key compatible with the inference API.
 
-        If the key is missing, the file is rewritten in-place (atomic replace).
+        If overwrite is False, only adds text_prompts when missing.
+        If overwrite is True, always replaces existing prompts.
         """
         try:
+            has_prompts = False
             with np.load(npz_path, allow_pickle=True) as data:
-                if 'text_prompts' in data.files:
+                has_prompts = 'text_prompts' in data.files
+                if has_prompts and not overwrite:
                     logger.info("NPZ already contains text_prompts; leaving as is")
                     return
 
@@ -733,7 +1097,10 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
 
             np.savez_compressed(tmp_path, **payload)
             os.replace(tmp_path, npz_path)
-            logger.info("Added text_prompts to NPZ: %s", npz_path)
+            if has_prompts and overwrite:
+                logger.info("Replaced text_prompts in NPZ: %s", npz_path)
+            else:
+                logger.info("Added text_prompts to NPZ: %s", npz_path)
 
         except Exception:
             logger.warning("Failed to ensure text_prompts in NPZ", exc_info=True)

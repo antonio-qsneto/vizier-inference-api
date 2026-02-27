@@ -41,6 +41,35 @@ class Study(models.Model):
         max_length=255,
         help_text='Object category selected by user'
     )
+    case_identification = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text='Case identifier provided by user'
+    )
+    patient_name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text='Patient name provided by user'
+    )
+    age = models.PositiveSmallIntegerField(
+        blank=True,
+        null=True,
+        help_text='Patient age in years'
+    )
+    exam_source = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text='Exam source provided by user'
+    )
+    exam_modality = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text='Exam modality selected by user'
+    )
     
     # Processing status
     status = models.CharField(
