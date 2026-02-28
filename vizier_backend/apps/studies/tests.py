@@ -7,6 +7,8 @@ import numpy as np
 import json
 from pathlib import Path
 import nibabel as nib
+from unittest.mock import patch
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.accounts.models import User
 from apps.accounts.permissions import TenantQuerySetMixin
@@ -494,3 +496,33 @@ class StudyUploadMetadataErrorMappingTest(TestCase):
         mapped = StudyViewSet._map_upload_metadata_error("Selected target does not belong to exam_modality")
         self.assertIn("category_id", mapped)
         self.assertIn("exam_modality", mapped)
+
+
+class StudyStatusEndpointTest(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.user = User.objects.create_user(
+            email='terminal@example.com',
+            cognito_sub='terminal-sub',
+            role='INDIVIDUAL',
+        )
+
+    @patch('apps.studies.views.InferenceClient.get_status')
+    def test_completed_study_status_does_not_call_inference_api(self, mock_get_status):
+        study = Study.objects.create(
+            clinic=None,
+            owner=self.user,
+            category='MRI: head',
+            status='COMPLETED',
+            inference_job_id='remote-job-123',
+        )
+
+        view = StudyViewSet.as_view({'get': 'status'})
+        request = self.factory.get(f'/api/studies/{study.id}/status/')
+        force_authenticate(request, user=self.user)
+
+        response = view(request, pk=study.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['status'], 'COMPLETED')
+        mock_get_status.assert_not_called()

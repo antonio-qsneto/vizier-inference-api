@@ -44,20 +44,28 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: dev-secret-key-change-in-production
       ALLOWED_HOSTS: localhost,127.0.0.1,web
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
       COGNITO_REGION: us-east-1
       AWS_REGION: us-east-1
       S3_BUCKET: vizier-med-bucket
+      SAVE_ANALYSIS_ARTIFACTS: "True"
+      ANALYSIS_ROOT_DIR: /tmp/vizier-analysis
 
-      # SSM Port Forward geralmente faz bind em 127.0.0.1 (host).
-      # Para o container acessar, exponha via socat:
-      #   socat TCP-LISTEN:18001,fork TCP:127.0.0.1:18000
-      INFERENCE_API_URL: http://172.18.0.1:18001
+      # Fluxo atual:
+      # 1. aws ssm abre localhost:18000 no host
+      # 2. socat expõe 0.0.0.0:18001 -> 127.0.0.1:18000 no host
+      # 3. o container acessa esse forward via host.docker.internal:18001
+      INFERENCE_API_URL: http://host.docker.internal:18001
       INFERENCE_API_TIMEOUT: 300
 
     ports:
       - "8000:8000"
     volumes:
       - .:/app
+      - /tmp/vizier-med:/tmp/vizier-med
+      - /tmp/vizier-analysis:/tmp/vizier-analysis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

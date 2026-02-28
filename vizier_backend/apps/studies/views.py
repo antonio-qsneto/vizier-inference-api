@@ -298,8 +298,16 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             )
         
         try:
-            # Get job status from inference API
-            if study.inference_job_id:
+            # Terminal studies should not depend on the external inference API anymore.
+            # This keeps detail/viewer routes usable even after the remote job API is gone.
+            if study.status in {'COMPLETED', 'FAILED'}:
+                logger.info(
+                    "Skipping inference status refresh for terminal study %s (%s)",
+                    study.id,
+                    study.status,
+                )
+            # Get job status from inference API only while the study is still active.
+            elif study.inference_job_id:
                 inference_client = InferenceClient()
                 job_status = inference_client.get_status(study.inference_job_id)
 

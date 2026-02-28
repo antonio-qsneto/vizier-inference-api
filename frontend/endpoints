@@ -1,0 +1,287 @@
+Endpoints output examples:
+------------------------------------------------------------------------------------------------------
+http://localhost:8000/api/auth/users/me/
+{
+    "id": 3,
+    "email": "vizier.med@gmail.com",
+    "full_name": "vizier.med@gmail.com",
+    "first_name": "",
+    "last_name": "",
+    "role": "CLINIC_DOCTOR",
+    "clinic_id": "a2a31499-2b34-4c17-8451-d4f90df4e3c2",
+    "clinic_name": "Clínica Santa Maria",
+    "subscription_plan": "free",
+    "seat_limit": 10,
+    "is_active": true,
+    "created_at": "2026-02-22T01:11:55.952193Z"
+}
+
+
+
+------------------------------------------------------------------------------------------------------
+http://localhost:8000/api/clinics/doctor-invitations/
+{
+    "count": 2,
+    "next": null,
+    "previous": null,
+    "results": [
+        {
+            "id": "c062b86b-93b3-4dce-8dc1-cbb390df985f",
+            "clinic_name": "Clínica Santa Maria",
+            "email": "vizier.med@gmail.com",
+            "invited_by_email": "prof.antonioqsneto@gmail.com",
+            "status": "ACCEPTED",
+            "created_at": "2026-02-22T01:09:48.951602Z",
+            "expires_at": "2026-03-01T01:09:48.951142Z",
+            "accepted_at": "2026-02-22T01:11:55.976439Z"
+        },
+        {
+            "id": "ee3bda6c-5fdf-4fcd-9592-bc846f062404",
+            "clinic_name": "Clínica Santa Maria",
+            "email": "crisalvesca1245@gmail.com",
+            "invited_by_email": "prof.antonioqsneto@gmail.com",
+            "status": "PENDING",
+            "created_at": "2026-02-21T16:43:15.909799Z",
+            "expires_at": "2026-02-28T16:43:15.909363Z",
+            "accepted_at": null
+        }
+    ]
+}
+
+------------------------------------------------------------------------------------------------------
+http://localhost:8000/api/studies/upload/
+{
+    "id": "a0545f40-cb1d-47f2-b554-54138d8ed25e",
+    "category": "Brain",
+    "status": "PROCESSING",
+    "owner_email": "14d8c498-2091-70d8-b4cb-f5ce56c0c3b5@cognito.local",
+    "job": {
+        "id": "41c98969-c59c-4d9c-a2da-67ad805b3851",
+        "external_job_id": "6947faed-a6e1-4332-a353-a86b17908301",
+        "status": "SUBMITTED",
+        "progress_percent": 0,
+        "created_at": "2026-02-20T22:21:36.716362Z",
+        "started_at": null,
+        "completed_at": null
+    },
+    "s3_key": null,
+    "image_s3_key": null,
+    "mask_s3_key": null,
+    "error_message": null,
+    "created_at": "2026-02-20T22:21:30.390916Z",
+    "updated_at": "2026-02-20T22:21:36.719888Z",
+    "completed_at": null
+}
+
+http://localhost:8000/api/studies/a0545f40-cb1d-47f2-b554-54138d8ed25e/status
+{
+    "id": "a0545f40-cb1d-47f2-b554-54138d8ed25e",
+    "status": "COMPLETED",
+    "job_status": "COMPLETED",
+    "job_progress": 0,
+    "updated_at": "2026-02-20T22:23:16.921262Z"
+}
+-------------------------------------------------------------------
+GET /api/clinics/clinics/{{clinic_id}}/
+{
+    "id": "22e32f08-de36-47c0-a2a8-87810197ff80",
+    "name": "Clinica Neurologia Campinas",
+    "cnpj": "85694345232",
+    "owner": {
+        "id": 1,
+        "email": "prof.antonioqsneto@gmail.com",
+        "full_name": "prof.antonioqsneto@gmail.com",
+        "first_name": "",
+        "last_name": "",
+        "role": "CLINIC_ADMIN",
+        "clinic_id": "22e32f08-de36-47c0-a2a8-87810197ff80",
+        "clinic_name": "Clinica Neurologia Campinas",
+        "is_active": true,
+        "created_at": "2026-02-24T14:28:15.269457Z"
+    },
+    "seat_limit": 5,
+    "subscription_plan": "starter",
+    "active_doctors_count": 1,
+    "created_at": "2026-02-24T16:06:45.007314Z",
+    "updated_at": "2026-02-24T16:06:45.007335Z"
+}
+
+
+
+
+POST http://localhost:8000/api/clinics/clinics/
+{
+    "name": "Clinica Sao Lucas",
+    "cnpj": "12345678000199",
+    "seat_limit": 5,
+    "subscription_plan": "starter"
+}
+
+output
+
+{
+    "id": "1dd71dd5-3eb9-4711-9c85-cc008831f602",
+    "name": "Clinica Sao Lucas",
+    "cnpj": "12345678000199",
+    "owner": {
+        "id": 2,
+        "email": "vizier.med@gmail.com",
+        "full_name": "vizier.med@gmail.com",
+        "first_name": "",
+        "last_name": "",
+        "role": "CLINIC_ADMIN",
+        "clinic_id": "1dd71dd5-3eb9-4711-9c85-cc008831f602",
+        "clinic_name": "Clinica Sao Lucas",
+        "is_active": true,
+        "created_at": "2026-02-24T14:48:54.494503Z"
+    },
+    "seat_limit": 5,
+    "subscription_plan": "starter",
+    "active_doctors_count": 1,
+    "created_at": "2026-02-24T15:59:49.911648Z",
+    "updated_at": "2026-02-24T15:59:49.911671Z"
+}
+
+
+GET http://localhost:8000/api/studies/{{study_id}}/status/
+{
+    "id": "9a05877e-9161-4493-8f70-3b935c1a0a9a",
+    "status": "PROCESSING",
+    "job_status": "PROCESSING",
+    "job_progress": 0,
+    "updated_at": "2026-02-24T21:40:41.176460Z"
+}
+
+GET http://localhost:8000/api/studies/{{study_id}}/result/
+{
+    "study_id": "3b2bea70-9895-4dcb-a83d-6e80b703910d",
+    "image_url": "file:///tmp/vizier-med/results/individual/1/3b2bea70-9895-4dcb-a83d-6e80b703910d/image.nii.gz",
+    "mask_url": "file:///tmp/vizier-med/results/individual/1/3b2bea70-9895-4dcb-a83d-6e80b703910d/mask.nii.gz",
+    "segments_legend": [
+        {
+            "id": 2,
+            "label": "stroke lesion",
+            "prompt": "Visualization of stroke lesion in head MR",
+            "voxels": 23696,
+            "fraction": 0.0028247833251953125,
+            "percentage": 0.2825,
+            "color": "#059669"
+        },
+        {
+            "id": 6,
+            "label": "non-enhancing FLAIR hyperintensity",
+            "prompt": "Visualization of non-enhancing FLAIR hyperintensity in head MR",
+            "voxels": 19284,
+            "fraction": 0.0022988319396972656,
+            "percentage": 0.2299,
+            "color": "#0891b2"
+        },
+        {
+            "id": 9,
+            "label": "WM hyperintensities FLAIR/T1",
+            "prompt": "Visualization of WM hyperintensities FLAIR/T1 in head MR",
+            "voxels": 18898,
+            "fraction": 0.002252817153930664,
+            "percentage": 0.2253,
+            "color": "#8b5cf6"
+        },
+        {
+            "id": 3,
+            "label": "GTVp/GTVn tumor",
+            "prompt": "Visualization of GTVp/GTVn tumor in head MR",
+            "voxels": 7714,
+            "fraction": 0.0009195804595947266,
+            "percentage": 0.092,
+            "color": "#f59e0b"
+        },
+        {
+            "id": 1,
+            "label": "brain tumor",
+            "prompt": "Visualization of brain tumor in head MR",
+            "voxels": 5290,
+            "fraction": 0.0006306171417236328,
+            "percentage": 0.0631,
+            "color": "#2563eb"
+        },
+        {
+            "id": 7,
+            "label": "enhancing tissue",
+            "prompt": "Visualization of enhancing tissue in head MR",
+            "voxels": 5048,
+            "fraction": 0.0006017684936523438,
+            "percentage": 0.0602,
+            "color": "#16a34a"
+        },
+        {
+            "id": 5,
+            "label": "non-enhancing tumor core",
+            "prompt": "Visualization of non-enhancing tumor core in head MR",
+            "voxels": 4393,
+            "fraction": 0.000523686408996582,
+            "percentage": 0.0524,
+            "color": "#db2777"
+        },
+        {
+            "id": 8,
+            "label": "resection cavity",
+            "prompt": "Visualization of resection cavity in head MR",
+            "voxels": 2584,
+            "fraction": 0.00030803680419921875,
+            "percentage": 0.0308,
+            "color": "#dc2626"
+        },
+        {
+            "id": 4,
+            "label": "vestibular schwannoma intra/extra-meatal",
+            "prompt": "Visualization of vestibular schwannoma intra/extra-meatal in head MR",
+            "voxels": 1728,
+            "fraction": 0.00020599365234375,
+            "percentage": 0.0206,
+            "color": "#7c3aed"
+        }
+    ],
+    "expires_in": 3600,
+    "image_file_name": "study_3b2bea70-9895-4dcb-a83d-6e80b703910d_image.nii.gz",
+    "mask_file_name": "study_3b2bea70-9895-4dcb-a83d-6e80b703910d_mask.nii.gz"
+}
+
+
+GET /api/studies/{{study_id}}/analysis_files/
+{
+    "study_id": "d04152a9-8e08-4cbc-b63a-e83a2a6c4f48",
+    "analysis_folder": "/tmp/vizier-analysis/d04152a9-8e08-4cbc-b63a-e83a2a6c4f48",
+    "files": [
+        {
+            "name": "mask.nii.gz",
+            "path": "/tmp/vizier-analysis/d04152a9-8e08-4cbc-b63a-e83a2a6c4f48/mask.nii.gz",
+            "size_bytes": 39775,
+            "size_mb": 0.04
+        },
+        {
+            "name": "file.npz",
+            "path": "/tmp/vizier-analysis/d04152a9-8e08-4cbc-b63a-e83a2a6c4f48/file.npz",
+            "size_bytes": 805840,
+            "size_mb": 0.77
+        },
+        {
+            "name": "mask.npz",
+            "path": "/tmp/vizier-analysis/d04152a9-8e08-4cbc-b63a-e83a2a6c4f48/mask.npz",
+            "size_bytes": 23064,
+            "size_mb": 0.02
+        },
+        {
+            "name": "image.nii.gz",
+            "path": "/tmp/vizier-analysis/d04152a9-8e08-4cbc-b63a-e83a2a6c4f48/image.nii.gz",
+            "size_bytes": 1003193,
+            "size_mb": 0.96
+        }
+    ],
+    "message": "All analysis files are ready in the folder above. Download them for investigation."
+}
+
+POST http://localhost:8000/api/studies/upload/
+
+nifti_file (File) = paciente_ct_001.nii.gz
+(ou npz_file / dicom_zip)
+category_id (Text) = ct_liver_tumors
+

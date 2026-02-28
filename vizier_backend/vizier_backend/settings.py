@@ -43,7 +43,6 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'django_filters',
-    'django_extensions',
     
     # Local apps
     'apps.accounts.apps.AccountsConfig',
@@ -228,6 +227,7 @@ INFERENCE_POLL_INTERVAL = 5  # seconds
 TEMP_DIR = config('TEMP_DIR', default='/tmp/vizier_med')
 DICOM_TARGET_HW = (256, 256)
 DICOM_TARGET_SLICES = 128
+DICOM_KEEP_ORIGINAL_SLICES = config('DICOM_KEEP_ORIGINAL_SLICES', default=True, cast=bool)
 DICOM_WINDOW_CENTER = 40
 DICOM_WINDOW_WIDTH = 400
 

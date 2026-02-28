@@ -1,0 +1,51 @@
+{
+  "include": [
+    "client/src/App.tsx",
+    "client/src/main.tsx",
+    "client/src/index.css",
+    "client/src/env.ts",
+    "client/src/api/**/*",
+    "client/src/auth/**/*",
+    "client/src/billing/**/*",
+    "client/src/components/AppShell.tsx",
+    "client/src/components/primitives.tsx",
+    "client/src/components/ErrorBoundary.tsx",
+    "client/src/hooks/useStudyStatusPolling.ts",
+    "client/src/lib/**/*",
+    "client/src/pages/AuthCallbackPage.tsx",
+    "client/src/pages/BillingPage.tsx",
+    "client/src/pages/BillingResultPage.tsx",
+    "client/src/pages/ClinicPage.tsx",
+    "client/src/pages/DashboardPage.tsx",
+    "client/src/pages/InvitationsPage.tsx",
+    "client/src/pages/LoginPage.tsx",
+    "client/src/pages/NotFoundPage.tsx",
+    "client/src/pages/StudiesPage.tsx",
+    "client/src/pages/StudyDetailPage.tsx",
+    "client/src/pages/StudyUploadPage.tsx",
+    "client/src/pages/StudyViewerPage.tsx",
+    "client/src/types/**/*",
+    "client/src/viewer/**/*",
+    "server/**/*"
+  ],
+  "exclude": ["node_modules", "build", "dist", "**/*.test.ts", "**/*.test.tsx"],
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
+    "noEmit": true,
+    "module": "ESNext",
+    "strict": true,
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@/*": ["./client/src/*"],
+      "@shared/*": ["./shared/*"]
+    }
+  }
+}
