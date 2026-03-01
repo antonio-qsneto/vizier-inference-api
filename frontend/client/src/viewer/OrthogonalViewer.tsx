@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BadgeInfo,
-  Box,
   Clock3,
   Crosshair as CrosshairIcon,
   Eye,
@@ -10,7 +9,6 @@ import {
   LayoutGrid,
   LoaderCircle,
   Monitor,
-  PanelsTopLeft,
   Palette as PaletteIcon,
   Pause,
   Play,
@@ -37,12 +35,11 @@ import {
   renderSliceToCanvas,
   type VolumeData,
 } from "@/viewer/nifti";
-import { VolumeRenderer3D } from "@/viewer/VolumeRenderer3D";
 
 const planes: Plane[] = ["axial", "coronal", "sagittal"];
 const defaultViewport = { zoom: 1, panX: 0, panY: 0 };
 
-type ViewMode = "single" | "mpr" | "volume-main" | "volume-only";
+type ViewMode = "single" | "mpr";
 type PanelVariant = "hero" | "standard" | "rail";
 
 const planeLabels: Record<Plane, string> = {
@@ -58,8 +55,6 @@ const viewModeOptions: Array<{
 }> = [
   { id: "single", label: "Axial", Icon: Monitor },
   { id: "mpr", label: "MPR", Icon: LayoutGrid },
-  { id: "volume-main", label: "3D Main", Icon: PanelsTopLeft },
-  { id: "volume-only", label: "3D", Icon: Box },
 ];
 
 const panelVariantConfig: Record<
@@ -135,6 +130,10 @@ export function OrthogonalViewer({
   const [primaryPlane, setPrimaryPlane] = useState<Plane>("axial");
   const [draggedPlane, setDraggedPlane] = useState<Plane | null>(null);
   const [singleDropActive, setSingleDropActive] = useState(false);
+  const [visibleSegmentIds, setVisibleSegmentIds] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const viewerRootRef = useRef<HTMLDivElement | null>(null);
 
   const canvasRefs = {
     axial: useRef<HTMLCanvasElement | null>(null),
@@ -200,6 +199,31 @@ export function OrthogonalViewer({
     void loadVolumes();
   }, [imageUrl, loadVolumes, maskUrl]);
 
+  useEffect(() => {
+    const handleNativeWheel = (event: WheelEvent) => {
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+
+      if (!event.target.closest('[data-viewer-canvas="true"]')) {
+        return;
+      }
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("wheel", handleNativeWheel, {
+      passive: false,
+      capture: true,
+    });
+
+    return () => {
+      window.removeEventListener("wheel", handleNativeWheel, true);
+    };
+  }, []);
+
   const presets = useMemo(
     () => (imageVolume ? buildWindowPresets(imageVolume, modality) : []),
     [imageVolume, modality],
@@ -215,7 +239,7 @@ export function OrthogonalViewer({
     }
   }, [presets]);
 
-  const visibleLabels = useMemo(() => {
+  const legendItems = useMemo(() => {
     if (segmentsLegend.length) {
       return segmentsLegend;
     }
@@ -233,6 +257,15 @@ export function OrthogonalViewer({
     }));
   }, [legendMap, maskVolume, segmentsLegend]);
 
+  const legendItemIdsKey = useMemo(
+    () => legendItems.map((segment) => segment.id).join(","),
+    [legendItems],
+  );
+
+  useEffect(() => {
+    setVisibleSegmentIds(new Set(legendItems.map((segment) => segment.id)));
+  }, [legendItemIdsKey, legendItems]);
+
   const drawViewports = useCallback(() => {
     if (!imageVolume || !activePreset) {
       return;
@@ -248,6 +281,7 @@ export function OrthogonalViewer({
         canvas,
         imageVolume,
         maskVolume,
+        visibleSegmentIds,
         plane,
         slices,
         windowRange: activePreset,
@@ -265,6 +299,7 @@ export function OrthogonalViewer({
     overlayOpacity,
     paletteId,
     slices,
+    visibleSegmentIds,
     viewportState,
   ]);
 
@@ -309,6 +344,7 @@ export function OrthogonalViewer({
     event: React.WheelEvent<HTMLCanvasElement>,
   ) {
     event.preventDefault();
+    event.stopPropagation();
     if (!imageVolume) {
       return;
     }
@@ -430,6 +466,24 @@ export function OrthogonalViewer({
       ...current,
       [axisKey]: value,
     }));
+  }
+
+  function handleSegmentVisibilityToggle(segmentId: number) {
+    setVisibleSegmentIds((current) => {
+      const next = new Set(current);
+      if (next.has(segmentId)) {
+        next.delete(segmentId);
+      } else {
+        next.add(segmentId);
+      }
+      return next;
+    });
+  }
+
+  function handleAllSegmentsVisibility(nextVisible: boolean) {
+    setVisibleSegmentIds(
+      nextVisible ? new Set(legendItems.map((segment) => segment.id)) : new Set(),
+    );
   }
 
   function handlePlaneDragStart(
@@ -638,6 +692,7 @@ export function OrthogonalViewer({
             ref={(node) => {
               canvasRefs[plane].current = node;
             }}
+            data-viewer-canvas={interactive ? "true" : undefined}
             width={variantConfig.canvasWidth}
             height={variantConfig.canvasHeight}
             onWheel={
@@ -751,43 +806,87 @@ export function OrthogonalViewer({
     );
   }
 
-  function renderLegendSidebar() {
+  function renderLegendBar() {
+    if (!legendItems.length) {
+      return null;
+    }
+
     return (
-      <div className="min-h-0 border-t border-white/6 bg-[#20222a] p-3">
-        <div className="flex items-center justify-between gap-3">
+      <div className="border-t border-white/6 bg-[#20222a] px-3 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <BadgeInfo className="h-3.5 w-3.5 text-sky-300/80" />
             <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-100/80">
-              Legend
+              Legenda
             </p>
           </div>
           <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
-            {visibleLabels.length} items
+            {visibleSegmentIds.size}/{legendItems.length} visiveis
           </span>
         </div>
 
-        <div className="mt-3 max-h-[240px] space-y-2 overflow-y-auto pr-1">
-          {visibleLabels.map((segment) => (
-            <div
-              key={segment.id}
-              className="flex items-start gap-3 rounded-[8px] border border-white/8 bg-[#282a33] px-3 py-2"
-            >
-              <span
-                className="mt-1 inline-flex h-2.5 w-2.5 shrink-0"
-                style={{ backgroundColor: segment.color }}
-              />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-slate-100">
-                  {segment.label}
-                </p>
-                <p className="mt-0.5 text-[11px] text-slate-500">
-                  {segment.voxels
-                    ? `${segment.voxels.toLocaleString()} voxels · ${segment.percentage}%`
-                    : `Label ${segment.id}`}
-                </p>
-              </div>
-            </div>
-          ))}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleAllSegmentsVisibility(true)}
+            className="rounded-[6px] border border-white/8 bg-[#282a33] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-100 transition hover:border-white/16 hover:bg-[#2d3039]"
+          >
+            Mostrar todas
+          </button>
+          <button
+            type="button"
+            onClick={() => handleAllSegmentsVisibility(false)}
+            className="rounded-[6px] border border-white/8 bg-[#282a33] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-100 transition hover:border-white/16 hover:bg-[#2d3039]"
+          >
+            Ocultar todas
+          </button>
+        </div>
+
+        <div className="mt-3">
+          <div className="flex flex-wrap gap-2">
+            {legendItems.map((segment) => {
+              const isVisible = visibleSegmentIds.has(segment.id);
+
+              return (
+                <button
+                  key={segment.id}
+                  type="button"
+                  onClick={() => handleSegmentVisibilityToggle(segment.id)}
+                  className={cn(
+                    "flex min-w-[220px] flex-1 basis-[220px] items-start gap-3 rounded-[8px] border px-3 py-2 text-left transition",
+                    isVisible
+                      ? "border-white/8 bg-[#282a33] hover:border-white/16 hover:bg-[#2d3039]"
+                      : "border-white/6 bg-[#1f2128] opacity-55 hover:opacity-80",
+                  )}
+                >
+                  <span
+                    className="mt-1 inline-flex h-2.5 w-2.5 shrink-0"
+                    style={{ backgroundColor: segment.color }}
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-100">
+                      {segment.label}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      {segment.voxels
+                        ? `${segment.voxels.toLocaleString()} voxels · ${segment.percentage}%`
+                        : `Label ${segment.id}`}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      "ml-auto shrink-0 rounded-[6px] border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]",
+                      isVisible
+                        ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+                        : "border-white/8 bg-[#24262e] text-slate-400",
+                    )}
+                  >
+                    {isVisible ? "Ativa" : "Oculta"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
@@ -831,44 +930,7 @@ export function OrthogonalViewer({
             </div>
           )}
         </div>
-
-        {renderLegendSidebar()}
       </aside>
-    );
-  }
-
-  function renderVolumeControlStrip() {
-    return (
-      <div className="grid gap-px border-t border-white/6 bg-white/6 md:grid-cols-3">
-        {planes.map((plane) => {
-          const metrics = getPlaneMetrics(plane);
-          if (!metrics) {
-            return null;
-          }
-
-          return (
-            <div key={plane} className="bg-[#24262e] px-3 py-2">
-              <div className="flex items-center justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                <span>{planeLabels[plane]}</span>
-                <span>
-                  {metrics.currentSlice + 1} / {metrics.sliceCount}
-                </span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={metrics.sliceCount - 1}
-                step={1}
-                value={metrics.currentSlice}
-                onChange={(event) =>
-                  handleSliceInput(plane, Number(event.target.value))
-                }
-                className="mt-2 w-full accent-sky-400"
-              />
-            </div>
-          );
-        })}
-      </div>
     );
   }
 
@@ -892,50 +954,15 @@ export function OrthogonalViewer({
       );
     }
 
-    if (viewMode === "mpr") {
-      return (
-        <div className="grid h-full gap-px bg-white/6 p-px xl:grid-cols-3">
-          {planes.map((plane) =>
-            renderPlanePanel({
-              plane,
-              variant: "standard",
-              emphasized: plane === primaryPlane,
-            }),
-          )}
-        </div>
-      );
-    }
-
-    if (viewMode === "volume-main") {
-      return (
-        <div className="grid h-full min-h-[76vh] grid-rows-[minmax(0,1fr)_240px] gap-px bg-white/6 p-px">
-          <VolumeRenderer3D
-            volume={imageVolume!}
-            modality={modality}
-            windowPreset={activePreset}
-          />
-          <div className="grid gap-px bg-white/6 xl:grid-cols-3">
-            {planes.map((plane) =>
-              renderPlanePanel({
-                plane,
-                variant: "rail",
-                emphasized: plane === primaryPlane,
-              }),
-            )}
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <div className="grid h-full min-h-[76vh] grid-rows-[minmax(0,1fr)_auto] gap-px bg-white/6 p-px">
-        <VolumeRenderer3D
-          volume={imageVolume!}
-          modality={modality}
-          windowPreset={activePreset}
-          fullHeight
-        />
-        {renderVolumeControlStrip()}
+      <div className="grid h-full gap-px bg-white/6 p-px xl:grid-cols-3">
+        {planes.map((plane) =>
+          renderPlanePanel({
+            plane,
+            variant: "standard",
+            emphasized: plane === primaryPlane,
+          }),
+        )}
       </div>
     );
   }
@@ -973,7 +1000,10 @@ export function OrthogonalViewer({
   }
 
   return (
-    <div className="overflow-hidden rounded-[12px] border border-white/8 bg-[#1d1f26] text-white shadow-[0_30px_80px_rgba(0,0,0,0.28)]">
+    <div
+      ref={viewerRootRef}
+      className="overflow-hidden overscroll-contain rounded-[12px] border border-white/8 bg-[#1d1f26] text-white shadow-[0_30px_80px_rgba(0,0,0,0.28)]"
+    >
       <div className="border-b border-white/6 bg-[#34343c] px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap items-center gap-px">
@@ -1104,7 +1134,10 @@ export function OrthogonalViewer({
 
       <div className="grid min-h-[78vh] xl:grid-cols-[260px_minmax(0,1fr)]">
         {renderSidebar()}
-        <section className="min-w-0 bg-black">{renderMainContent()}</section>
+        <section className="flex min-w-0 flex-col bg-black">
+          <div className="min-h-0 flex-1">{renderMainContent()}</div>
+          {renderLegendBar()}
+        </section>
       </div>
     </div>
   );

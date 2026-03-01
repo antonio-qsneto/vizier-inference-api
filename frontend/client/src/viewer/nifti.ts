@@ -395,6 +395,7 @@ export function renderSliceToCanvas(options: {
   canvas: HTMLCanvasElement;
   imageVolume: VolumeData;
   maskVolume: VolumeData | null;
+  visibleSegmentIds: Set<number>;
   plane: Plane;
   slices: { x: number; y: number; z: number };
   windowRange: { min: number; max: number };
@@ -407,6 +408,7 @@ export function renderSliceToCanvas(options: {
     canvas,
     imageVolume,
     maskVolume,
+    visibleSegmentIds,
     plane,
     slices,
     windowRange,
@@ -452,7 +454,7 @@ export function renderSliceToCanvas(options: {
 
       if (maskVolume) {
         const label = Math.round(maskVolume.data[voxelIndex]);
-        if (label > 0) {
+        if (label > 0 && visibleSegmentIds.has(label)) {
           const color = hexToRgb(getLabelColor(label, paletteId, legendMap));
           red = Math.round(
             gray * (1 - overlayOpacity) + color.r * overlayOpacity,
