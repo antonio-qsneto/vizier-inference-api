@@ -140,6 +140,16 @@ export async function acceptInvitation(token: string, invitationId: string) {
   );
 }
 
+export async function cancelInvitation(token: string, invitationId: string) {
+  return apiRequest<DoctorInvitation>(
+    `/api/clinics/doctor-invitations/${invitationId}/cancel/`,
+    {
+      method: "POST",
+      token,
+    },
+  );
+}
+
 export async function fetchStudies(token: string, signal?: AbortSignal) {
   return apiRequest<PaginatedResponse<Study>>("/api/studies/", {
     token,

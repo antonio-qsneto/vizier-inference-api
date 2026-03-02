@@ -161,6 +161,19 @@ COGNITO_REGION=us-east-1
 COGNITO_USER_POOL_ID=us-east-1_xxxxxxxxx
 COGNITO_CLIENT_ID=your-client-id
 
+# Email & invitations
+EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+EMAIL_HOST=localhost
+EMAIL_PORT=587
+EMAIL_HOST_USER=
+EMAIL_HOST_PASSWORD=
+EMAIL_USE_TLS=true
+EMAIL_USE_SSL=false
+EMAIL_TIMEOUT=10
+DEFAULT_FROM_EMAIL=no-reply@vizier.com
+INVITATION_PLATFORM_NAME=Vizier Med
+INVITATION_LOGIN_URL=https://vizier.com/login
+
 # Inference API
 INFERENCE_API_URL=http://inference-api:8001
 INFERENCE_API_TIMEOUT=300

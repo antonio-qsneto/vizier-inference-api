@@ -72,9 +72,27 @@ Copie `.env.example` e ajuste:
 - `VITE_ENABLE_BILLING`
 - `VITE_BILLING_CHECKOUT_ENDPOINT`
 
+Para preencher automaticamente os valores do Cognito a partir do Terraform do ambiente `dev`:
+
+```bash
+pnpm cognito-env
+```
+
+Isso atualiza `frontend/.env` com:
+
+- `VITE_COGNITO_REGION`
+- `VITE_COGNITO_USER_POOL_ID`
+- `VITE_COGNITO_CLIENT_ID`
+- `VITE_COGNITO_DOMAIN`
+- `VITE_COGNITO_REDIRECT_URI`
+- `VITE_COGNITO_LOGOUT_URI`
+
+O script prioriza as URLs já permitidas no app client do Cognito e escolhe `http://localhost:3000/auth/callback` e `http://localhost:3000/login` quando essas URLs estiverem configuradas no Terraform.
+
 ## Comandos
 
 ```bash
+pnpm cognito-env
 ./node_modules/.bin/vite dev
 ./node_modules/.bin/tsc --noEmit
 ./node_modules/.bin/vite build

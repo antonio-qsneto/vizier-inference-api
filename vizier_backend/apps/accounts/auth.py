@@ -26,6 +26,14 @@ class CognitoJWTAuthentication(TokenAuthentication):
 
     keyword = 'Bearer'
 
+    @staticmethod
+    def _should_use_development_auth() -> bool:
+        if not getattr(settings, 'DEVELOPMENT_MODE', False):
+            return False
+
+        cognito_pool_id = getattr(settings, 'COGNITO_USER_POOL_ID', '') or ''
+        return not cognito_pool_id or 'xxxxxxxxx' in cognito_pool_id
+
     def authenticate(self, request):
         """
         Authenticate the request using Cognito JWT token.
@@ -56,10 +64,7 @@ class CognitoJWTAuthentication(TokenAuthentication):
         """
         try:
             # In development mode without Cognito, create a dummy user
-            cognito_pool_id = getattr(settings, 'COGNITO_USER_POOL_ID', '') or ''
-            cognito_issuer = getattr(settings, 'COGNITO_ISSUER', '') or ''
-
-            if not cognito_pool_id or not cognito_issuer or 'xxxxxxxxx' in cognito_pool_id:
+            if self._should_use_development_auth():
                 # Development mode: create or get dummy user
                 from apps.tenants.models import Clinic
 
@@ -299,6 +304,7 @@ class CognitoJWTAuthentication(TokenAuthentication):
                 key,
                 algorithms=['RS256'],
                 issuer=settings.COGNITO_ISSUER,
+                leeway=max(0, getattr(settings, 'COGNITO_JWT_LEEWAY_SECONDS', 0)),
                 options={'verify_aud': False},
             )
             CognitoJWTAuthentication._validate_cognito_audience(claims)

@@ -13,6 +13,7 @@ variable "callback_urls" {
   description = "OAuth callback URLs for Cognito Hosted UI client"
   default = [
     "https://oauth.pstmn.io/v1/callback",
+    "http://localhost:3000/auth/callback",
     "http://localhost:8000/auth/callback",
   ]
 }
@@ -21,6 +22,7 @@ variable "logout_urls" {
   type        = list(string)
   description = "OAuth logout URLs for Cognito Hosted UI client"
   default = [
+    "http://localhost:3000/login",
     "http://localhost:8000/",
   ]
 }

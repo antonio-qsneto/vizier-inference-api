@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { fetchCategories, uploadStudy } from "@/api/services";
 import { useAuth } from "@/auth/AuthContext";
 import { InlineNotice, LoadingState, PageIntro, Panel } from "@/components/primitives";
+import { Spinner } from "@/components/ui/spinner";
 import type { CategoriesCatalog } from "@/types/api";
 
 interface UploadFormState {
@@ -252,9 +253,10 @@ export default function StudyUploadPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-2xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Submit study
+            {submitting ? <Spinner className="size-4" /> : null}
+            {submitting ? "Uploading study..." : "Submit study"}
           </button>
         </Panel>
 

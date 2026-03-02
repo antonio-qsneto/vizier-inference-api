@@ -33,6 +33,7 @@ export async function createHostedUiRequest(intent: AuthIntent) {
   const state = randomString(24);
   const codeVerifier = randomString(64);
   const codeChallenge = await createCodeChallenge(codeVerifier);
+  const endpoint = intent === "signup" ? "signup" : "login";
 
   const params = new URLSearchParams({
     response_type: "code",
@@ -44,12 +45,8 @@ export async function createHostedUiRequest(intent: AuthIntent) {
     code_challenge: codeChallenge,
   });
 
-  if (intent === "signup") {
-    params.set("signup", "true");
-  }
-
   return {
-    url: `${env.cognitoDomain}/login?${params.toString()}`,
+    url: `${env.cognitoDomain}/${endpoint}?${params.toString()}`,
     pendingState: {
       state,
       codeVerifier,

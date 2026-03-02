@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { LoaderCircle } from "lucide-react";
+import { buildCognitoLogoutUrl } from "@/auth/pkce";
 import { Panel } from "@/components/primitives";
 import { useAuth } from "@/auth/AuthContext";
+import { isCognitoConfigured } from "@/env";
 
 export default function AuthCallbackPage() {
   const [, navigate] = useLocation();
@@ -14,10 +16,24 @@ export default function AuthCallbackPage() {
 
     async function run() {
       try {
-        await completeHostedUiLogin(new URLSearchParams(window.location.search));
-        if (isActive) {
-          navigate("/dashboard");
+        const result = await completeHostedUiLogin(
+          new URLSearchParams(window.location.search),
+        );
+        if (!isActive) {
+          return;
         }
+
+        if (result === "authenticated") {
+          navigate("/dashboard");
+          return;
+        }
+
+        if (isCognitoConfigured) {
+          window.location.assign(buildCognitoLogoutUrl());
+          return;
+        }
+
+        navigate("/login");
       } catch (callbackError) {
         if (!isActive) {
           return;

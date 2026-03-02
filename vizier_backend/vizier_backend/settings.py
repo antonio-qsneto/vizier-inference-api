@@ -3,6 +3,7 @@ Django settings for vizier_backend project.
 Production-ready SaaS configuration with AWS integration.
 """
 
+import ast
 import os
 import logging
 from pathlib import Path
@@ -10,6 +11,31 @@ from decouple import config, Csv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _parse_hw_tuple(raw_value, default: tuple[int, int]) -> tuple[int, int]:
+    """Parse width/height env values like '(512, 512)' or '512,512'."""
+    if isinstance(raw_value, (tuple, list)) and len(raw_value) == 2:
+        return (int(raw_value[0]), int(raw_value[1]))
+
+    text = str(raw_value or '').strip()
+    if not text:
+        return default
+
+    try:
+        parsed = ast.literal_eval(text)
+    except Exception:
+        parsed = None
+
+    if isinstance(parsed, (tuple, list)) and len(parsed) == 2:
+        return (int(parsed[0]), int(parsed[1]))
+
+    normalized = text.lower().replace('x', ',')
+    parts = [part.strip() for part in normalized.split(',') if part.strip()]
+    if len(parts) == 2:
+        return (int(parts[0]), int(parts[1]))
+
+    return default
 
 # ============================================================================
 # SECURITY & ENVIRONMENT
@@ -25,6 +51,30 @@ CORS_ALLOWED_ORIGINS = config(
     default='http://localhost:3000',
     cast=Csv()
 )
+
+# ============================================================================
+# EMAIL & INVITATIONS
+# ============================================================================
+
+EMAIL_BACKEND = config(
+    'EMAIL_BACKEND',
+    default=(
+        'django.core.mail.backends.console.EmailBackend'
+        if DEBUG
+        else 'django.core.mail.backends.smtp.EmailBackend'
+    ),
+)
+EMAIL_HOST = config('EMAIL_HOST', default='localhost')
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=not DEBUG, cast=bool)
+EMAIL_USE_SSL = config('EMAIL_USE_SSL', default=False, cast=bool)
+EMAIL_TIMEOUT = config('EMAIL_TIMEOUT', default=10, cast=int)
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='no-reply@vizier.local')
+
+INVITATION_PLATFORM_NAME = config('INVITATION_PLATFORM_NAME', default='Vizier Med')
+INVITATION_LOGIN_URL = config('INVITATION_LOGIN_URL', default='http://localhost:3000/login')
 
 # ============================================================================
 # APPLICATION DEFINITION
@@ -204,12 +254,13 @@ else:
 
 # JWT Cache (in-memory, use Redis for production)
 COGNITO_JWT_CACHE_TIMEOUT = 3600  # 1 hour
+COGNITO_JWT_LEEWAY_SECONDS = config('COGNITO_JWT_LEEWAY_SECONDS', default=60, cast=int)
 
 # Development mode: disable authentication if Cognito not configured
 DEVELOPMENT_MODE = not all([
-    config('COGNITO_ISSUER', default=None),
-    config('COGNITO_AUDIENCE', default=None),
-    config('COGNITO_JWKS_URL', default=None),
+    COGNITO_ISSUER,
+    COGNITO_AUDIENCE,
+    COGNITO_JWKS_URL,
 ])
 
 # ============================================================================
@@ -225,8 +276,11 @@ INFERENCE_POLL_INTERVAL = 5  # seconds
 # ============================================================================
 
 TEMP_DIR = config('TEMP_DIR', default='/tmp/vizier_med')
-DICOM_TARGET_HW = (256, 256)
-DICOM_TARGET_SLICES = 128
+# Legacy spatial preprocessing knobs retained for backwards compatibility.
+# The BiomedParse v2-aligned inference path preserves original shape and does
+# not apply a backend-side resize/subsampling before creating input.npz.
+DICOM_TARGET_HW = _parse_hw_tuple(config('DICOM_TARGET_HW', default='(512, 512)'), default=(512, 512))
+DICOM_TARGET_SLICES = config('DICOM_TARGET_SLICES', default=64, cast=int)
 DICOM_KEEP_ORIGINAL_SLICES = config('DICOM_KEEP_ORIGINAL_SLICES', default=True, cast=bool)
 DICOM_WINDOW_CENTER = 40
 DICOM_WINDOW_WIDTH = 400

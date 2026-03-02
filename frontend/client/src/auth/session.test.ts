@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  consumeAuthNotice,
   createDevelopmentSession,
   createSessionFromTokens,
   isSessionUsable,
+  saveAuthNotice,
 } from "@/auth/session";
 
 describe("auth session helpers", () => {
@@ -21,5 +23,12 @@ describe("auth session helpers", () => {
 
     expect(session.tokens.accessToken).toBe("abc");
     expect(session.tokens.expiresAt).toBeGreaterThan(before);
+  });
+
+  it("persists and consumes auth notices once", () => {
+    saveAuthNotice("Cadastro concluido. Faca login para continuar.");
+
+    expect(consumeAuthNotice()).toBe("Cadastro concluido. Faca login para continuar.");
+    expect(consumeAuthNotice()).toBeNull();
   });
 });

@@ -18,6 +18,7 @@ class AuditLog(models.Model):
         ('STUDY_STATUS_CHECK', 'Study Status Checked'),
         ('RESULT_DOWNLOAD', 'Result Downloaded'),
         ('DOCTOR_INVITE', 'Doctor Invited'),
+        ('DOCTOR_INVITE_CANCEL', 'Doctor Invitation Canceled'),
         ('DOCTOR_REMOVE', 'Doctor Removed'),
         ('CLINIC_CREATED', 'Clinic Created'),
         ('CLINIC_UPDATED', 'Clinic Updated'),

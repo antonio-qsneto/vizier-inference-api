@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { ArrowRight, KeyRound, ServerCog } from "lucide-react";
 import { fetchHealth } from "@/api/services";
+import { consumeAuthNotice } from "@/auth/session";
 import { useAuth } from "@/auth/AuthContext";
 import { env, isCognitoConfigured } from "@/env";
 import { Panel } from "@/components/primitives";
@@ -11,6 +12,7 @@ export default function LoginPage() {
   const [, navigate] = useLocation();
   const { signIn, status, error } = useAuth();
   const [healthLabel, setHealthLabel] = useState("Checking backend...");
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -33,6 +35,10 @@ export default function LoginPage() {
     return () => {
       isActive = false;
     };
+  }, []);
+
+  useEffect(() => {
+    setNotice(consumeAuthNotice());
   }, []);
 
   useEffect(() => {
@@ -113,6 +119,12 @@ export default function LoginPage() {
           {error ? (
             <p className="mt-6 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
               {error}
+            </p>
+          ) : null}
+
+          {notice ? (
+            <p className="mt-6 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+              {notice}
             </p>
           ) : null}
         </motion.section>

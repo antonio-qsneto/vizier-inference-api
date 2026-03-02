@@ -15,7 +15,7 @@ class TerraformOutput:
     dotenv_key: str
 
 
-OUTPUTS: tuple[TerraformOutput, ...] = (
+BACKEND_OUTPUTS: tuple[TerraformOutput, ...] = (
     TerraformOutput(name="region", dotenv_key="COGNITO_REGION"),
     TerraformOutput(name="region", dotenv_key="AWS_REGION"),
     TerraformOutput(name="cognito_user_pool_id", dotenv_key="COGNITO_USER_POOL_ID"),
@@ -23,6 +23,16 @@ OUTPUTS: tuple[TerraformOutput, ...] = (
     TerraformOutput(name="cognito_hosted_ui_base_url", dotenv_key="COGNITO_HOSTED_UI_BASE_URL"),
     TerraformOutput(name="cognito_oauth_token_url", dotenv_key="COGNITO_OAUTH_TOKEN_URL"),
 )
+
+FRONTEND_DIRECT_OUTPUTS: tuple[TerraformOutput, ...] = (
+    TerraformOutput(name="region", dotenv_key="VITE_COGNITO_REGION"),
+    TerraformOutput(name="cognito_user_pool_id", dotenv_key="VITE_COGNITO_USER_POOL_ID"),
+    TerraformOutput(name="cognito_user_pool_client_id", dotenv_key="VITE_COGNITO_CLIENT_ID"),
+    TerraformOutput(name="cognito_hosted_ui_base_url", dotenv_key="VITE_COGNITO_DOMAIN"),
+)
+
+DEFAULT_FRONTEND_REDIRECT_URI = "http://localhost:3000/auth/callback"
+DEFAULT_FRONTEND_LOGOUT_URI = "http://localhost:3000/login"
 
 
 def _repo_root() -> Path:
@@ -68,6 +78,70 @@ def _get_output_value(outputs: dict, name: str) -> str:
     return str(value)
 
 
+def _get_output_values(outputs: dict, name: str) -> list[str]:
+    if name not in outputs:
+        raise KeyError(f"Terraform output not found: {name}")
+
+    value = outputs[name].get("value")
+    if value is None:
+        raise ValueError(f"Terraform output has no value: {name}")
+    if not isinstance(value, list):
+        raise TypeError(f"Terraform output is not a list: {name}")
+    return [str(item) for item in value if item is not None]
+
+
+def _get_optional_output_values(outputs: dict, name: str) -> list[str]:
+    try:
+        return _get_output_values(outputs, name)
+    except (KeyError, TypeError, ValueError):
+        return []
+
+
+def _read_dotenv_values(env_path: Path) -> dict[str, str]:
+    if not env_path.exists():
+        return {}
+
+    values: dict[str, str] = {}
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+        key, separator, value = line.partition("=")
+        if not separator:
+            continue
+        values[key.strip()] = value.strip()
+    return values
+
+
+def _select_frontend_uri(
+    values: list[str],
+    *,
+    current_value: str,
+    preferred_value: str,
+    fallback_value: str,
+) -> str:
+    normalized_values = [value.strip() for value in values if value and value.strip()]
+
+    if current_value and current_value in normalized_values:
+        return current_value
+    if preferred_value and preferred_value in normalized_values:
+        return preferred_value
+
+    for value in normalized_values:
+        if "oauth.pstmn.io" not in value:
+            return value
+
+    if normalized_values:
+        return normalized_values[0]
+    if current_value:
+        return current_value
+    if preferred_value:
+        return preferred_value
+    return fallback_value
+
+
 def _upsert_dotenv(env_path: Path, updates: dict[str, str]) -> tuple[int, int]:
     if not env_path.exists():
         raise FileNotFoundError(f".env not found: {env_path}")
@@ -105,9 +179,49 @@ def _upsert_dotenv(env_path: Path, updates: dict[str, str]) -> tuple[int, int]:
     return (len(updates) - len(missing), len(missing))
 
 
+def _build_backend_updates(outputs: dict) -> dict[str, str]:
+    updates: dict[str, str] = {}
+    for output in BACKEND_OUTPUTS:
+        updates[output.dotenv_key] = _get_output_value(outputs, output.name)
+    return updates
+
+
+def _build_frontend_updates(outputs: dict, env_path: Path) -> dict[str, str]:
+    updates: dict[str, str] = {}
+    for output in FRONTEND_DIRECT_OUTPUTS:
+        updates[output.dotenv_key] = _get_output_value(outputs, output.name)
+
+    existing_env = _read_dotenv_values(env_path)
+    callback_urls = _get_optional_output_values(outputs, "cognito_callback_urls")
+    logout_urls = _get_optional_output_values(outputs, "cognito_logout_urls")
+
+    updates["VITE_COGNITO_REDIRECT_URI"] = _select_frontend_uri(
+        callback_urls,
+        current_value=existing_env.get("VITE_COGNITO_REDIRECT_URI", ""),
+        preferred_value=DEFAULT_FRONTEND_REDIRECT_URI,
+        fallback_value=DEFAULT_FRONTEND_REDIRECT_URI,
+    )
+    updates["VITE_COGNITO_LOGOUT_URI"] = _select_frontend_uri(
+        logout_urls,
+        current_value=existing_env.get("VITE_COGNITO_LOGOUT_URI", ""),
+        preferred_value=DEFAULT_FRONTEND_LOGOUT_URI,
+        fallback_value=DEFAULT_FRONTEND_LOGOUT_URI,
+    )
+    return updates
+
+
+def _default_env_file(target: str) -> Path:
+    repo_root = _repo_root()
+    if target == "backend":
+        return repo_root / "vizier_backend/.env"
+    if target == "frontend":
+        return repo_root / "frontend/.env"
+    raise ValueError(f"Unsupported target: {target}")
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
-        description="Sync AWS Cognito-related values from Terraform outputs into vizier_backend/.env"
+        description="Sync AWS Cognito-related values from Terraform outputs into backend and/or frontend .env files"
     )
     parser.add_argument(
         "--terraform-dir",
@@ -116,10 +230,16 @@ def main(argv: list[str]) -> int:
         help="Terraform env directory (default: vizier-inference-infra/terraform/envs/dev).",
     )
     parser.add_argument(
+        "--target",
+        choices=("backend", "frontend", "both"),
+        default="backend",
+        help="Which .env file to update (default: backend).",
+    )
+    parser.add_argument(
         "--env-file",
         type=Path,
-        default=_repo_root() / "vizier_backend/.env",
-        help="Path to .env file to update (default: vizier_backend/.env).",
+        default=None,
+        help="Path to a .env file to update. Only valid with --target backend or frontend.",
     )
     parser.add_argument(
         "--write",
@@ -130,20 +250,32 @@ def main(argv: list[str]) -> int:
 
     outputs = _run_terraform_output_json(args.terraform_dir)
 
-    updates: dict[str, str] = {}
-    for output in OUTPUTS:
-        updates[output.dotenv_key] = _get_output_value(outputs, output.name)
+    if args.target == "both" and args.env_file is not None:
+        parser.error("--env-file can only be used with --target backend or --target frontend")
 
-    if not args.write:
-        for key, value in updates.items():
-            print(f"{key}={value}")
-        return 0
+    targets = ("backend", "frontend") if args.target == "both" else (args.target,)
 
-    updated, added = _upsert_dotenv(args.env_file, updates)
-    print(f"Updated {updated} and added {added} keys in {args.env_file}")
+    for index, target in enumerate(targets):
+        env_file = args.env_file if args.env_file is not None else _default_env_file(target)
+
+        if target == "backend":
+            updates = _build_backend_updates(outputs)
+        else:
+            updates = _build_frontend_updates(outputs, env_file)
+
+        if not args.write:
+            if len(targets) > 1:
+                print(f"[{target}]")
+            for key, value in updates.items():
+                print(f"{key}={value}")
+            if len(targets) > 1 and index < len(targets) - 1:
+                print()
+            continue
+
+        updated, added = _upsert_dotenv(env_file, updates)
+        print(f"{target}: updated {updated} and added {added} keys in {env_file}")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
-

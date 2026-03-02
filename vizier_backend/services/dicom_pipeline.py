@@ -9,7 +9,6 @@ import tempfile
 import zipfile
 import numpy as np
 import pydicom
-import cv2
 import nibabel as nib
 from django.conf import settings
 import logging
@@ -18,9 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 class DicomZipToNpzService:
-    """Service for converting DICOM ZIP to NPZ format."""
+    """Service for converting DICOM ZIP to a BiomedParse v2-compatible NPZ."""
     
     def __init__(self):
+        # Legacy spatial knobs are kept for backwards compatibility in settings,
+        # but the inference preprocessing path preserves original shape so the
+        # model can apply its own process_input(..., 512) resize internally.
         self.target_hw = settings.DICOM_TARGET_HW
         self.target_slices = settings.DICOM_TARGET_SLICES
         raw_keep_original_slices = getattr(settings, 'DICOM_KEEP_ORIGINAL_SLICES', True)
@@ -156,9 +158,11 @@ class DicomZipToNpzService:
         category_hint: str | None = None,
     ) -> str:
         """
-        Convert NIfTI (.nii/.nii.gz) to a resized/resampled NPZ.
+        Convert NIfTI (.nii/.nii.gz) to a BiomedParse v2-compatible NPZ.
 
-        The resulting NPZ matches the inference contract (`imgs`, `spacing`, `text_prompts`).
+        The resulting NPZ matches the inference contract (`imgs`, `spacing`,
+        `text_prompts`) while preserving the original volume shape. BiomedParse
+        v2 performs its own internal resize to 512 during inference.
         """
         if text_prompts is None:
             text_prompts = {}
@@ -182,9 +186,6 @@ class DicomZipToNpzService:
                 exam_modality=exam_modality,
                 category_hint=category_hint,
             )
-            volume = self._resize_xy(volume)
-            volume = self._resample_slices(volume)
-            volume = volume.astype(np.float16, copy=False)
 
             npz_path = output_npz_path or os.path.join(os.path.dirname(nifti_path), 'file.npz')
             self._save_npz(npz_path, volume, spacing_zyx, text_prompts)
@@ -207,7 +208,7 @@ class DicomZipToNpzService:
 
         Input may contain image data in one of: imgs, image, images, data.
         Output is rewritten as:
-        - imgs: 3D float16 volume resized to target HW and target slices
+        - imgs: 3D float32 volume with original shape preserved
         - spacing: preserved if present
         - text_prompts: preserved if present
         """
@@ -234,9 +235,6 @@ class DicomZipToNpzService:
             exam_modality=exam_modality,
             category_hint=category_hint,
         )
-        volume = self._resize_xy(volume)
-        volume = self._resample_slices(volume)
-        volume = volume.astype(np.float16, copy=False)
 
         payload = {'imgs': volume}
         if spacing is not None:
@@ -321,8 +319,8 @@ class DicomZipToNpzService:
             fp = os.path.join(series_path, f)
             try:
                 ds = pydicom.dcmread(fp)
-                if hasattr(ds, 'pixel_array'):
-                    slices.append(ds)
+                _ = ds.pixel_array
+                slices.append(ds)
             except Exception:
                 continue
         
@@ -339,7 +337,7 @@ class DicomZipToNpzService:
                 pass
         
         # Stack volume
-        volume = np.stack([s.pixel_array for s in slices], axis=0)
+        volume = np.stack([DicomZipToNpzService._extract_slice_pixels(s) for s in slices], axis=0)
         
         # Get spacing
         spacing = None
@@ -351,6 +349,32 @@ class DicomZipToNpzService:
             pass
         
         return volume, spacing
+
+    @staticmethod
+    def _extract_slice_pixels(ds) -> np.ndarray:
+        """
+        Decode one DICOM slice into float32 intensities.
+
+        CT slices must honor RescaleSlope/RescaleIntercept so downstream HU
+        windowing matches the BiomedParse v2 recommendation.
+        """
+        pixels = np.asarray(ds.pixel_array, dtype=np.float32)
+
+        slope_raw = getattr(ds, 'RescaleSlope', 1.0)
+        intercept_raw = getattr(ds, 'RescaleIntercept', 0.0)
+        try:
+            slope = float(slope_raw)
+        except Exception:
+            slope = 1.0
+        try:
+            intercept = float(intercept_raw)
+        except Exception:
+            intercept = 0.0
+
+        if slope != 1.0 or intercept != 0.0:
+            pixels = (pixels * slope) + intercept
+
+        return pixels.astype(np.float32, copy=False)
     
     def _preprocess(
         self,
@@ -358,16 +382,19 @@ class DicomZipToNpzService:
         exam_modality: str | None = None,
         category_hint: str | None = None,
     ) -> np.ndarray:
-        """Preprocess volume."""
+        """
+        Preprocess volume for BiomedParse v2.
+
+        Intensities are normalized into the expected [0, 255] range while the
+        original spatial resolution is preserved for the model's own resize
+        logic.
+        """
         volume = volume.astype(np.float32, copy=False)
         volume = self._normalize_intensity(
             volume=volume,
             exam_modality=exam_modality,
             category_hint=category_hint,
         )
-        volume = self._resize_xy(volume)
-        volume = self._resample_slices(volume)
-        volume = volume.astype(np.float16, copy=False)
         return volume
 
     def _normalize_intensity(
@@ -427,22 +454,12 @@ class DicomZipToNpzService:
         return self._rescale_to_255(clipped, source_min=float(p_low), source_max=float(p_high))
     
     def _resize_xy(self, volume: np.ndarray) -> np.ndarray:
-        """Resize XY dimensions."""
-        return np.stack([
-            cv2.resize(slice_, self.target_hw, interpolation=cv2.INTER_AREA)
-            for slice_ in volume
-        ])
+        """Legacy no-op kept for backwards compatibility."""
+        return volume
     
     def _resample_slices(self, volume: np.ndarray) -> np.ndarray:
-        """Optionally resample Z dimension."""
-        if self.keep_original_slices:
-            return volume
-        if self.target_slices <= 0:
-            return volume
-        if volume.shape[0] <= self.target_slices:
-            return volume
-        idx = np.linspace(0, volume.shape[0] - 1, self.target_slices).astype(int)
-        return volume[idx]
+        """Legacy no-op kept for backwards compatibility."""
+        return volume
     
     def _resolve_ct_window(self, category_hint: str | None) -> tuple[float, float]:
         """Resolve CT window (width, level) from anatomy hint."""
@@ -551,13 +568,14 @@ class DicomZipToNpzService:
     
     @staticmethod
     def _save_npz(npz_path: str, volume: np.ndarray, spacing, text_prompts: dict):
-        """Save NPZ file."""
-        np.savez_compressed(
-            npz_path,
-            imgs=volume,
-            spacing=spacing,
-            text_prompts=np.array(text_prompts, dtype=object)
-        )
+        """Save NPZ file following the BiomedParse v2 contract."""
+        payload = {
+            'imgs': np.asarray(volume, dtype=np.float32),
+            'text_prompts': np.array(text_prompts or {}, dtype=object),
+        }
+        if spacing is not None:
+            payload['spacing'] = np.asarray(spacing)
+        DicomZipToNpzService._save_npz_payload(npz_path, payload)
 
 
 def cleanup_temp_files(temp_dir: str):

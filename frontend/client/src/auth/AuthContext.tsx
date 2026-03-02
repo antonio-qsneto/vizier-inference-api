@@ -10,6 +10,7 @@ import {
   createSessionFromTokens,
   isSessionUsable,
   loadAuthSession,
+  saveAuthNotice,
   saveAuthSession,
 } from "@/auth/session";
 import {
@@ -32,12 +33,15 @@ interface AuthContextValue {
   accessToken: string | null;
   isCognitoConfigured: boolean;
   signIn: (intent?: AuthIntent) => Promise<void>;
-  completeHostedUiLogin: (searchParams: URLSearchParams) => Promise<void>;
+  completeHostedUiLogin: (
+    searchParams: URLSearchParams,
+  ) => Promise<"authenticated" | "signup_completed">;
   logout: (remote?: boolean) => void;
   refreshProfile: () => Promise<UserProfile | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const SIGNUP_SUCCESS_NOTICE = "Cadastro confirmado. Faça login para continuar.";
 
 async function exchangeCodeWithBackend(
   code: string,
@@ -181,6 +185,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error("Invalid authentication state");
       }
 
+      if (pendingState.intent === "signup") {
+        clearPendingPkce();
+        clearAuthSession();
+        saveAuthNotice(SIGNUP_SUCCESS_NOTICE);
+        setSession(null);
+        setUser(null);
+        setError(null);
+        setStatus("guest");
+        return "signup_completed";
+      }
+
       try {
         const tokens = await exchangeCodeWithBackend(
           code,
@@ -189,7 +204,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         clearPendingPkce();
         await applySession(createSessionFromTokens(tokens));
-        return;
+        return "authenticated";
       } catch {
         const tokens = await exchangeCodeWithCognito(
           code,
@@ -197,6 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         clearPendingPkce();
         await applySession(createSessionFromTokens(tokens));
+        return "authenticated";
       }
     },
     [applySession],

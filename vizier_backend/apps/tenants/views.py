@@ -2,12 +2,14 @@
 Views for tenants app.
 """
 
+from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from datetime import timedelta
+from .emails import send_doctor_invitation_email
 from .models import Clinic, DoctorInvitation
 from .serializers import ClinicSerializer, DoctorInvitationSerializer, DoctorInvitationCreateSerializer
 from apps.accounts.models import User
@@ -112,33 +114,36 @@ class ClinicViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            invitation, created = DoctorInvitation.objects.get_or_create(
-                clinic=clinic,
-                email=email,
-                defaults={
-                    'invited_by': request.user,
-                    'expires_at': timezone.now() + timedelta(days=7),
-                },
-            )
+            with transaction.atomic():
+                invitation, created = DoctorInvitation.objects.get_or_create(
+                    clinic=clinic,
+                    email=email,
+                    defaults={
+                        'invited_by': request.user,
+                        'expires_at': timezone.now() + timedelta(days=7),
+                    },
+                )
 
-            if not created:
-                if invitation.status == 'PENDING' and not invitation.is_expired():
-                    return Response(
-                        {'error': 'Invitation already sent to this email'},
-                        status=status.HTTP_400_BAD_REQUEST
+                if not created:
+                    if invitation.status == 'PENDING' and not invitation.is_expired():
+                        return Response(
+                            {'error': 'Invitation already sent to this email'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+
+                    invitation.status = 'PENDING'
+                    invitation.invited_by = request.user
+                    invitation.expires_at = timezone.now() + timedelta(days=7)
+                    invitation.accepted_at = None
+                    invitation.save(
+                        update_fields=['status', 'invited_by', 'expires_at', 'accepted_at']
                     )
 
-                invitation.status = 'PENDING'
-                invitation.invited_by = request.user
-                invitation.expires_at = timezone.now() + timedelta(days=7)
-                invitation.accepted_at = None
-                invitation.save(
-                    update_fields=['status', 'invited_by', 'expires_at', 'accepted_at']
-                )
-            
-            # Log audit
-            AuditService.log_doctor_invite(clinic, request.user, email)
-            
+                send_doctor_invitation_email(invitation)
+
+                # Log audit
+                AuditService.log_doctor_invite(clinic, request.user, email)
+
             response_serializer = DoctorInvitationSerializer(invitation)
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         
@@ -253,7 +258,50 @@ class DoctorInvitationViewSet(viewsets.ReadOnlyModelViewSet):
         invitations = invitations.filter(status='PENDING')
         serializer = self.get_serializer(invitations, many=True)
         return Response(serializer.data)
-    
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsClinicAdmin])
+    def cancel(self, request, pk=None):
+        """
+        Cancel a pending invitation sent by the current clinic admin.
+        """
+        clinic = request.user.clinic
+        if not clinic:
+            return Response(
+                {'error': 'User must belong to a clinic'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            invitation = DoctorInvitation.objects.get(id=pk, clinic=clinic)
+        except DoctorInvitation.DoesNotExist:
+            return Response(
+                {'error': 'Invitation not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if invitation.status != 'PENDING':
+            return Response(
+                {'error': f'Invitation is already {invitation.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if invitation.is_expired():
+            invitation.status = 'EXPIRED'
+            invitation.save(update_fields=['status'])
+            return Response(
+                {'error': 'Invitation has expired'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        invitation.status = 'REMOVED'
+        invitation.accepted_at = None
+        invitation.save(update_fields=['status', 'accepted_at'])
+
+        AuditService.log_doctor_invitation_cancel(clinic, request.user, invitation)
+
+        response_serializer = self.get_serializer(invitation)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
     @action(detail='uuid', methods=['post'], permission_classes=[IsAuthenticated])
     def accept(self, request, pk=None):
         """

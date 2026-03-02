@@ -44,3 +44,11 @@ output "cognito_oauth_authorize_url_example" {
 output "cognito_oauth_token_url" {
   value = "https://${module.cognito.user_pool_domain}.auth.${var.aws_region}.amazoncognito.com/oauth2/token"
 }
+
+output "cognito_callback_urls" {
+  value = var.cognito_callback_urls
+}
+
+output "cognito_logout_urls" {
+  value = var.cognito_logout_urls
+}

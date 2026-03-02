@@ -105,6 +105,7 @@ module "ecs_gpu" {
   ecs_sg_id             = module.network.ecs_security_group_id
   instance_profile_name = module.iam_runtime.ecs_instance_profile_name
 
+  # instance_type      = "inf2.xlarge"
   instance_type      = "g4dn.xlarge"
   asg_min            = 0
   asg_desired        = 0

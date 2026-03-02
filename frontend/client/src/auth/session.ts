@@ -1,4 +1,5 @@
 const AUTH_SESSION_KEY = "vizier.auth.session.v1";
+const AUTH_NOTICE_KEY = "vizier.auth.notice.v1";
 
 export interface AuthTokens {
   accessToken: string;
@@ -69,4 +70,18 @@ export function isSessionUsable(session: AuthSession | null) {
   }
 
   return session.tokens.expiresAt > Date.now() + 30_000;
+}
+
+export function saveAuthNotice(message: string) {
+  sessionStorage.setItem(AUTH_NOTICE_KEY, message);
+}
+
+export function consumeAuthNotice() {
+  const message = sessionStorage.getItem(AUTH_NOTICE_KEY);
+  if (!message) {
+    return null;
+  }
+
+  sessionStorage.removeItem(AUTH_NOTICE_KEY);
+  return message;
 }

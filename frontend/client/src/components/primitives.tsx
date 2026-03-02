@@ -52,10 +52,15 @@ export function PageIntro({
 }
 
 const toneClasses: Record<string, string> = {
+  ACCEPTED: "border-emerald-400/20 bg-emerald-500/14 text-emerald-200",
   COMPLETED: "border-emerald-400/20 bg-emerald-500/14 text-emerald-200",
+  EXPIRED: "border-slate-400/20 bg-slate-500/14 text-slate-200",
+  PENDING: "border-amber-400/20 bg-amber-500/14 text-amber-100",
   PROCESSING: "border-amber-400/20 bg-amber-500/14 text-amber-100",
   SUBMITTED: "border-sky-400/20 bg-sky-500/14 text-sky-100",
   QUEUED: "border-slate-400/20 bg-slate-500/14 text-slate-200",
+  REJECTED: "border-rose-400/20 bg-rose-500/14 text-rose-200",
+  REMOVED: "border-slate-400/20 bg-slate-500/14 text-slate-200",
   FAILED: "border-rose-400/20 bg-rose-500/14 text-rose-200",
   HEALTHY: "border-emerald-400/20 bg-emerald-500/14 text-emerald-200",
   OK: "border-emerald-400/20 bg-emerald-500/14 text-emerald-200",

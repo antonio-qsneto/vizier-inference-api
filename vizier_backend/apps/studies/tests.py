@@ -162,11 +162,10 @@ class StudyOwnershipModelTest(TestCase):
 
 
 class NpzPreprocessingServiceTest(TestCase):
-    @override_settings(DICOM_TARGET_HW=(64, 64), DICOM_TARGET_SLICES=32)
-    def test_preprocess_existing_npz_resizes_and_preserves_slices(self):
+    def test_preprocess_existing_npz_preserves_original_shape(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             npz_path = os.path.join(tmpdir, 'file.npz')
-            volume = np.random.rand(120, 321, 321).astype(np.float32)
+            volume = np.linspace(0.0, 4095.0, num=12 * 31 * 27, dtype=np.float32).reshape((12, 31, 27))
 
             np.savez_compressed(
                 npz_path,
@@ -180,8 +179,10 @@ class NpzPreprocessingServiceTest(TestCase):
 
             with np.load(npz_path, allow_pickle=True) as data:
                 self.assertEqual(set(data.files), {'imgs', 'spacing', 'text_prompts'})
-                self.assertEqual(tuple(data['imgs'].shape), (120, 64, 64))
-                self.assertEqual(data['imgs'].dtype, np.float16)
+                self.assertEqual(tuple(data['imgs'].shape), (12, 31, 27))
+                self.assertEqual(data['imgs'].dtype, np.float32)
+                self.assertGreaterEqual(float(data['imgs'].min()), 0.0)
+                self.assertLessEqual(float(data['imgs'].max()), 255.0)
 
 
 class NpzPromptOverwriteTest(TestCase):
@@ -282,6 +283,42 @@ class SegmentationLegendTest(TestCase):
 
 
 class IntensityNormalizationServiceTest(TestCase):
+    @patch('services.dicom_pipeline.pydicom.dcmread')
+    @patch('services.dicom_pipeline.os.listdir')
+    def test_load_series_static_method_uses_rescaled_pixels(self, mock_listdir, mock_dcmread):
+        class FakeSlice:
+            def __init__(self, pixel_value: int, z_index: float):
+                self.pixel_array = np.array([[pixel_value]], dtype=np.int16)
+                self.ImagePositionPatient = [0.0, 0.0, z_index]
+                self.PixelSpacing = [0.5, 0.5]
+                self.SliceThickness = 2.0
+                self.RescaleSlope = 2.0
+                self.RescaleIntercept = -1024.0
+
+        mock_listdir.return_value = ['slice_b.dcm', 'slice_a.dcm']
+        mock_dcmread.side_effect = [
+            FakeSlice(pixel_value=1, z_index=2.0),
+            FakeSlice(pixel_value=2, z_index=1.0),
+        ]
+
+        volume, spacing = DicomZipToNpzService._load_series('/fake/series')
+
+        self.assertEqual(tuple(volume.shape), (2, 1, 1))
+        self.assertEqual(spacing, (2.0, 0.5, 0.5))
+        expected = np.array([[[-1020.0]], [[-1022.0]]], dtype=np.float32)
+        np.testing.assert_allclose(volume, expected, rtol=1e-6, atol=1e-6)
+
+    def test_extract_slice_pixels_applies_rescale_slope_and_intercept(self):
+        class FakeSlice:
+            pixel_array = np.array([[0, 10], [20, 30]], dtype=np.int16)
+            RescaleSlope = 2.0
+            RescaleIntercept = -1024.0
+
+        pixels = DicomZipToNpzService._extract_slice_pixels(FakeSlice())
+
+        expected = np.array([[-1024.0, -1004.0], [-984.0, -964.0]], dtype=np.float32)
+        np.testing.assert_allclose(pixels, expected, rtol=1e-6, atol=1e-6)
+
     def test_ct_lung_window_rescales_to_0_255(self):
         service = DicomZipToNpzService()
         volume = np.array([[-1200.0, -160.0, 700.0]], dtype=np.float32)
@@ -379,8 +416,7 @@ class CategoryResolutionTest(TestCase):
 
 
 class NiftiConversionServiceTest(TestCase):
-    @override_settings(DICOM_TARGET_HW=(64, 64), DICOM_TARGET_SLICES=32)
-    def test_convert_nifti_to_npz_resizes_and_preserves_slices(self):
+    def test_convert_nifti_to_npz_preserves_original_shape(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             nifti_path = os.path.join(tmpdir, 'input.nii.gz')
             npz_path = os.path.join(tmpdir, 'file.npz')
@@ -399,8 +435,8 @@ class NiftiConversionServiceTest(TestCase):
 
             with np.load(npz_path, allow_pickle=True) as data:
                 self.assertEqual(set(data.files), {'imgs', 'spacing', 'text_prompts'})
-                self.assertEqual(tuple(data['imgs'].shape), (40, 64, 64))
-                self.assertEqual(data['imgs'].dtype, np.float16)
+                self.assertEqual(tuple(data['imgs'].shape), (40, 80, 90))
+                self.assertEqual(data['imgs'].dtype, np.float32)
                 np.testing.assert_allclose(data['spacing'], np.array([2.5, 1.2, 1.0]), rtol=1e-6)
 
     def test_convert_npz_to_nifti_keeps_original_shape(self):

@@ -26,7 +26,8 @@ variable "gpu_ami_id" {
 
 variable "instance_type" {
   type    = string
-  default = "g4dn.xlarge"
+  # default = "inf2.xlarge"
+  default = "g4dn.xlarge"  
 }
 
 variable "cpu_instance_type" {

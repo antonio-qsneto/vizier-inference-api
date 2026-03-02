@@ -113,6 +113,17 @@ class AuditService:
             user=invited_by,
             details={'invited_email': email}
         )
+
+    @staticmethod
+    def log_doctor_invitation_cancel(clinic, canceled_by, invitation):
+        """Log pending invitation cancellation."""
+        AuditService.log_action(
+            clinic=clinic,
+            action='DOCTOR_INVITE_CANCEL',
+            user=canceled_by,
+            resource_id=str(invitation.id),
+            details={'invited_email': invitation.email}
+        )
     
     @staticmethod
     def log_doctor_remove(clinic, removed_by, doctor):
