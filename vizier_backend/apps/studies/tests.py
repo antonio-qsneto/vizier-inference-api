@@ -281,6 +281,18 @@ class SegmentationLegendTest(TestCase):
             out_data = np.asanyarray(out_img.dataobj)
             self.assertIn(3, np.unique(out_data))
 
+    def test_load_mask_labels_accepts_mask_preds_key(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mask_npz_path = os.path.join(tmpdir, 'mask_preds.npz')
+            mask_preds = np.zeros((8, 16, 16), dtype=np.int32)
+            mask_preds[1:4, 4:8, 5:9] = 4
+            np.savez(mask_npz_path, mask_preds=mask_preds)
+
+            loaded = StudyViewSet._load_mask_labels_from_npz(mask_npz_path)
+
+            self.assertEqual(tuple(loaded.shape), (8, 16, 16))
+            self.assertEqual(int(loaded.max()), 4)
+
 
 class IntensityNormalizationServiceTest(TestCase):
     @patch('services.dicom_pipeline.pydicom.dcmread')

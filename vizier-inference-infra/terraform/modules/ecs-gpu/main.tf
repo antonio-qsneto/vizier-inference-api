@@ -61,12 +61,12 @@ resource "aws_launch_template" "gpu" {
 }
 
 resource "aws_autoscaling_group" "gpu" {
-  name                = "${var.cluster_name}-gpu-asg"
-  min_size            = var.asg_min
-  desired_capacity    = var.asg_desired
-  max_size            = var.asg_max
-  vpc_zone_identifier = var.private_subnet_ids
-  default_cooldown    = 60
+  name                      = "${var.cluster_name}-gpu-asg"
+  min_size                  = var.asg_min
+  desired_capacity          = var.asg_desired
+  max_size                  = var.asg_max
+  vpc_zone_identifier       = var.private_subnet_ids
+  default_cooldown          = 60
   health_check_grace_period = 60
 
   launch_template {
@@ -78,14 +78,6 @@ resource "aws_autoscaling_group" "gpu" {
     key                 = "AmazonECSManaged"
     value               = "true"
     propagate_at_launch = true
-  }
-
-  warm_pool {
-    pool_state        = "Running"
-    min_size          = var.warm_pool_min_size
-    instance_reuse_policy {
-      reuse_on_scale_in = true
-    }
   }
 }
 
@@ -164,7 +156,7 @@ resource "aws_ecs_capacity_provider" "gpu" {
 }
 
 resource "aws_ecs_cluster_capacity_providers" "this" {
-  cluster_name       = aws_ecs_cluster.this.name
+  cluster_name = aws_ecs_cluster.this.name
   capacity_providers = [
     aws_ecs_capacity_provider.gpu.name,
     aws_ecs_capacity_provider.cpu.name

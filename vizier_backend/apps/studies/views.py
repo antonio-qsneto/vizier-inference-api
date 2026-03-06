@@ -317,6 +317,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                     'pending': 'SUBMITTED',
                     'running': 'PROCESSING',
                     'completed': 'COMPLETED',
+                    'succeeded': 'COMPLETED',
                     'failed': 'FAILED',
                     'queued': 'QUEUED',
                     'processing': 'PROCESSING',
@@ -1139,7 +1140,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
 
             with np.load(mask_npz_path, allow_pickle=False) as mask_npz:
                 segs = None
-                for key in ('segs', 'mask', 'result', 'imgs'):
+                for key in ('mask_preds', 'segs', 'mask', 'result', 'imgs'):
                     if key in mask_npz.files:
                         segs = mask_npz[key]
                         break
@@ -1160,7 +1161,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         """Load segmentation labels array from mask NPZ."""
         with np.load(mask_npz_path, allow_pickle=False) as data:
             segs = None
-            for key in ('segs', 'mask', 'result', 'imgs'):
+            for key in ('mask_preds', 'segs', 'mask', 'result', 'imgs'):
                 if key in data.files:
                     segs = data[key]
                     break

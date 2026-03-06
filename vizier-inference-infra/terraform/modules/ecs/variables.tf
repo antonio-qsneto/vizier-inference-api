@@ -12,11 +12,16 @@ variable "execution_role_arn" { type = string }
 
 variable "task_role_arn" { type = string }
 
-variable "efs_id" { type = string }
-
-variable "efs_access_point_id" { type = string }
-
 variable "sqs_queue_url" { type = string }
+
+variable "jobs_table_name" { type = string }
+
+variable "artifacts_bucket" { type = string }
+
+variable "job_artifacts_prefix" {
+  type    = string
+  default = "jobs"
+}
 
 variable "aws_region" { type = string }
 

@@ -125,7 +125,7 @@ data "aws_region" "current" {}
 resource "aws_vpc_endpoint" "s3" {
   count             = var.enable_vpc_endpoints ? 1 : 0
   vpc_id            = aws_vpc.this.id
-  service_name = "com.amazonaws.${data.aws_region.current.region}.s3"
+  service_name      = "com.amazonaws.${data.aws_region.current.region}.s3"
   vpc_endpoint_type = "Gateway"
 
   route_table_ids = [
@@ -207,8 +207,8 @@ resource "aws_vpc_endpoint" "interface" {
   vpc_endpoint_type = "Interface"
   service_name      = "com.amazonaws.${data.aws_region.current.region}.${each.key}"
 
-  subnet_ids         = [aws_subnet.private.id]
-  security_group_ids = [aws_security_group.endpoints.id]
+  subnet_ids          = [aws_subnet.private.id]
+  security_group_ids  = [aws_security_group.endpoints.id]
   private_dns_enabled = true
 
   tags = {

@@ -1,37 +1,7 @@
 {
   "CT": {
     "head": [
-      "head-neck cancer",
-      "anomaly",
-
-      "Skull bones (cranial vault)",
-      "Skull base",
-      "Facial bones",
-      "Scalp soft tissue",
-      "Paranasal sinuses",
-      "Lateral ventricles",
-      "Third ventricle",
-      "Fourth ventricle",
-      "Cerebral gray matter",
-      "Cerebral white matter",
-      "Cerebellum",
-      "Brainstem",
-      "Large intracranial arteries",
-      "Large intracranial veins",
-      "Intracranial tumor",
-      "Brain metastasis",
-      "Epidural hematoma",
-      "Subdural hematoma",
-      "Intracerebral hemorrhage",
-      "Subarachnoid hemorrhage",
-      "Diffuse cerebral edema",
-      "Peritumoral edema",
-      "Ischemic lesion",
-      "Cystic lesion",
-      "Pathological calcification",
-      "Skull fracture",
-      "Metallic implant",
-      "Intracranial catheter"
+      "head-neck cancer"
     ],
     "torax": [
       "lung lesions",

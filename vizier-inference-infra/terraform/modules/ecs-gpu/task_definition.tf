@@ -15,22 +15,15 @@ resource "aws_ecs_task_definition" "worker" {
       essential = true
 
       environment = [
-        { name = "JOB_BASE_DIR", value = "/mnt/efs/jobs" },
         { name = "SQS_QUEUE_URL", value = var.sqs_queue_url },
+        { name = "JOBS_TABLE_NAME", value = var.jobs_table_name },
+        { name = "ARTIFACTS_BUCKET", value = var.artifacts_bucket },
         { name = "AWS_REGION", value = var.aws_region },
         { name = "ECS_CLUSTER", value = var.cluster_name },
         { name = "BIO_TASK_DEF", value = aws_ecs_task_definition.biomedparse.arn },
         { name = "TASK_SUBNETS", value = join(",", var.private_subnet_ids) },
         { name = "TASK_SECURITY_GROUPS", value = var.ecs_sg_id },
         { name = "CAPACITY_PROVIDER", value = aws_ecs_capacity_provider.gpu.name }
-      ]
-
-      mountPoints = [
-        {
-          sourceVolume  = "efs-jobs"
-          containerPath = "/mnt/efs"
-          readOnly      = false
-        }
       ]
 
       logConfiguration = {
@@ -43,20 +36,6 @@ resource "aws_ecs_task_definition" "worker" {
       }
     }
   ])
-
-  volume {
-    name = "efs-jobs"
-
-    efs_volume_configuration {
-      file_system_id     = var.efs_id
-      transit_encryption = "ENABLED"
-
-      authorization_config {
-        access_point_id = var.efs_access_point_id
-        iam             = "ENABLED"
-      }
-    }
-  }
 }
 
 # BiomedParse GPU task definition (ephemeral per job)
@@ -76,23 +55,20 @@ resource "aws_ecs_task_definition" "biomedparse" {
       image     = var.biomedparse_image
       essential = true
 
+      entryPoint = [
+        "/bin/sh",
+        "-lc"
+      ]
+
+      command = [
+        "echo '{\"event\":\"missing_command_override\"}' >&2; exit 2"
+      ]
+
       resourceRequirements = [
         {
           type  = "GPU"
           value = "1"
         }
-      ]
-
-      mountPoints = [
-        {
-          sourceVolume  = "efs-jobs"
-          containerPath = "/mnt/efs"
-          readOnly      = false
-        }
-      ]
-
-      environment = [
-        { name = "JOB_BASE_DIR", value = "/mnt/efs/jobs" }
       ]
 
       logConfiguration = {
@@ -105,18 +81,4 @@ resource "aws_ecs_task_definition" "biomedparse" {
       }
     }
   ])
-
-  volume {
-    name = "efs-jobs"
-
-    efs_volume_configuration {
-      file_system_id     = var.efs_id
-      transit_encryption = "ENABLED"
-
-      authorization_config {
-        access_point_id = var.efs_access_point_id
-        iam             = "ENABLED"
-      }
-    }
-  }
 }

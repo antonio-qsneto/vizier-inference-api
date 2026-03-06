@@ -2,11 +2,18 @@ provider "aws" {
   region = var.aws_region
 }
 
+data "aws_caller_identity" "current" {}
+
 locals {
   tags = {
     Project = var.project_name
     Env     = var.environment
   }
+
+  resolved_artifacts_bucket_name = coalesce(
+    var.s3_artifacts_bucket_name,
+    lower("${var.project_name}-${var.environment}-${data.aws_caller_identity.current.account_id}-artifacts")
+  )
 }
 
 # -----------------------------
@@ -37,11 +44,25 @@ resource "aws_cloudwatch_log_group" "ecs_biomedparse" {
 }
 
 # -----------------------------
-# DynamoDB (optional for job status)
-# Keep only if you're actually using it
+# Persistent job state
 # -----------------------------
 module "dynamodb" {
   source = "../../modules/dynamodb"
+
+  table_name  = var.jobs_table_name
+  kms_key_arn = var.dynamodb_kms_key_arn
+  tags        = local.tags
+}
+
+# -----------------------------
+# Persistent job artifacts
+# -----------------------------
+module "s3" {
+  source = "../../modules/s3"
+
+  bucket_name = local.resolved_artifacts_bucket_name
+  kms_key_arn = var.s3_kms_key_arn
+  tags        = local.tags
 }
 
 # -----------------------------
@@ -63,39 +84,33 @@ module "iam_github" {
 }
 
 # -----------------------------
-# SQS queue
+# SQS queue + DLQ
 # -----------------------------
 module "sqs" {
   source = "../../modules/sqs"
-  name   = "vizier-inference-jobs-dev"
-  tags   = local.tags
+
+  name     = var.jobs_queue_name
+  dlq_name = var.jobs_dlq_name
+  tags     = local.tags
 }
 
 # -----------------------------
-# Runtime IAM (ECS + SQS)
+# Runtime IAM (ECS + SQS + S3 + DynamoDB)
 # -----------------------------
 module "iam_runtime" {
-  source        = "../../modules/iam-runtime"
-  sqs_queue_arn = module.sqs.queue_arn
-  efs_id        = module.efs.efs_id
-  tags          = local.tags
-}
+  source = "../../modules/iam-runtime"
 
-# -----------------------------
-# EFS shared filesystem (NPZ exchange)
-# -----------------------------
-module "efs" {
-  source             = "../../modules/efs"
-  vpc_id             = module.network.vpc_id
-  private_subnet_ids = [module.network.private_subnet_id]
-  ecs_sg_id          = module.network.ecs_security_group_id
-  tags               = local.tags
+  sqs_queue_arn        = module.sqs.queue_arn
+  jobs_table_arn       = module.dynamodb.table_arn
+  artifacts_bucket_arn = module.s3.bucket_arn
+  job_artifacts_prefix = var.job_artifacts_prefix
+
+  tags = local.tags
 }
 
 # -----------------------------
 # GPU ECS cluster (EC2 + ASG + capacity provider)
-# + Worker task definition should be created inside this module
-# and must mount EFS.
+# + Worker task definition inside this module
 # -----------------------------
 module "ecs_gpu" {
   source                = "../../modules/ecs-gpu"
@@ -105,39 +120,32 @@ module "ecs_gpu" {
   ecs_sg_id             = module.network.ecs_security_group_id
   instance_profile_name = module.iam_runtime.ecs_instance_profile_name
 
-  # instance_type      = "inf2.xlarge"
-  instance_type      = "g4dn.xlarge"
-  asg_min            = 0
-  asg_desired        = 0
-  asg_max            = 1
-  warm_pool_min_size = 0
+  gpu_ami_id    = var.gpu_ami_id
+  instance_type = "g4dn.xlarge"
+  asg_min       = 1
+  asg_desired   = 1
+  asg_max       = 1
 
-  # EFS mount info for worker task definition
-  efs_id              = module.efs.efs_id
-  efs_access_point_id = module.efs.access_point_id
-
-  # Worker roles
   worker_task_execution_role_arn = module.iam_runtime.ecs_task_execution_role_arn
   worker_task_role_arn           = module.iam_runtime.worker_task_role_arn
 
-  # Images (set these variables in terraform.tfvars)
   worker_image      = var.worker_image
   biomedparse_image = var.biomedparse_image
 
-  sqs_queue_url = module.sqs.queue_url
-  aws_region    = var.aws_region
+  sqs_queue_url    = module.sqs.queue_url
+  jobs_table_name  = module.dynamodb.table_name
+  artifacts_bucket = module.s3.bucket_name
+  aws_region       = var.aws_region
 
   tags = local.tags
 }
 
 # -----------------------------
-# API ECS task/service (CPU) - mounts EFS
-# This is what your empty modules/ecs should become.
+# API ECS task/service (CPU)
 # -----------------------------
 module "ecs" {
   source = "../../modules/ecs"
 
-  # Deploy API into the SAME cluster created above
   cluster_name               = module.ecs_gpu.cluster_name
   cpu_capacity_provider_name = module.ecs_gpu.cpu_capacity_provider_name
 
@@ -145,20 +153,16 @@ module "ecs" {
   subnet_ids        = [module.network.private_subnet_id]
   security_group_id = module.network.ecs_security_group_id
 
-  # Roles
   execution_role_arn = module.iam_runtime.ecs_task_execution_role_arn
   task_role_arn      = module.iam_runtime.api_task_role_arn
 
-  # EFS mount info
-  efs_id              = module.efs.efs_id
-  efs_access_point_id = module.efs.access_point_id
-
-  # Image
   container_image = var.api_image
 
-  # Queue/env
-  sqs_queue_url = module.sqs.queue_url
-  aws_region    = var.aws_region
+  sqs_queue_url        = module.sqs.queue_url
+  jobs_table_name      = module.dynamodb.table_name
+  artifacts_bucket     = module.s3.bucket_name
+  job_artifacts_prefix = var.job_artifacts_prefix
+  aws_region           = var.aws_region
 
   service_discovery_namespace_name = "internal"
   service_discovery_service_name   = "api"

@@ -110,7 +110,7 @@ class NiftiConverter:
                     segs = data['segs']
                     logger.info("Found segmentation data in key 'segs'")
                 else:
-                    for key in ['mask', 'pred_mask', 'labels', 'output', 'prediction', 'imgs', 'result']:
+                    for key in ['mask_preds', 'mask', 'pred_mask', 'labels', 'output', 'prediction', 'imgs', 'result']:
                         if key in data.files:
                             segs = data[key]
                             logger.info("Using segmentation data from key '%s' (fallback)", key)

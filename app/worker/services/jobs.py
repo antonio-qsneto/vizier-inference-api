@@ -1,7 +1,7 @@
-from pathlib import Path
+from __future__ import annotations
 
-def write_status(job_dir: str, status: str):
-    Path(job_dir, "status.txt").write_text(status)
+from datetime import datetime, timezone
 
-def validate_output(job_dir: str) -> bool:
-    return any((Path(job_dir) / "output").glob("*.npz"))
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

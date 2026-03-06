@@ -28,6 +28,12 @@ variable "biomedparse_image" {
   description = "ECR image URI for the BiomedParse model container"
 }
 
+variable "gpu_ami_id" {
+  type        = string
+  description = "Baked ECS GPU AMI used by g4dn worker nodes"
+  default     = "ami-0b2483db0c00858b5"
+}
+
 variable "project_name" {
   type        = string
   description = "Project name used for resource naming"
@@ -38,6 +44,48 @@ variable "environment" {
   type        = string
   description = "Environment name used for resource naming"
   default     = "dev"
+}
+
+variable "jobs_table_name" {
+  type        = string
+  description = "DynamoDB table name for inference job status"
+  default     = "vizier-inference-jobs-dev"
+}
+
+variable "jobs_queue_name" {
+  type        = string
+  description = "SQS queue name for inference jobs"
+  default     = "vizier-inference-jobs-dev"
+}
+
+variable "jobs_dlq_name" {
+  type        = string
+  description = "SQS dead-letter queue name for failed inference jobs"
+  default     = "vizier-inference-jobs-dev-dlq"
+}
+
+variable "s3_artifacts_bucket_name" {
+  type        = string
+  description = "Optional S3 bucket name for artifacts; if null, a deterministic name is generated"
+  default     = null
+}
+
+variable "job_artifacts_prefix" {
+  type        = string
+  description = "Prefix used for per-job artifacts inside the S3 bucket"
+  default     = "jobs"
+}
+
+variable "s3_kms_key_arn" {
+  type        = string
+  description = "Optional KMS key ARN for S3 bucket SSE-KMS encryption"
+  default     = null
+}
+
+variable "dynamodb_kms_key_arn" {
+  type        = string
+  description = "Optional KMS key ARN for DynamoDB table encryption"
+  default     = null
 }
 
 variable "cognito_callback_urls" {

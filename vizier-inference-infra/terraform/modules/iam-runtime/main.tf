@@ -1,4 +1,3 @@
-
 # -----------------------------
 # ECS EC2 instance role
 # -----------------------------
@@ -13,11 +12,10 @@ data "aws_iam_policy_document" "ecs_instance_assume" {
   }
 }
 
-
 resource "aws_iam_role" "ecs_instance_role" {
   name               = "vizier-ecs-instance-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_instance_assume.json
-  tags = var.tags
+  tags               = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_instance" {
@@ -60,11 +58,10 @@ data "aws_iam_policy_document" "ecs_task_assume" {
   }
 }
 
-
 resource "aws_iam_role" "ecs_task_execution_role" {
   name               = "vizier-ecs-task-exec-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
-  tags = var.tags
+  tags               = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_task_exec" {
@@ -73,24 +70,76 @@ resource "aws_iam_role_policy_attachment" "ecs_task_exec" {
 }
 
 # -----------------------------
-# API task role (SQS send only)
+# API task role
 # -----------------------------
 resource "aws_iam_role" "api_task_role" {
   name               = "vizier-api-task-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
-  tags = var.tags
+  tags               = var.tags
+}
+
+locals {
+  artifacts_prefix_with_slash = "${trim(var.job_artifacts_prefix, "/")}/"
+  artifacts_objects_arn       = "${var.artifacts_bucket_arn}/${trim(var.job_artifacts_prefix, "/")}/*"
+  all_bucket_objects_arn      = "${var.artifacts_bucket_arn}/*"
 }
 
 data "aws_iam_policy_document" "api_task_policy" {
   statement {
+    sid = "SendJobsToQueue"
+
     actions = [
       "sqs:SendMessage",
-      "sqs:ReceiveMessage",
-      "sqs:DeleteMessage",
-      "sqs:GetQueueAttributes",
-      "sqs:ChangeMessageVisibility"
+      "sqs:GetQueueAttributes"
     ]
     resources = [var.sqs_queue_arn]
+  }
+
+  statement {
+    sid = "ReadWriteJobState"
+
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem"
+    ]
+    resources = [var.jobs_table_arn]
+  }
+
+  statement {
+    sid = "UploadInputsToArtifactsPrefix"
+
+    actions = [
+      "s3:PutObject"
+    ]
+    resources = [local.artifacts_objects_arn]
+  }
+
+  statement {
+    sid = "ReadObjectsFromArtifactsBucket"
+
+    actions = [
+      "s3:GetObject"
+    ]
+    resources = [local.all_bucket_objects_arn]
+  }
+
+  statement {
+    sid = "ListBucketPrefix"
+
+    actions = [
+      "s3:ListBucket"
+    ]
+    resources = [var.artifacts_bucket_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values = [
+        local.artifacts_prefix_with_slash,
+        "${local.artifacts_prefix_with_slash}*"
+      ]
+    }
   }
 }
 
@@ -117,33 +166,19 @@ resource "aws_iam_role_policy" "api_task_exec" {
   policy = data.aws_iam_policy_document.api_task_exec.json
 }
 
-# Allow API task to mount/write to EFS via access point IAM auth
-data "aws_iam_policy_document" "api_task_efs" {
-  statement {
-    actions = [
-      "elasticfilesystem:ClientMount",
-      "elasticfilesystem:ClientWrite"
-    ]
-    resources = ["arn:aws:elasticfilesystem:*:*:file-system/${var.efs_id}"]
-  }
-}
-
-resource "aws_iam_role_policy" "api_task_efs" {
-  role   = aws_iam_role.api_task_role.id
-  policy = data.aws_iam_policy_document.api_task_efs.json
-}
-
 # -----------------------------
-# Worker task role (SQS consume)
+# Worker task role
 # -----------------------------
 resource "aws_iam_role" "worker_task_role" {
   name               = "vizier-worker-task-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
-  tags = var.tags
+  tags               = var.tags
 }
 
 data "aws_iam_policy_document" "worker_task_policy" {
   statement {
+    sid = "ConsumeJobsQueue"
+
     actions = [
       "sqs:ReceiveMessage",
       "sqs:DeleteMessage",
@@ -152,22 +187,57 @@ data "aws_iam_policy_document" "worker_task_policy" {
     ]
     resources = [var.sqs_queue_arn]
   }
+
+  statement {
+    sid = "ReadWriteJobState"
+
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:UpdateItem"
+    ]
+    resources = [var.jobs_table_arn]
+  }
+
+  statement {
+    sid = "ReadInputsFromArtifactsBucket"
+
+    actions = [
+      "s3:GetObject"
+    ]
+    resources = [local.all_bucket_objects_arn]
+  }
+
+  statement {
+    sid = "WriteOutputsToArtifactsPrefix"
+
+    actions = [
+      "s3:PutObject"
+    ]
+    resources = [local.artifacts_objects_arn]
+  }
+
+  statement {
+    sid = "ListBucketPrefix"
+
+    actions = [
+      "s3:ListBucket"
+    ]
+    resources = [var.artifacts_bucket_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values = [
+        local.artifacts_prefix_with_slash,
+        "${local.artifacts_prefix_with_slash}*"
+      ]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "worker_task" {
   role   = aws_iam_role.worker_task_role.id
   policy = data.aws_iam_policy_document.worker_task_policy.json
-}
-
-# Allow worker task to mount/write to EFS via access point IAM auth
-data "aws_iam_policy_document" "worker_task_efs" {
-  statement {
-    actions = [
-      "elasticfilesystem:ClientMount",
-      "elasticfilesystem:ClientWrite"
-    ]
-    resources = ["arn:aws:elasticfilesystem:*:*:file-system/${var.efs_id}"]
-  }
 }
 
 # ECS Exec data/control channels from within task (belt-and-suspenders; usually instance role is enough)
@@ -188,11 +258,6 @@ resource "aws_iam_role_policy" "worker_task_exec" {
   policy = data.aws_iam_policy_document.worker_task_exec.json
 }
 
-resource "aws_iam_role_policy" "worker_task_efs" {
-  role   = aws_iam_role.worker_task_role.id
-  policy = data.aws_iam_policy_document.worker_task_efs.json
-}
-
 # Allow worker to launch and monitor BiomedParse tasks
 data "aws_iam_policy_document" "worker_run_task" {
   statement {
@@ -205,7 +270,7 @@ data "aws_iam_policy_document" "worker_run_task" {
   }
 
   statement {
-    actions   = ["iam:PassRole"]
+    actions = ["iam:PassRole"]
     resources = [
       aws_iam_role.worker_task_role.arn,
       aws_iam_role.ecs_task_execution_role.arn

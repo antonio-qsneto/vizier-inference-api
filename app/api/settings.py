@@ -1,26 +1,23 @@
-# app/api/settings.py
+from pydantic_settings import BaseSettings  # type: ignore
 
-from pydantic_settings import BaseSettings # type: ignore
 
 class Settings(BaseSettings):
-    # AWS
     AWS_REGION: str = "us-east-1"
 
-    # SQS (AWS-managed, no LocalStack)
     SQS_QUEUE_URL: str
+    JOBS_TABLE_NAME: str
+    ARTIFACTS_BUCKET: str
+    JOB_ARTIFACTS_PREFIX: str = "jobs"
 
-    # Storage (EFS)
-    JOB_BASE_DIR: str = "/mnt/efs/jobs"
-    # Backward-compat alias used in routes/services
-    @property
-    def JOBS_ROOT(self) -> str:
-        return self.JOB_BASE_DIR
+    PRESIGNED_URL_EXPIRY_SECONDS: int = 3600
+    DEFAULT_REQUESTED_DEVICE: str = "cuda"
+    DEFAULT_SLICE_BATCH_SIZE: int | None = None
 
-    # API
     API_TITLE: str = "Vizier Inference API"
-    API_VERSION: str = "1.0.0"
+    API_VERSION: str = "2.0.0"
 
     class Config:
         env_file = ".env"
+
 
 settings = Settings()

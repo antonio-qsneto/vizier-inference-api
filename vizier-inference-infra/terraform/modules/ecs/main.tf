@@ -8,48 +8,28 @@ resource "aws_ecs_task_definition" "api" {
   execution_role_arn = var.execution_role_arn
   task_role_arn      = var.task_role_arn
 
-  volume {
-    name = "efs-jobs"
-
-    efs_volume_configuration {
-      file_system_id     = var.efs_id
-      transit_encryption = "ENABLED"
-
-      authorization_config {
-        access_point_id = var.efs_access_point_id
-        iam             = "ENABLED"
-      }
-    }
-  }
-
   container_definitions = jsonencode([
     {
       name      = "api"
       image     = var.container_image
       essential = true
 
-      mountPoints = [
-        {
-          sourceVolume  = "efs-jobs"
-          containerPath = "/mnt/efs"
-          readOnly      = false
-        }
-      ]
-
       portMappings = [
         { containerPort = 8000, protocol = "tcp" }
       ]
 
       environment = [
-        { name = "JOB_BASE_DIR", value = "/mnt/efs/jobs" },
         { name = "SQS_QUEUE_URL", value = var.sqs_queue_url },
+        { name = "JOBS_TABLE_NAME", value = var.jobs_table_name },
+        { name = "ARTIFACTS_BUCKET", value = var.artifacts_bucket },
+        { name = "JOB_ARTIFACTS_PREFIX", value = var.job_artifacts_prefix },
         { name = "AWS_REGION", value = var.aws_region }
       ]
 
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          awslogs-region        = "us-east-1"
+          awslogs-region        = var.aws_region
           awslogs-group         = "/ecs/vizier-api"
           awslogs-stream-prefix = "api"
         }
