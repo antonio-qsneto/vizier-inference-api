@@ -8,10 +8,17 @@ from functools import lru_cache
 import jwt
 import requests
 from django.conf import settings
+from django.core import signing
 from django.utils import timezone
 from rest_framework.authentication import TokenAuthentication, get_authorization_header
 from rest_framework.exceptions import AuthenticationFailed
 
+from .dev_mock_auth import (
+    DEV_MOCK_SUB_PREFIX,
+    DEV_MOCK_TOKEN_PREFIX,
+    is_dev_mock_auth_enabled,
+    parse_dev_mock_access_token,
+)
 from .models import User
 
 logger = logging.getLogger(__name__)
@@ -63,6 +70,11 @@ class CognitoJWTAuthentication(TokenAuthentication):
         Validate JWT token and return user.
         """
         try:
+            dev_mock_user = self._authenticate_dev_mock_token(token)
+            if dev_mock_user:
+                logger.info("Development mock mode: authenticated as %s", dev_mock_user.email)
+                return (dev_mock_user, token)
+
             # In development mode without Cognito, create a dummy user
             if self._should_use_development_auth():
                 # Development mode: create or get dummy user
@@ -200,6 +212,28 @@ class CognitoJWTAuthentication(TokenAuthentication):
         except Exception as e:
             logger.error("Authentication error: %s", e, exc_info=True)
             raise AuthenticationFailed('Authentication failed')
+
+    @staticmethod
+    def _authenticate_dev_mock_token(token: str) -> User | None:
+        if not is_dev_mock_auth_enabled() or not token.startswith(DEV_MOCK_TOKEN_PREFIX):
+            return None
+
+        try:
+            user_id = parse_dev_mock_access_token(token)
+        except signing.SignatureExpired:
+            raise AuthenticationFailed('Development token has expired')
+        except (signing.BadSignature, ValueError):
+            raise AuthenticationFailed('Invalid development token')
+
+        user = User.objects.filter(
+            id=user_id,
+            is_active=True,
+            cognito_sub__startswith=DEV_MOCK_SUB_PREFIX,
+        ).first()
+        if not user:
+            raise AuthenticationFailed('Invalid development token')
+
+        return user
 
     @staticmethod
     def _extract_email_from_claims(claims: dict) -> str | None:

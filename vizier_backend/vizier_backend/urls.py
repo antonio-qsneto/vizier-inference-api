@@ -18,6 +18,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework import routers
+from apps.accounts import billing_views
 
 urlpatterns = [
     # Admin
@@ -26,6 +27,11 @@ urlpatterns = [
     # API v1
     path('api/health/', include('apps.health.urls')),
     path('api/auth/', include('apps.accounts.urls')),
+    path(
+        'api/stripe/webhook/',
+        billing_views.StripeBillingWebhookView.as_view(),
+        name='stripe-webhook-legacy',
+    ),
     path('api/clinics/', include('apps.tenants.urls')),
     path('api/studies/', include('apps.studies.urls')),
 ]

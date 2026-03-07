@@ -45,11 +45,26 @@ SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-change-me')
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 
-# CORS Configuration
+# CORS configuration for local frontend development.
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:3000',
-    cast=Csv()
+    default=(
+        'http://localhost:3000,'
+        'http://127.0.0.1:3000,'
+        'http://localhost:5173,'
+        'http://127.0.0.1:5173'
+    ),
+    cast=Csv(),
+)
+CORS_ALLOWED_ORIGIN_REGEXES = config(
+    'CORS_ALLOWED_ORIGIN_REGEXES',
+    default=(
+        r'^https?://localhost(:\d+)?$,'
+        r'^https?://127\.0\.0\.1(:\d+)?$,'
+        r'^https?://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$,'
+        r'^https?://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$'
+    ),
+    cast=Csv(),
 )
 
 # ============================================================================
@@ -263,6 +278,13 @@ DEVELOPMENT_MODE = not all([
     COGNITO_JWKS_URL,
 ])
 
+# Optional local auth mode, independent from Cognito config.
+DEV_MOCK_AUTH_ENABLED = config('DEV_MOCK_AUTH_ENABLED', default=DEBUG, cast=bool)
+DEV_MOCK_TOKEN_MAX_AGE_SECONDS = max(
+    60,
+    config('DEV_MOCK_TOKEN_MAX_AGE_SECONDS', default=12 * 60 * 60, cast=int),
+)
+
 # ============================================================================
 # INFERENCE API
 # ============================================================================
@@ -300,8 +322,29 @@ ANALYSIS_ROOT_DIR = config('ANALYSIS_ROOT_DIR', default='/tmp/vizier-analysis')
 # ============================================================================
 
 STRIPE_API_KEY = config('STRIPE_API_KEY', default=None)
+STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY', default=STRIPE_API_KEY)
+STRIPE_PUBLIC_KEY = config('STRIPE_PUBLIC_KEY', default=None)
 STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default=None)
 ENABLE_STRIPE_BILLING = config('ENABLE_STRIPE_BILLING', default=False, cast=bool)
+STRIPE_PRODUCT_ID = config('STRIPE_PRODUCT_ID', default='prod_TwvQsWzxImOlIG')
+STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY = config('STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY', default=None)
+STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL = config('STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL', default=None)
+STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY = config(
+    'STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY',
+    default=None,
+)
+STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL = config(
+    'STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL',
+    default=None,
+)
+STRIPE_PAYMENT_LINK_INDIVIDUAL_MONTHLY = config(
+    'STRIPE_PAYMENT_LINK_INDIVIDUAL_MONTHLY',
+    default='https://buy.stripe.com/test_cNicN755J5Ra3wwfvp5wI00',
+)
+STRIPE_PAYMENT_LINK_INDIVIDUAL_ANNUAL = config(
+    'STRIPE_PAYMENT_LINK_INDIVIDUAL_ANNUAL',
+    default='https://buy.stripe.com/test_9B6cN7eGja7q5EE0Av5wI01',
+)
 
 # ============================================================================
 # FEATURE FLAGS

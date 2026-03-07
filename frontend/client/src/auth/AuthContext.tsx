@@ -1,5 +1,17 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { fetchCurrentUser } from "@/api/services";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+import {
+  devMockLogin,
+  devMockSignup,
+  fetchCurrentUser,
+  type DevMockLoginPayload,
+  type DevMockSignupPayload,
+} from "@/api/services";
 import { ApiError } from "@/api/client";
 import { env, isCognitoConfigured } from "@/env";
 import {
@@ -32,7 +44,10 @@ interface AuthContextValue {
   error: string | null;
   accessToken: string | null;
   isCognitoConfigured: boolean;
+  isDevMockAuthEnabled: boolean;
   signIn: (intent?: AuthIntent) => Promise<void>;
+  signInDevMock: (payload: DevMockLoginPayload) => Promise<void>;
+  signUpDevMock: (payload: DevMockSignupPayload) => Promise<void>;
   completeHostedUiLogin: (
     searchParams: URLSearchParams,
   ) => Promise<"authenticated" | "signup_completed">;
@@ -58,23 +73,24 @@ async function exchangeCodeWithBackend(
   const response = await fetch(
     `${env.apiBaseUrl}/api/auth/cognito/callback/?${params.toString()}`,
   );
-  const payload = (await response.json().catch(() => null)) as
-    | { tokens?: TokenExchangePayload; error?: string; details?: string }
-    | null;
+  const payload = (await response.json().catch(() => null)) as {
+    tokens?: TokenExchangePayload;
+    error?: string;
+    details?: string;
+  } | null;
 
   if (!response.ok || !payload?.tokens?.access_token) {
     throw new Error(
-      payload?.details || payload?.error || "Token exchange with backend failed",
+      payload?.details ||
+        payload?.error ||
+        "Token exchange with backend failed",
     );
   }
 
   return payload.tokens;
 }
 
-async function exchangeCodeWithCognito(
-  code: string,
-  codeVerifier: string,
-) {
+async function exchangeCodeWithCognito(code: string, codeVerifier: string) {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     client_id: env.cognitoClientId,
@@ -105,6 +121,30 @@ async function exchangeCodeWithCognito(
   }
 
   return payload;
+}
+
+function resolveAuthErrorMessage(error: unknown) {
+  if (
+    error instanceof TypeError &&
+    /failed to fetch/i.test(error.message)
+  ) {
+    const frontendOrigin =
+      typeof window !== "undefined" ? window.location.origin : "unknown origin";
+    return (
+      `Falha de conexão com ${env.apiBaseUrl}. ` +
+      `Verifique se o backend está rodando e se CORS_ALLOWED_ORIGINS inclui ${frontendOrigin}.`
+    );
+  }
+
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Authentication failed";
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -148,18 +188,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applySession]);
 
-  const signIn = useCallback(async (intent: AuthIntent = "login") => {
-    setError(null);
+  const signIn = useCallback(
+    async (intent: AuthIntent = "login") => {
+      setError(null);
 
-    if (!isCognitoConfigured) {
-      await applySession(createDevelopmentSession());
-      return;
-    }
+      if (!isCognitoConfigured) {
+        await applySession(createDevelopmentSession());
+        return;
+      }
 
-    const request = await createHostedUiRequest(intent);
-    savePendingPkce(request.pendingState);
-    window.location.assign(request.url);
-  }, [applySession]);
+      const request = await createHostedUiRequest(intent);
+      savePendingPkce(request.pendingState);
+      window.location.assign(request.url);
+    },
+    [applySession],
+  );
+
+  const signInDevMock = useCallback(
+    async (payload: DevMockLoginPayload) => {
+      if (!env.enableDevMockAuth) {
+        throw new Error(
+          "Development mock auth is disabled in frontend config.",
+        );
+      }
+
+      setError(null);
+      try {
+        const tokens = await devMockLogin(payload);
+        await applySession(createSessionFromTokens(tokens, "dev_mock"));
+      } catch (requestError) {
+        setError(resolveAuthErrorMessage(requestError));
+        throw requestError;
+      }
+    },
+    [applySession],
+  );
+
+  const signUpDevMock = useCallback(
+    async (payload: DevMockSignupPayload) => {
+      if (!env.enableDevMockAuth) {
+        throw new Error(
+          "Development mock auth is disabled in frontend config.",
+        );
+      }
+
+      setError(null);
+      try {
+        const tokens = await devMockSignup(payload);
+        await applySession(createSessionFromTokens(tokens, "dev_mock"));
+      } catch (requestError) {
+        setError(resolveAuthErrorMessage(requestError));
+        throw requestError;
+      }
+    },
+    [applySession],
+  );
 
   const completeHostedUiLogin = useCallback(
     async (searchParams: URLSearchParams) => {
@@ -218,18 +301,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applySession],
   );
 
-  const logout = useCallback((remote = true) => {
-    clearPendingPkce();
-    clearAuthSession();
-    setSession(null);
-    setUser(null);
-    setError(null);
-    setStatus("guest");
+  const logout = useCallback(
+    (remote = true) => {
+      const shouldLogoutFromCognito =
+        remote && isCognitoConfigured && session?.provider === "cognito";
 
-    if (remote && isCognitoConfigured) {
-      window.location.assign(buildCognitoLogoutUrl());
-    }
-  }, []);
+      clearPendingPkce();
+      clearAuthSession();
+      setSession(null);
+      setUser(null);
+      setError(null);
+      setStatus("guest");
+
+      if (shouldLogoutFromCognito) {
+        window.location.assign(buildCognitoLogoutUrl());
+      }
+    },
+    [session],
+  );
 
   const refreshProfile = useCallback(async () => {
     if (!session) {
@@ -258,7 +347,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     error,
     accessToken: session?.tokens.accessToken ?? null,
     isCognitoConfigured,
+    isDevMockAuthEnabled: env.enableDevMockAuth,
     signIn,
+    signInDevMock,
+    signUpDevMock,
     completeHostedUiLogin,
     logout,
     refreshProfile,

@@ -5,14 +5,28 @@ import { ArrowRight, KeyRound, ServerCog } from "lucide-react";
 import { fetchHealth } from "@/api/services";
 import { consumeAuthNotice } from "@/auth/session";
 import { useAuth } from "@/auth/AuthContext";
-import { env, isCognitoConfigured } from "@/env";
+import { env } from "@/env";
 import { Panel } from "@/components/primitives";
 
 export default function LoginPage() {
   const [, navigate] = useLocation();
-  const { signIn, status, error } = useAuth();
+  const {
+    signIn,
+    signInDevMock,
+    signUpDevMock,
+    status,
+    error,
+    isCognitoConfigured,
+    isDevMockAuthEnabled,
+  } = useAuth();
   const [healthLabel, setHealthLabel] = useState("Checking backend...");
   const [notice, setNotice] = useState<string | null>(null);
+  const [devEmail, setDevEmail] = useState("dev@example.com");
+  const [devPassword, setDevPassword] = useState("dev-password-123");
+  const [devFirstName, setDevFirstName] = useState("Dev");
+  const [devLastName, setDevLastName] = useState("User");
+  const [devAction, setDevAction] = useState<"login" | "signup" | null>(null);
+  const [devError, setDevError] = useState<string | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -21,7 +35,9 @@ export default function LoginPage() {
       try {
         const health = await fetchHealth();
         if (isActive) {
-          setHealthLabel(`${health.service} ${health.version} · ${health.status}`);
+          setHealthLabel(
+            `${health.service} ${health.version} · ${health.status}`,
+          );
         }
       } catch {
         if (isActive) {
@@ -47,6 +63,48 @@ export default function LoginPage() {
     }
   }, [navigate, status]);
 
+  async function handleDevLogin() {
+    if (!devEmail.trim() || !devPassword) {
+      setDevError("Informe e-mail e senha para login dev.");
+      return;
+    }
+
+    setDevError(null);
+    setDevAction("login");
+    try {
+      await signInDevMock({
+        email: devEmail.trim().toLowerCase(),
+        password: devPassword,
+      });
+    } catch {
+      // Error message is handled by AuthContext.
+    } finally {
+      setDevAction(null);
+    }
+  }
+
+  async function handleDevSignup() {
+    if (!devEmail.trim() || !devPassword) {
+      setDevError("Informe e-mail e senha para criar cadastro dev.");
+      return;
+    }
+
+    setDevError(null);
+    setDevAction("signup");
+    try {
+      await signUpDevMock({
+        email: devEmail.trim().toLowerCase(),
+        password: devPassword,
+        first_name: devFirstName.trim(),
+        last_name: devLastName.trim(),
+      });
+    } catch {
+      // Error message is handled by AuthContext.
+    } finally {
+      setDevAction(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(1,149,248,0.28),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.2),transparent_24%),linear-gradient(180deg,#222223,#17181b)] px-4 py-10 text-white md:px-8">
       <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-7xl gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -67,24 +125,106 @@ export default function LoginPage() {
             catálogo dinâmico e viewer PACS para `image.nii.gz` + `mask.nii.gz`.
           </p>
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => void signIn("login")}
-              className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400"
-            >
-              <KeyRound className="h-4 w-4" />
-              {isCognitoConfigured ? "Entrar com Cognito" : "Entrar em modo local"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void signIn("signup")}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
-            >
-              Criar conta
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
+          {isCognitoConfigured ? (
+            <div className="mt-8 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void signIn("login")}
+                className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400"
+              >
+                <KeyRound className="h-4 w-4" />
+                Entrar com Cognito
+              </button>
+              <button
+                type="button"
+                onClick={() => void signIn("signup")}
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+              >
+                Criar conta Cognito
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="mt-8 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void signIn("login")}
+                className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400"
+              >
+                <KeyRound className="h-4 w-4" />
+                Entrar em modo local
+              </button>
+            </div>
+          )}
+
+          {isDevMockAuthEnabled ? (
+            <Panel className="mt-8 space-y-4 border border-sky-400/20 bg-sky-500/5 p-5">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-200/80">
+                  Development mock auth
+                </p>
+                <p className="text-sm text-slate-300">
+                  Cadastro e login local sem passar pelo Cognito.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  type="email"
+                  value={devEmail}
+                  onChange={(event) => setDevEmail(event.target.value)}
+                  placeholder="E-mail dev"
+                  className="rounded-xl border border-white/15 bg-[#21232a] px-3 py-2 text-sm text-white outline-none transition focus:border-sky-400/60"
+                />
+                <input
+                  type="password"
+                  value={devPassword}
+                  onChange={(event) => setDevPassword(event.target.value)}
+                  placeholder="Senha dev"
+                  className="rounded-xl border border-white/15 bg-[#21232a] px-3 py-2 text-sm text-white outline-none transition focus:border-sky-400/60"
+                />
+                <input
+                  type="text"
+                  value={devFirstName}
+                  onChange={(event) => setDevFirstName(event.target.value)}
+                  placeholder="Primeiro nome (opcional)"
+                  className="rounded-xl border border-white/15 bg-[#21232a] px-3 py-2 text-sm text-white outline-none transition focus:border-sky-400/60"
+                />
+                <input
+                  type="text"
+                  value={devLastName}
+                  onChange={(event) => setDevLastName(event.target.value)}
+                  placeholder="Sobrenome (opcional)"
+                  className="rounded-xl border border-white/15 bg-[#21232a] px-3 py-2 text-sm text-white outline-none transition focus:border-sky-400/60"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => void handleDevLogin()}
+                  disabled={devAction !== null}
+                  className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  Entrar no modo dev
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDevSignup()}
+                  disabled={devAction !== null}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-5 py-2.5 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  Criar cadastro dev
+                </button>
+              </div>
+
+              {devError ? (
+                <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
+                  {devError}
+                </p>
+              ) : null}
+            </Panel>
+          ) : null}
 
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             {[
@@ -95,7 +235,9 @@ export default function LoginPage() {
               },
               {
                 label: "Auth mode",
-                value: isCognitoConfigured ? "Hosted UI + PKCE" : "Development bearer",
+                value: isCognitoConfigured
+                  ? "Hosted UI + PKCE + Dev mock"
+                  : "Development bearer + Dev mock",
                 detail:
                   "O frontend usa o token Bearer contra /api/auth/users/me/ e todos os endpoints protegidos.",
               },
@@ -111,7 +253,9 @@ export default function LoginPage() {
                   {item.label}
                 </p>
                 <p className="text-lg font-semibold text-white">{item.value}</p>
-                <p className="text-sm leading-6 text-slate-300">{item.detail}</p>
+                <p className="text-sm leading-6 text-slate-300">
+                  {item.detail}
+                </p>
               </Panel>
             ))}
           </div>
@@ -152,13 +296,16 @@ export default function LoginPage() {
             </div>
             <ul className="space-y-3 text-sm text-slate-200">
               <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                Modality dropdown usa `GET /api/auth/categories/` como source of truth.
+                Modality dropdown usa `GET /api/auth/categories/` como source of
+                truth.
               </li>
               <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                Clinic management cobre criação, convite, aceite e remoção de médicos.
+                Clinic management cobre criação, convite, aceite e remoção de
+                médicos.
               </li>
               <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                Study monitor faz polling em `/status/` até `COMPLETED` ou `FAILED`.
+                Study monitor faz polling em `/status/` até `COMPLETED` ou
+                `FAILED`.
               </li>
             </ul>
           </Panel>
@@ -168,13 +315,12 @@ export default function LoginPage() {
               Session notes
             </p>
             <p className="text-sm leading-7 text-slate-300">
-              Em ambiente local sem Cognito configurado, o frontend entra em modo
-              de desenvolvimento e usa um Bearer token simples para acionar o
-              fallback do backend.
+              O login Cognito continua disponível via Hosted UI + PKCE para
+              fluxo real de autenticação.
             </p>
             <p className="text-sm leading-7 text-slate-300">
-              Com Cognito configurado, o callback usa Authorization Code + PKCE e
-              persiste somente os dados necessários de sessão.
+              Em desenvolvimento, o frontend também permite criar cadastro e
+              fazer login mock local, sem passar pelo Cognito.
             </p>
           </Panel>
         </motion.section>

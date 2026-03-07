@@ -125,6 +125,12 @@ vizier_backend/
 - `GET /api/auth/users/` - Listar usuários
 - `GET /api/auth/users/me/` - Perfil do usuário autenticado
 - `GET /api/auth/categories/` - Listar categorias de segmentação
+- `POST /api/auth/dev/signup/` - Criar usuário mock local (dev)
+- `POST /api/auth/dev/login/` - Login mock local (dev)
+- `GET /api/auth/billing/plans/` - Catálogo de planos individuais
+- `POST /api/auth/billing/checkout/` - Criar checkout Stripe
+- `POST /api/auth/billing/portal/` - Abrir portal do cliente Stripe
+- `POST /api/auth/billing/webhook/` - Receber eventos Stripe (webhook)
 
 ### Clínicas
 - `GET /api/clinics/clinics/` - Listar clínicas
@@ -138,6 +144,10 @@ vizier_backend/
 - `GET /api/studies/{id}/status/` - Status e progresso
 - `GET /api/studies/{id}/result/` - URLs assinadas dos NIfTI (imagem + máscara) para overlay no frontend
 - `GET /api/studies/{id}/visualization/` - Alias do endpoint acima
+
+Regra de negócio:
+- Usuário individual em plano `free` não pode fazer upload.
+- Upload individual é liberado apenas em `plano_individual_mensal` ou `plano_individual_anual`.
 
 ## Variáveis de Ambiente
 
@@ -160,6 +170,19 @@ S3_BUCKET=vizier-med-bucket
 COGNITO_REGION=us-east-1
 COGNITO_USER_POOL_ID=us-east-1_xxxxxxxxx
 COGNITO_CLIENT_ID=your-client-id
+
+# Development mock auth
+DEV_MOCK_AUTH_ENABLED=True
+DEV_MOCK_TOKEN_MAX_AGE_SECONDS=43200
+
+# Stripe billing (individual)
+ENABLE_STRIPE_BILLING=True
+STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_PUBLIC_KEY=pk_test_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+STRIPE_PRODUCT_ID=prod_xxx
+STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY=price_xxx
+STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL=price_xxx
 
 # Email & invitations
 EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend

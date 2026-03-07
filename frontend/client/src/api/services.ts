@@ -1,4 +1,5 @@
 import { apiRequest, isPaginatedResponse } from "@/api/client";
+import type { TokenExchangePayload } from "@/auth/session";
 import type {
   CategoriesCatalog,
   Clinic,
@@ -15,6 +16,16 @@ import type {
 } from "@/types/api";
 
 export type UploadFieldName = "dicom_zip" | "npz_file" | "nifti_file";
+
+export interface DevMockLoginPayload {
+  email: string;
+  password: string;
+}
+
+export interface DevMockSignupPayload extends DevMockLoginPayload {
+  first_name?: string;
+  last_name?: string;
+}
 
 export function pickUploadFieldName(fileName: string): UploadFieldName {
   const lowerFileName = fileName.toLowerCase();
@@ -60,8 +71,25 @@ export async function fetchCurrentUser(token: string, signal?: AbortSignal) {
   return apiRequest<UserProfile>("/api/auth/users/me/", { token, signal });
 }
 
+export async function devMockSignup(payload: DevMockSignupPayload) {
+  return apiRequest<TokenExchangePayload>("/api/auth/dev/signup/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function devMockLogin(payload: DevMockLoginPayload) {
+  return apiRequest<TokenExchangePayload>("/api/auth/dev/login/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function fetchCategories(token: string, signal?: AbortSignal) {
-  return apiRequest<CategoriesCatalog>("/api/auth/categories/", { token, signal });
+  return apiRequest<CategoriesCatalog>("/api/auth/categories/", {
+    token,
+    signal,
+  });
 }
 
 export async function fetchClinics(token: string, signal?: AbortSignal) {
@@ -157,7 +185,11 @@ export async function fetchStudies(token: string, signal?: AbortSignal) {
   });
 }
 
-export async function fetchStudy(token: string, studyId: string, signal?: AbortSignal) {
+export async function fetchStudy(
+  token: string,
+  studyId: string,
+  signal?: AbortSignal,
+) {
   return apiRequest<Study>(`/api/studies/${studyId}/`, {
     token,
     signal,

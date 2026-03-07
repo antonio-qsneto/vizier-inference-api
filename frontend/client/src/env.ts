@@ -1,5 +1,7 @@
 const fallbackOrigin =
-  typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+  typeof window !== "undefined"
+    ? window.location.origin
+    : "http://localhost:3000";
 
 function parseBoolean(value: string | undefined, defaultValue = false) {
   if (value == null || value === "") {
@@ -18,7 +20,8 @@ const apiBaseUrl = trimTrailingSlash(
 );
 
 const redirectUri =
-  import.meta.env.VITE_COGNITO_REDIRECT_URI || `${fallbackOrigin}/auth/callback`;
+  import.meta.env.VITE_COGNITO_REDIRECT_URI ||
+  `${fallbackOrigin}/auth/callback`;
 
 const logoutUri =
   import.meta.env.VITE_COGNITO_LOGOUT_URI || `${fallbackOrigin}/login`;
@@ -34,7 +37,15 @@ export const env = {
   stripePublishableKey: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "",
   enableBilling: parseBoolean(import.meta.env.VITE_ENABLE_BILLING, false),
   billingCheckoutEndpoint:
-    import.meta.env.VITE_BILLING_CHECKOUT_ENDPOINT || "",
+    import.meta.env.VITE_BILLING_CHECKOUT_ENDPOINT ||
+    `${apiBaseUrl}/api/auth/billing/checkout/`,
+  billingPortalEndpoint:
+    import.meta.env.VITE_BILLING_PORTAL_ENDPOINT ||
+    `${apiBaseUrl}/api/auth/billing/portal/`,
+  enableDevMockAuth: parseBoolean(
+    import.meta.env.VITE_ENABLE_DEV_MOCK_AUTH,
+    import.meta.env.DEV,
+  ),
 };
 
 export const isCognitoConfigured = Boolean(
@@ -42,7 +53,5 @@ export const isCognitoConfigured = Boolean(
 );
 
 export const isBillingConfigured = Boolean(
-  env.enableBilling &&
-    env.stripePublishableKey &&
-    env.billingCheckoutEndpoint,
+  env.enableBilling && env.billingCheckoutEndpoint && env.billingPortalEndpoint,
 );

@@ -10,6 +10,7 @@ import {
 describe("auth session helpers", () => {
   it("creates a usable development session", () => {
     const session = createDevelopmentSession();
+    expect(session.provider).toBe("local_fallback");
     expect(session.tokens.accessToken).toBe("dev-token");
     expect(isSessionUsable(session)).toBe(true);
   });
@@ -21,6 +22,7 @@ describe("auth session helpers", () => {
       expires_in: 60,
     });
 
+    expect(session.provider).toBe("cognito");
     expect(session.tokens.accessToken).toBe("abc");
     expect(session.tokens.expiresAt).toBeGreaterThan(before);
   });
@@ -28,7 +30,9 @@ describe("auth session helpers", () => {
   it("persists and consumes auth notices once", () => {
     saveAuthNotice("Cadastro concluido. Faca login para continuar.");
 
-    expect(consumeAuthNotice()).toBe("Cadastro concluido. Faca login para continuar.");
+    expect(consumeAuthNotice()).toBe(
+      "Cadastro concluido. Faca login para continuar.",
+    );
     expect(consumeAuthNotice()).toBeNull();
   });
 });

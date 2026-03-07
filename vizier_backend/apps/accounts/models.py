@@ -119,3 +119,104 @@ class User(AbstractBaseUser, PermissionsMixin):
     def is_individual_doctor(self):
         """Check if user is an individual doctor."""
         return self.role == 'INDIVIDUAL'
+
+    def get_effective_subscription_plan(self) -> str:
+        """
+        Resolve the effective plan for UI/authorization.
+
+        - Clinic users use clinic.subscription_plan
+        - Individual users rely on active Stripe-backed subscription
+        """
+        if self.clinic:
+            return self.clinic.subscription_plan or 'free'
+
+        subscription = UserSubscription.objects.filter(user=self).first()
+        if subscription and subscription.has_active_access():
+            return subscription.plan
+
+        return 'free'
+
+    def has_upload_access(self) -> bool:
+        """
+        Upload permission business rule.
+
+        - Clinic members keep existing access rules
+        - Individual users require active paid subscription
+        """
+        if self.clinic:
+            return True
+
+        if self.role != 'INDIVIDUAL':
+            return False
+
+        subscription = UserSubscription.objects.filter(user=self).first()
+        return bool(subscription and subscription.has_active_access())
+
+
+class UserSubscription(models.Model):
+    """
+    Stripe-backed subscription state for individual users.
+    """
+
+    PLAN_FREE = 'free'
+    PLAN_INDIVIDUAL_MONTHLY = 'plano_individual_mensal'
+    PLAN_INDIVIDUAL_ANNUAL = 'plano_individual_anual'
+    PLAN_CHOICES = [
+        (PLAN_FREE, 'Free'),
+        (PLAN_INDIVIDUAL_MONTHLY, 'Plano individual mensal'),
+        (PLAN_INDIVIDUAL_ANNUAL, 'Plano individual anual'),
+    ]
+
+    STATUS_INACTIVE = 'INACTIVE'
+    STATUS_INCOMPLETE = 'INCOMPLETE'
+    STATUS_ACTIVE = 'ACTIVE'
+    STATUS_TRIALING = 'TRIALING'
+    STATUS_PAST_DUE = 'PAST_DUE'
+    STATUS_CANCELED = 'CANCELED'
+    STATUS_CHOICES = [
+        (STATUS_INACTIVE, 'Inactive'),
+        (STATUS_INCOMPLETE, 'Incomplete'),
+        (STATUS_ACTIVE, 'Active'),
+        (STATUS_TRIALING, 'Trialing'),
+        (STATUS_PAST_DUE, 'Past Due'),
+        (STATUS_CANCELED, 'Canceled'),
+    ]
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='billing_subscription',
+    )
+    plan = models.CharField(max_length=64, choices=PLAN_CHOICES, default=PLAN_FREE)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_INACTIVE)
+    stripe_customer_id = models.CharField(max_length=255, null=True, blank=True)
+    stripe_subscription_id = models.CharField(max_length=255, null=True, blank=True)
+    stripe_checkout_session_id = models.CharField(max_length=255, null=True, blank=True)
+    stripe_price_id = models.CharField(max_length=255, null=True, blank=True)
+    current_period_end = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'accounts_user_subscription'
+        indexes = [
+            models.Index(fields=['plan', 'status']),
+            models.Index(fields=['stripe_customer_id']),
+            models.Index(fields=['stripe_subscription_id']),
+            models.Index(fields=['stripe_checkout_session_id']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} - {self.plan} ({self.status})"
+
+    def has_active_access(self) -> bool:
+        if self.plan == self.PLAN_FREE:
+            return False
+
+        if self.status not in {self.STATUS_ACTIVE, self.STATUS_TRIALING}:
+            return False
+
+        if self.current_period_end:
+            return self.current_period_end > timezone.now()
+
+        return True

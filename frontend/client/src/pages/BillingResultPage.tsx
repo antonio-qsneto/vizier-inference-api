@@ -1,8 +1,83 @@
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
+import { toast } from "sonner";
+import { useAuth } from "@/auth/AuthContext";
+import { startBillingPortal } from "@/billing/adapter";
 import { Panel } from "@/components/primitives";
 
-export default function BillingResultPage({ status }: { status: "success" | "cancel" }) {
+const FREE_PLAN = "free";
+const WEBHOOK_SYNC_ATTEMPTS = 8;
+const WEBHOOK_SYNC_DELAY_MS = 1500;
+
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+export default function BillingResultPage({
+  status,
+}: {
+  status: "success" | "cancel";
+}) {
   const isSuccess = status === "success";
+  const { accessToken, refreshProfile, user } = useAuth();
+  const [syncingProfile, setSyncingProfile] = useState(isSuccess);
+  const [openingPortal, setOpeningPortal] = useState(false);
+  const isIndividualUser = user?.role === "INDIVIDUAL" && !user?.clinic_id;
+  const currentPlan = user?.subscription_plan || FREE_PLAN;
+
+  useEffect(() => {
+    if (!isSuccess || !isIndividualUser) {
+      setSyncingProfile(false);
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function syncProfileAfterCheckout() {
+      setSyncingProfile(true);
+
+      for (let attempt = 0; attempt < WEBHOOK_SYNC_ATTEMPTS; attempt += 1) {
+        const profile = await refreshProfile();
+        if (isCancelled) {
+          return;
+        }
+
+        const plan = profile?.subscription_plan || FREE_PLAN;
+        if (plan !== FREE_PLAN) {
+          setSyncingProfile(false);
+          return;
+        }
+
+        await wait(WEBHOOK_SYNC_DELAY_MS);
+      }
+
+      setSyncingProfile(false);
+    }
+
+    void syncProfileAfterCheckout();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isSuccess, isIndividualUser, refreshProfile]);
+
+  async function handleOpenPortal() {
+    try {
+      setOpeningPortal(true);
+      const portalUrl = await startBillingPortal(accessToken);
+      window.location.assign(portalUrl);
+    } catch (requestError) {
+      toast.error(
+        requestError instanceof Error
+          ? requestError.message
+          : "Falha ao abrir portal do Stripe",
+      );
+    } finally {
+      setOpeningPortal(false);
+    }
+  }
 
   return (
     <div className="flex min-h-[70vh] items-center justify-center">
@@ -11,13 +86,41 @@ export default function BillingResultPage({ status }: { status: "success" | "can
           Billing return
         </p>
         <h1 className="text-3xl font-semibold text-white">
-          {isSuccess ? "Checkout flow completed" : "Checkout flow canceled"}
+          {isSuccess
+            ? "Checkout Stripe concluído"
+            : "Checkout Stripe cancelado"}
         </h1>
         <p className="text-sm leading-7 text-slate-300">
           {isSuccess
-            ? "Se o endpoint Stripe real estiver conectado, este retorno deve refletir o estado do checkout."
-            : "O plano não foi alterado. Você pode voltar à página de billing e reiniciar a seleção."}
+            ? "O webhook do backend atualizará sua assinatura e o perfil será sincronizado automaticamente."
+            : "O plano não foi alterado. Você pode voltar ao billing e tentar novamente."}
         </p>
+
+        {isSuccess ? (
+          <p className="text-sm text-slate-300">
+            Plano atual: <span className="font-semibold text-white">{currentPlan}</span>
+          </p>
+        ) : null}
+
+        {isSuccess && syncingProfile ? (
+          <p className="text-xs uppercase tracking-[0.2em] text-sky-300/80">
+            Sincronizando assinatura com webhook...
+          </p>
+        ) : null}
+
+        {isSuccess && isIndividualUser ? (
+          <button
+            type="button"
+            onClick={() => void handleOpenPortal()}
+            disabled={openingPortal}
+            className="inline-flex rounded-full border border-white/10 bg-white/6 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {openingPortal
+              ? "Abrindo portal..."
+              : "Gerenciar/cancelar assinatura no Stripe"}
+          </button>
+        ) : null}
+
         <Link href="/billing">
           <a className="inline-flex rounded-full bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400">
             Back to billing

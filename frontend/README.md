@@ -5,6 +5,7 @@ Frontend React + TypeScript + Vite reconstruído para encaixar nos contratos rea
 ## O que está implementado
 
 - Auth com Cognito Hosted UI + PKCE.
+- Login/cadastro mock de desenvolvimento (`/api/auth/dev/*`) sem passar pelo Cognito.
 - Fallback de desenvolvimento quando Cognito não está configurado.
 - Guard de rotas e sessão persistida.
 - Dashboard, clinic management, invitations, studies list, upload e study detail.
@@ -18,13 +19,15 @@ Frontend React + TypeScript + Vite reconstruído para encaixar nos contratos rea
   - zoom, pan e reset
   - orientation markers
 - Proxy local para assets `file://` retornados pelo backend em desenvolvimento.
-- Billing adapter com mock fallback quando o backend não expõe checkout.
+- Billing Stripe para plano individual (mensal/anual) via endpoints do backend.
 
 ## Endpoints usados
 
 - `GET /api/health/`
 - `GET /api/auth/users/me/`
 - `GET /api/auth/categories/`
+- `POST /api/auth/dev/signup/`
+- `POST /api/auth/dev/login/`
 - `GET /api/clinics/clinics/`
 - `POST /api/clinics/clinics/`
 - `POST /api/clinics/clinics/invite/`
@@ -68,9 +71,11 @@ Copie `.env.example` e ajuste:
 - `VITE_COGNITO_DOMAIN`
 - `VITE_COGNITO_REDIRECT_URI`
 - `VITE_COGNITO_LOGOUT_URI`
+- `VITE_ENABLE_DEV_MOCK_AUTH`
 - `VITE_STRIPE_PUBLISHABLE_KEY`
 - `VITE_ENABLE_BILLING`
 - `VITE_BILLING_CHECKOUT_ENDPOINT`
+- `VITE_BILLING_PORTAL_ENDPOINT`
 
 Para preencher automaticamente os valores do Cognito a partir do Terraform do ambiente `dev`:
 
@@ -148,6 +153,9 @@ Assim o container do Django acessa a inferência pelo endpoint `host.docker.inte
 
 ## Integration Notes
 
-- O backend não expõe endpoints Stripe/checkout neste repositório. O frontend já deixa o ponto de integração em `client/src/billing/adapter.ts`.
+- Billing usa endpoints do backend:
+  - `POST /api/auth/billing/checkout/`
+  - `POST /api/auth/billing/portal/`
+  - `POST /api/auth/billing/webhook/` (Stripe)
 - O prompt original citava `GET /api/auth/me/`, mas o backend real expõe `GET /api/auth/users/me/`. O frontend usa o endpoint real.
 - O manual mencionava `.dcm`, mas o serializer atual aceita `.zip`, `.npz`, `.nii` e `.nii.gz`. O upload UI segue o contrato real do backend.

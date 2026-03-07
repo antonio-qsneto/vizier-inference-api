@@ -2,7 +2,7 @@ import { env, isBillingConfigured } from "@/env";
 import type { UserProfile } from "@/types/api";
 
 export interface BillingPlan {
-  id: "free" | "professional" | "clinical";
+  id: "free" | "plano_individual_mensal" | "plano_individual_anual";
   label: string;
   priceLabel: string;
   summary: string;
@@ -10,7 +10,7 @@ export interface BillingPlan {
 }
 
 export interface BillingCheckoutResult {
-  mode: "redirect" | "mock";
+  mode: "redirect" | "mock" | "updated";
   url: string;
   message?: string;
 }
@@ -19,23 +19,32 @@ export const billingPlans: BillingPlan[] = [
   {
     id: "free",
     label: "Free",
-    priceLabel: "US$ 0",
-    summary: "Individual use and validation of inference flows.",
-    features: ["1 seat", "Manual uploads", "Study monitoring"],
+    priceLabel: "R$ 0",
+    summary: "Acesso sem assinatura para navegação básica.",
+    features: ["Sem upload de estudos", "Sem cobrança", "Upgrade opcional"],
   },
   {
-    id: "professional",
-    label: "Profissional",
-    priceLabel: "US$ 249",
-    summary: "Small clinic workflow with invite and review operations.",
-    features: ["5 seats", "Clinic onboarding", "Shared study history"],
+    id: "plano_individual_mensal",
+    label: "Plano individual mensal",
+    priceLabel: "R$ 679,00/mês",
+    summary: "Libera upload e processamento para usuário individual.",
+    features: [
+      "Upload habilitado",
+      "Acesso mensal",
+      "Gestão via Stripe portal",
+    ],
   },
   {
-    id: "clinical",
-    label: "Clinical",
-    priceLabel: "US$ 599",
-    summary: "Higher throughput deployment for multi-radiologist teams.",
-    features: ["10+ seats", "Advanced triage", "Priority support"],
+    id: "plano_individual_anual",
+    label: "Plano individual anual",
+    priceLabel: "R$ 7.333,00/ano",
+    summary: "Plano anual com upload liberado para todo o período e 10% de desconto.",
+    features: [
+      "Upload habilitado",
+      "Ciclo anual",
+      "10% de desconto em relação ao mensal",
+      "Gestão via Stripe portal",
+    ],
   },
 ];
 
@@ -43,12 +52,22 @@ interface CheckoutInput {
   planId: BillingPlan["id"];
   token: string | null;
   user: UserProfile | null;
+  currentPassword?: string;
 }
 
 export async function startBillingCheckout({
   planId,
   token,
+  currentPassword,
 }: CheckoutInput): Promise<BillingCheckoutResult> {
+  if (planId === "free") {
+    return {
+      mode: "mock",
+      url: "/billing",
+      message: "Plano free não exige checkout.",
+    };
+  }
+
   const successUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/billing/success?plan=${planId}`
@@ -59,12 +78,18 @@ export async function startBillingCheckout({
       : "/billing/cancel";
 
   if (!isBillingConfigured || !token) {
-    return {
-      mode: "mock",
-      url: successUrl,
-      message:
-        "Billing backend is not available in this repository. Replace the mock adapter with a Stripe checkout endpoint.",
-    };
+    throw new Error(
+      "Billing não está configurado. Defina VITE_ENABLE_BILLING=true e endpoint de checkout.",
+    );
+  }
+
+  const requestPayload: Record<string, string> = {
+    plan_id: planId,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  };
+  if (currentPassword) {
+    requestPayload.current_password = currentPassword;
   }
 
   const response = await fetch(env.billingCheckoutEndpoint, {
@@ -73,22 +98,30 @@ export async function startBillingCheckout({
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      plan_id: planId,
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-    }),
+    body: JSON.stringify(requestPayload),
   });
 
-  const payload = (await response.json().catch(() => null)) as
-    | { url?: string; checkout_url?: string; detail?: string }
-    | null;
+  const payload = (await response.json().catch(() => null)) as {
+    mode?: string;
+    url?: string;
+    checkout_url?: string;
+    detail?: string;
+  } | null;
 
   const checkoutUrl = payload?.url || payload?.checkout_url;
 
+  if (response.ok && (payload?.mode === "subscription_updated" || payload?.mode === "already_active")) {
+    return {
+      mode: "updated",
+      url: "/billing",
+      message: payload?.detail || "Subscription updated successfully.",
+    };
+  }
+
   if (!response.ok || !checkoutUrl) {
     throw new Error(
-      payload?.detail || "Billing checkout endpoint did not return a redirect URL",
+      payload?.detail ||
+        "Billing checkout endpoint did not return a redirect URL",
     );
   }
 
@@ -96,4 +129,40 @@ export async function startBillingCheckout({
     mode: "redirect",
     url: checkoutUrl,
   };
+}
+
+export async function startBillingPortal(token: string | null) {
+  if (!isBillingConfigured || !token) {
+    throw new Error(
+      "Billing não está configurado. Defina VITE_ENABLE_BILLING=true e endpoint do portal.",
+    );
+  }
+
+  const returnUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/billing`
+      : "/billing";
+
+  const response = await fetch(env.billingPortalEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      return_url: returnUrl,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as {
+    url?: string;
+    detail?: string;
+  } | null;
+  if (!response.ok || !payload?.url) {
+    throw new Error(
+      payload?.detail || "Billing portal endpoint did not return a URL",
+    );
+  }
+
+  return payload.url;
 }

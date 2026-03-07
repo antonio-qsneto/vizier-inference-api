@@ -1,6 +1,6 @@
 from unittest.mock import Mock, patch
 
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APIClient
 
@@ -181,3 +181,105 @@ class CognitoCallbackViewTest(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['tokens']['access_token'], 'a')
         post_mock.assert_called_once()
+
+
+@override_settings(
+    DEV_MOCK_AUTH_ENABLED=True,
+    COGNITO_USER_POOL_ID='us-east-1_realpool',
+    COGNITO_ISSUER='https://cognito-idp.us-east-1.amazonaws.com/us-east-1_realpool',
+    COGNITO_AUDIENCE='real-client-id',
+    COGNITO_JWKS_URL='https://example.com/jwks.json',
+)
+class DevMockAuthEndpointsTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_signup_returns_access_token_and_authenticates(self):
+        signup_response = self.client.post(
+            '/api/auth/dev/signup/',
+            {
+                'email': 'dev-mock@example.com',
+                'password': 'dev-password-123',
+                'first_name': 'Dev',
+                'last_name': 'Mock',
+            },
+            format='json',
+        )
+
+        self.assertEqual(signup_response.status_code, 201)
+        token = signup_response.data['access_token']
+        self.assertTrue(token.startswith('devmock.'))
+
+        me_response = self.client.get(
+            '/api/auth/users/me/',
+            HTTP_AUTHORIZATION=f'Bearer {token}',
+        )
+        self.assertEqual(me_response.status_code, 200)
+        self.assertEqual(me_response.data['email'], 'dev-mock@example.com')
+
+    def test_login_returns_access_token_for_existing_dev_user(self):
+        signup_response = self.client.post(
+            '/api/auth/dev/signup/',
+            {
+                'email': 'existing-dev@example.com',
+                'password': 'dev-password-123',
+            },
+            format='json',
+        )
+        self.assertEqual(signup_response.status_code, 201)
+
+        login_response = self.client.post(
+            '/api/auth/dev/login/',
+            {
+                'email': 'existing-dev@example.com',
+                'password': 'dev-password-123',
+            },
+            format='json',
+        )
+
+        self.assertEqual(login_response.status_code, 200)
+        self.assertTrue(login_response.data['access_token'].startswith('devmock.'))
+
+    def test_login_rejects_invalid_password(self):
+        signup_response = self.client.post(
+            '/api/auth/dev/signup/',
+            {
+                'email': 'wrong-pass@example.com',
+                'password': 'dev-password-123',
+            },
+            format='json',
+        )
+        self.assertEqual(signup_response.status_code, 201)
+
+        login_response = self.client.post(
+            '/api/auth/dev/login/',
+            {
+                'email': 'wrong-pass@example.com',
+                'password': 'invalid-password',
+            },
+            format='json',
+        )
+
+        self.assertEqual(login_response.status_code, 400)
+
+
+@override_settings(DEV_MOCK_AUTH_ENABLED=False)
+class DevMockAuthDisabledTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_signup_is_blocked_when_disabled(self):
+        response = self.client.post(
+            '/api/auth/dev/signup/',
+            {'email': 'blocked@example.com', 'password': 'dev-password-123'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_login_is_blocked_when_disabled(self):
+        response = self.client.post(
+            '/api/auth/dev/login/',
+            {'email': 'blocked@example.com', 'password': 'dev-password-123'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 403)

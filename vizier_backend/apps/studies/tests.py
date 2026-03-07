@@ -10,7 +10,7 @@ import nibabel as nib
 from unittest.mock import patch
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.accounts.models import User
+from apps.accounts.models import User, UserSubscription
 from apps.accounts.permissions import TenantQuerySetMixin
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
@@ -159,6 +159,54 @@ class StudyOwnershipModelTest(TestCase):
         self.assertEqual(audit_log.clinic, self.clinic)
         self.assertEqual(audit_log.action, 'STUDY_SUBMIT')
         self.assertEqual(audit_log.resource_id, str(study.id))
+
+
+class IndividualSubscriptionAccessTest(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.user = User.objects.create_user(
+            email='free-user@example.com',
+            cognito_sub='free-user-sub',
+            role='INDIVIDUAL',
+        )
+
+    def _build_upload_payload(self):
+        return {
+            'dicom_zip': SimpleUploadedFile(
+                'sample.zip',
+                b'PK\x03\x04fakezip',
+                content_type='application/zip',
+            ),
+            'case_identification': 'CASE-123',
+            'patient_name': 'Patient',
+            'age': 40,
+            'exam_source': 'MRI',
+            'exam_modality': 'MRI',
+            'category_id': 'head',
+        }
+
+    def test_individual_free_plan_cannot_upload(self):
+        request = self.factory.post(
+            '/api/studies/upload/',
+            data=self._build_upload_payload(),
+            format='multipart',
+        )
+        force_authenticate(request, user=self.user)
+        view = StudyViewSet.as_view({'post': 'upload'})
+
+        response = view(request)
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('Plano free', response.data.get('error', ''))
+
+    def test_has_upload_access_with_active_subscription(self):
+        UserSubscription.objects.create(
+            user=self.user,
+            plan=UserSubscription.PLAN_INDIVIDUAL_MONTHLY,
+            status=UserSubscription.STATUS_ACTIVE,
+        )
+
+        self.assertTrue(self.user.has_upload_access())
 
 
 class NpzPreprocessingServiceTest(TestCase):

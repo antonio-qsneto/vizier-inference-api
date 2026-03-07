@@ -63,6 +63,18 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        if request.user.role == 'INDIVIDUAL' and not request.user.clinic:
+            if not request.user.has_upload_access():
+                return Response(
+                    {
+                        'error': (
+                            'Plano free não permite upload. '
+                            'Assine o plano individual mensal ou anual para enviar estudos.'
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         # Resolve category (name + prompt) before heavy file processing.
         # Return field-specific errors for easier API testing/debugging.
         category_id = serializer.validated_data['category_id']

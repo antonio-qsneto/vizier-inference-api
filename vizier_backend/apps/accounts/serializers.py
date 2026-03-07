@@ -3,7 +3,7 @@ Serializers for accounts app.
 """
 
 from rest_framework import serializers
-from .models import User
+from .models import User, UserSubscription
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -81,6 +81,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
         """Get subscription plan."""
         if obj.clinic:
             return obj.clinic.subscription_plan
+
+        subscription = UserSubscription.objects.filter(user=obj).first()
+        if subscription and subscription.has_active_access():
+            return subscription.plan
+
         return 'free'
     
     def get_seat_limit(self, obj):
@@ -92,3 +97,60 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj):
         """Get full name."""
         return obj.get_full_name()
+
+
+class DevMockSignupSerializer(serializers.Serializer):
+    """Serializer for development mock user signup."""
+
+    email = serializers.EmailField()
+    password = serializers.CharField(
+        min_length=6,
+        max_length=128,
+        trim_whitespace=False,
+        write_only=True,
+    )
+    first_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
+    last_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+
+class DevMockLoginSerializer(serializers.Serializer):
+    """Serializer for development mock user login."""
+
+    email = serializers.EmailField()
+    password = serializers.CharField(
+        min_length=6,
+        max_length=128,
+        trim_whitespace=False,
+        write_only=True,
+    )
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+
+class BillingCheckoutSerializer(serializers.Serializer):
+    """Payload for Stripe checkout session creation."""
+
+    plan_id = serializers.ChoiceField(
+        choices=[
+            UserSubscription.PLAN_INDIVIDUAL_MONTHLY,
+            UserSubscription.PLAN_INDIVIDUAL_ANNUAL,
+        ]
+    )
+    current_password = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=False,
+        write_only=True,
+    )
+    success_url = serializers.URLField(required=False)
+    cancel_url = serializers.URLField(required=False)
+
+
+class BillingPortalSerializer(serializers.Serializer):
+    """Payload for Stripe customer portal."""
+
+    return_url = serializers.URLField(required=False)

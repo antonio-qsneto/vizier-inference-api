@@ -13,10 +13,28 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .dev_mock_auth import (
+    DEV_MOCK_SUB_PREFIX,
+    build_dev_mock_cognito_sub,
+    build_dev_mock_token_payload,
+    is_dev_mock_auth_enabled,
+)
 from .models import User
-from .serializers import UserProfileSerializer, UserSerializer
+from .serializers import (
+    DevMockLoginSerializer,
+    DevMockSignupSerializer,
+    UserProfileSerializer,
+    UserSerializer,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _dev_mock_disabled_response() -> Response:
+    return Response(
+        {'error': 'Development mock authentication is disabled'},
+        status=status.HTTP_403_FORBIDDEN,
+    )
 
 
 class UserViewSet(viewsets.ReadOnlyModelViewSet):
@@ -163,5 +181,72 @@ class CognitoCallbackView(APIView):
                 'state': state,
                 'tokens': token_response,
             },
+            status=status.HTTP_200_OK,
+        )
+
+
+class DevMockSignupView(APIView):
+    """Create a local development user and issue a mock access token."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        if not is_dev_mock_auth_enabled():
+            return _dev_mock_disabled_response()
+
+        serializer = DevMockSignupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+
+        email = payload['email']
+        if User.objects.filter(email=email).exists():
+            return Response(
+                {'email': ['A user with this email already exists.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = User(
+            email=email,
+            cognito_sub=build_dev_mock_cognito_sub(),
+            first_name=payload.get('first_name', ''),
+            last_name=payload.get('last_name', ''),
+            role='INDIVIDUAL',
+            is_active=True,
+        )
+        user.set_password(payload['password'])
+        user.save()
+
+        return Response(
+            build_dev_mock_token_payload(user.id),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class DevMockLoginView(APIView):
+    """Authenticate an existing development user and issue a mock token."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        if not is_dev_mock_auth_enabled():
+            return _dev_mock_disabled_response()
+
+        serializer = DevMockLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+
+        user = User.objects.filter(
+            email=payload['email'],
+            cognito_sub__startswith=DEV_MOCK_SUB_PREFIX,
+            is_active=True,
+        ).first()
+        if not user or not user.check_password(payload['password']):
+            return Response(
+                {'non_field_errors': ['Invalid email or password']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            build_dev_mock_token_payload(user.id),
             status=status.HTTP_200_OK,
         )

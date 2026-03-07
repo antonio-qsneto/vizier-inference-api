@@ -1,6 +1,8 @@
 const AUTH_SESSION_KEY = "vizier.auth.session.v1";
 const AUTH_NOTICE_KEY = "vizier.auth.notice.v1";
 
+export type AuthProvider = "cognito" | "dev_mock" | "local_fallback";
+
 export interface AuthTokens {
   accessToken: string;
   idToken?: string;
@@ -9,6 +11,7 @@ export interface AuthTokens {
 }
 
 export interface AuthSession {
+  provider: AuthProvider;
   tokens: AuthTokens;
 }
 
@@ -19,8 +22,12 @@ export interface TokenExchangePayload {
   expires_in?: number;
 }
 
-export function createSessionFromTokens(tokens: TokenExchangePayload): AuthSession {
+export function createSessionFromTokens(
+  tokens: TokenExchangePayload,
+  provider: AuthProvider = "cognito",
+): AuthSession {
   return {
+    provider,
     tokens: {
       accessToken: tokens.access_token,
       idToken: tokens.id_token,
@@ -32,6 +39,7 @@ export function createSessionFromTokens(tokens: TokenExchangePayload): AuthSessi
 
 export function createDevelopmentSession(): AuthSession {
   return {
+    provider: "local_fallback",
     tokens: {
       accessToken: "dev-token",
       expiresAt: Date.now() + 12 * 60 * 60 * 1000,
@@ -43,18 +51,27 @@ export function saveAuthSession(session: AuthSession) {
   sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
 }
 
-export function loadAuthSession() {
+export function loadAuthSession(): AuthSession | null {
   const rawValue = sessionStorage.getItem(AUTH_SESSION_KEY);
   if (!rawValue) {
     return null;
   }
 
   try {
-    const parsed = JSON.parse(rawValue) as AuthSession;
-    if (!parsed.tokens?.accessToken) {
+    const parsed = JSON.parse(rawValue) as Partial<AuthSession>;
+    if (!parsed.tokens?.accessToken || !parsed.tokens.expiresAt) {
       return null;
     }
-    return parsed;
+
+    const provider: AuthProvider =
+      parsed.provider === "dev_mock" || parsed.provider === "local_fallback"
+        ? parsed.provider
+        : "cognito";
+
+    return {
+      provider,
+      tokens: parsed.tokens,
+    };
   } catch {
     return null;
   }

@@ -1,10 +1,15 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { fetchCategories, uploadStudy } from "@/api/services";
 import { useAuth } from "@/auth/AuthContext";
-import { InlineNotice, LoadingState, PageIntro, Panel } from "@/components/primitives";
+import {
+  InlineNotice,
+  LoadingState,
+  PageIntro,
+  Panel,
+} from "@/components/primitives";
 import { Spinner } from "@/components/ui/spinner";
 import type { CategoriesCatalog } from "@/types/api";
 
@@ -30,7 +35,7 @@ const defaultFormState: UploadFormState = {
 
 export default function StudyUploadPage() {
   const [, navigate] = useLocation();
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [catalog, setCatalog] = useState<CategoriesCatalog>({});
@@ -68,9 +73,19 @@ export default function StudyUploadPage() {
     formState.examModality && formState.categoryId
       ? catalog[formState.examModality]?.[formState.categoryId] || []
       : [];
+  const isIndividualFreePlan =
+    user?.role === "INDIVIDUAL" &&
+    !user?.clinic_id &&
+    (user?.subscription_plan === "free" || !user?.subscription_plan);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isIndividualFreePlan) {
+      toast.error("Plano free não permite upload. Faça upgrade no billing.");
+      navigate("/billing");
+      return;
+    }
+
     if (!accessToken || !formState.file) {
       toast.error("Select a supported file before submitting");
       return;
@@ -96,7 +111,11 @@ export default function StudyUploadPage() {
       toast.success("Study submitted");
       navigate(`/studies/${study.id}`);
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "Study upload failed");
+      toast.error(
+        requestError instanceof Error
+          ? requestError.message
+          : "Study upload failed",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -119,9 +138,28 @@ export default function StudyUploadPage() {
         description="O payload segue exatamente o serializer do backend: arquivo + `case_identification`, `patient_name`, `age`, `exam_source`, `exam_modality` e `category_id`."
       />
 
-      {error ? <InlineNotice title="Catalog load failed">{error}</InlineNotice> : null}
+      {isIndividualFreePlan ? (
+        <InlineNotice title="Upload bloqueado no plano free">
+          Para enviar estudos, assine o plano individual mensal ou anual na
+          página de billing.
+          <span className="ml-2 inline-flex">
+            <Link href="/billing">
+              <a className="font-semibold text-sky-300 underline underline-offset-4">
+                Ir para billing
+              </a>
+            </Link>
+          </span>
+        </InlineNotice>
+      ) : null}
 
-      <form onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      {error ? (
+        <InlineNotice title="Catalog load failed">{error}</InlineNotice>
+      ) : null}
+
+      <form
+        onSubmit={handleSubmit}
+        className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]"
+      >
         <Panel className="space-y-5">
           <div className="grid gap-4 md:grid-cols-2">
             <input
@@ -193,7 +231,11 @@ export default function StudyUploadPage() {
                   Select modality
                 </option>
                 {modalities.map((modality) => (
-                  <option key={modality} value={modality} className="bg-slate-900">
+                  <option
+                    key={modality}
+                    value={modality}
+                    className="bg-slate-900"
+                  >
                     {modality}
                   </option>
                 ))}
@@ -252,7 +294,7 @@ export default function StudyUploadPage() {
 
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || isIndividualFreePlan}
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? <Spinner className="size-4" /> : null}
