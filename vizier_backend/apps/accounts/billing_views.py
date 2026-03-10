@@ -6,29 +6,39 @@ from __future__ import annotations
 
 import logging
 
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .billing_url_validation import BillingRedirectURLError, validate_redirect_url
 from .billing import (
     BillingConfigurationError,
     BillingProviderError,
+    apply_subscription_payload as apply_individual_subscription_payload,
+    cancel_subscription_at_period_end,
     construct_webhook_event,
     create_checkout_session,
     create_customer_portal_session,
-    extract_subscription_price_id,
-    infer_plan_id_from_price_id,
     is_stripe_billing_enabled,
     list_individual_billing_plans,
-    normalize_subscription_status,
     retrieve_checkout_session,
     retrieve_subscription,
-    timestamp_to_datetime,
     update_subscription_plan,
 )
 from .models import User, UserSubscription
-from .serializers import BillingCheckoutSerializer, BillingPortalSerializer
+from .rbac import RBACPermission, has_scoped_permission
+from .serializers import (
+    BillingCheckoutSerializer,
+    BillingPortalSerializer,
+    BillingSyncSerializer,
+)
+from apps.tenants.billing_ledger import (
+    mark_event_applied,
+    register_individual_event,
+    stripe_event_created_at,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,33 +85,46 @@ def _apply_subscription_payload(
     subscription: UserSubscription,
     stripe_subscription_payload,
     fallback_plan_id: str | None = None,
+    event_created_at=None,
 ):
-    stripe_status = _payload_get(stripe_subscription_payload, 'status')
-    stripe_subscription_id = _payload_get(stripe_subscription_payload, 'id')
-    stripe_customer_id = _payload_get(stripe_subscription_payload, 'customer')
-    current_period_end = timestamp_to_datetime(
-        _payload_get(stripe_subscription_payload, 'current_period_end')
+    apply_individual_subscription_payload(
+        subscription=subscription,
+        stripe_subscription_payload=stripe_subscription_payload,
+        fallback_plan_id=fallback_plan_id,
+        event_created_at=event_created_at,
     )
-    price_id = extract_subscription_price_id(stripe_subscription_payload)
-    inferred_plan = infer_plan_id_from_price_id(price_id)
 
-    target_plan = inferred_plan or fallback_plan_id or subscription.plan
-    if target_plan not in {
-        UserSubscription.PLAN_INDIVIDUAL_MONTHLY,
-        UserSubscription.PLAN_INDIVIDUAL_ANNUAL,
-    }:
-        target_plan = subscription.plan or UserSubscription.PLAN_FREE
 
-    subscription.plan = target_plan
-    subscription.status = normalize_subscription_status(stripe_status)
-    if stripe_subscription_id:
-        subscription.stripe_subscription_id = stripe_subscription_id
-    if stripe_customer_id:
-        subscription.stripe_customer_id = stripe_customer_id
-    if price_id:
-        subscription.stripe_price_id = price_id
-    subscription.current_period_end = current_period_end
-    subscription.save()
+def _register_subscription_event_for_user(
+    *,
+    event_payload,
+    subscription: UserSubscription,
+):
+    event_id = _payload_get(event_payload, 'id')
+    event_type = _payload_get(event_payload, 'type') or 'unknown'
+    stripe_subscription_payload = _payload_get(_payload_get(event_payload, 'data', {}) or {}, 'object', {}) or {}
+    stripe_subscription_id = (
+        _payload_get(stripe_subscription_payload, 'id') or subscription.stripe_subscription_id
+    )
+    idempotency_key = (
+        f'webhook:individual:{event_id}'
+        if event_id
+        else (
+            f'webhook:individual:synthetic:{subscription.user_id}:'
+            f'{event_type}:{int(stripe_event_created_at(event_payload).timestamp())}'
+        )
+    )
+
+    return register_individual_event(
+        user=subscription.user,
+        source='webhook',
+        event_type=str(event_type),
+        event_created_at=stripe_event_created_at(event_payload),
+        idempotency_key=idempotency_key,
+        stripe_event_id=str(event_id) if event_id else None,
+        stripe_subscription_id=str(stripe_subscription_id or ''),
+        payload=_payload_get(event_payload, 'data', {}) or {},
+    )
 
 
 def _handle_checkout_session_completed(event_payload):
@@ -109,6 +132,15 @@ def _handle_checkout_session_completed(event_payload):
     subscription = _resolve_subscription_for_checkout_completed(checkout_payload)
     if not subscription:
         logger.warning('Stripe checkout.session.completed without matching local user subscription')
+        return
+
+    ledger_registration = _register_subscription_event_for_user(
+        event_payload=event_payload,
+        subscription=subscription,
+    )
+    if not ledger_registration.should_apply:
+        if ledger_registration.reason == 'stale':
+            logger.info('Ignoring stale individual checkout.session.completed event')
         return
 
     metadata = _payload_get(checkout_payload, 'metadata', {}) or {}
@@ -128,7 +160,9 @@ def _handle_checkout_session_completed(event_payload):
                 subscription=subscription,
                 stripe_subscription_payload=stripe_subscription_payload,
                 fallback_plan_id=plan_id,
+                event_created_at=stripe_event_created_at(event_payload),
             )
+            mark_event_applied(ledger_registration.entry)
             return
         except BillingProviderError:
             logger.warning(
@@ -136,11 +170,14 @@ def _handle_checkout_session_completed(event_payload):
                 stripe_subscription_id,
                 exc_info=True,
             )
+            if ledger_registration.entry:
+                ledger_registration.entry.delete()
 
     subscription.plan = plan_id
     subscription.status = UserSubscription.STATUS_ACTIVE
     subscription.stripe_subscription_id = stripe_subscription_id
     subscription.save()
+    mark_event_applied(ledger_registration.entry)
 
 
 def _handle_subscription_lifecycle_event(event_payload):
@@ -166,10 +203,26 @@ def _handle_subscription_lifecycle_event(event_payload):
         )
         return
 
-    _apply_subscription_payload(
+    ledger_registration = _register_subscription_event_for_user(
+        event_payload=event_payload,
         subscription=subscription,
-        stripe_subscription_payload=stripe_subscription_payload,
     )
+    if not ledger_registration.should_apply:
+        if ledger_registration.reason == 'stale':
+            logger.info('Ignoring stale individual subscription lifecycle event')
+        return
+
+    try:
+        _apply_subscription_payload(
+            subscription=subscription,
+            stripe_subscription_payload=stripe_subscription_payload,
+            event_created_at=stripe_event_created_at(event_payload),
+        )
+        mark_event_applied(ledger_registration.entry)
+    except Exception:
+        if ledger_registration.entry:
+            ledger_registration.entry.delete()
+        raise
 
 
 def _process_stripe_event(event_payload):
@@ -185,6 +238,26 @@ def _process_stripe_event(event_payload):
     }:
         _handle_subscription_lifecycle_event(event_payload)
         return
+
+
+def _process_clinic_stripe_event(event_payload):
+    event_type = _payload_get(event_payload, 'type')
+    supported_event_types = {
+        'checkout.session.completed',
+        'invoice.paid',
+        'invoice.payment_failed',
+        'customer.subscription.updated',
+        'customer.subscription.deleted',
+    }
+    if event_type not in supported_event_types:
+        return
+    if not _payload_get(event_payload, 'id'):
+        return
+
+    # Import lazily to avoid coupling accounts startup with tenants billing.
+    from apps.tenants.billing import record_and_process_webhook_event
+
+    record_and_process_webhook_event(event_payload)
 
 
 def _sync_subscription_from_checkout_session(subscription: UserSubscription) -> UserSubscription:
@@ -232,10 +305,26 @@ def _validate_plan_change_password(user: User, password: str | None) -> str | No
     return None
 
 
+def _is_individual_billing_allowed(user: User) -> bool:
+    if getattr(user, 'clinic_id', None):
+        return False
+    return has_scoped_permission(
+        user,
+        RBACPermission.BILLING_INDIVIDUAL_MANAGE,
+        resource_owner_user_id=user.id,
+    )
+
+
 class BillingPlansView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        if not _is_individual_billing_allowed(request.user):
+            return Response(
+                {'detail': 'Only standalone individual users can access individual billing'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         return Response(
             {
                 'plans': list_individual_billing_plans(),
@@ -256,15 +345,10 @@ class BillingCheckoutView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        if request.user.clinic:
-            return Response(
-                {'detail': 'Clinic users are billed in tenant plan flow'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if request.user.role != 'INDIVIDUAL':
+        if not _is_individual_billing_allowed(request.user):
             return Response(
                 {'detail': 'Only individual users can checkout this billing plan'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         serializer = BillingCheckoutSerializer(data=request.data)
@@ -273,6 +357,11 @@ class BillingCheckoutView(APIView):
 
         success_url = payload.get('success_url') or 'http://localhost:3000/billing/success'
         cancel_url = payload.get('cancel_url') or 'http://localhost:3000/billing/cancel'
+        try:
+            success_url = validate_redirect_url(success_url, field_name='success_url')
+            cancel_url = validate_redirect_url(cancel_url, field_name='cancel_url')
+        except BillingRedirectURLError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         subscription, _ = UserSubscription.objects.get_or_create(user=request.user)
 
@@ -380,9 +469,19 @@ class BillingPortalView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
+        if not _is_individual_billing_allowed(request.user):
+            return Response(
+                {'detail': 'Only individual users can access individual billing portal'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = BillingPortalSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         return_url = serializer.validated_data.get('return_url') or 'http://localhost:3000/billing'
+        try:
+            return_url = validate_redirect_url(return_url, field_name='return_url')
+        except BillingRedirectURLError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         subscription = UserSubscription.objects.filter(user=request.user).first()
         if not subscription:
@@ -419,6 +518,152 @@ class BillingPortalView(APIView):
         return Response({'url': _payload_get(portal_session, 'url')}, status=status.HTTP_200_OK)
 
 
+class BillingSyncView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not is_stripe_billing_enabled():
+            return Response(
+                {'detail': 'Stripe billing is disabled'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        if not _is_individual_billing_allowed(request.user):
+            return Response(
+                {'detail': 'Only standalone individual users can synchronize individual billing'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = BillingSyncSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        checkout_session_id = serializer.validated_data.get('checkout_session_id')
+
+        subscription, _ = UserSubscription.objects.get_or_create(user=request.user)
+
+        if checkout_session_id:
+            try:
+                checkout_payload = retrieve_checkout_session(checkout_session_id)
+            except (BillingConfigurationError, BillingProviderError) as exc:
+                return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+            metadata = _payload_get(checkout_payload, 'metadata', {}) or {}
+            user_id_from_session = (
+                metadata.get('user_id')
+                or _payload_get(checkout_payload, 'client_reference_id')
+            )
+            if not user_id_from_session:
+                return Response(
+                    {'detail': 'Checkout session is missing user ownership metadata'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if str(user_id_from_session) != str(request.user.id):
+                return Response(
+                    {'detail': 'Checkout session does not belong to this user'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            stripe_customer_id = _payload_get(checkout_payload, 'customer')
+            stripe_subscription_id = _payload_get(checkout_payload, 'subscription')
+
+            fields_to_update = []
+            if checkout_session_id != subscription.stripe_checkout_session_id:
+                subscription.stripe_checkout_session_id = checkout_session_id
+                fields_to_update.append('stripe_checkout_session_id')
+            if stripe_customer_id and stripe_customer_id != subscription.stripe_customer_id:
+                subscription.stripe_customer_id = stripe_customer_id
+                fields_to_update.append('stripe_customer_id')
+            if (
+                stripe_subscription_id
+                and stripe_subscription_id != subscription.stripe_subscription_id
+            ):
+                subscription.stripe_subscription_id = stripe_subscription_id
+                fields_to_update.append('stripe_subscription_id')
+
+            if fields_to_update:
+                subscription.save(update_fields=fields_to_update + ['updated_at'])
+
+        if not subscription.stripe_subscription_id and subscription.stripe_checkout_session_id:
+            try:
+                subscription = _sync_subscription_from_checkout_session(subscription)
+            except (BillingConfigurationError, BillingProviderError) as exc:
+                return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not subscription.stripe_subscription_id:
+            return Response(
+                {'detail': 'Checkout session is not completed yet. Try again in a few seconds.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        try:
+            stripe_subscription_payload = retrieve_subscription(subscription.stripe_subscription_id)
+            _apply_subscription_payload(
+                subscription=subscription,
+                stripe_subscription_payload=stripe_subscription_payload,
+                fallback_plan_id=subscription.plan,
+            )
+        except (BillingConfigurationError, BillingProviderError) as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        subscription.refresh_from_db()
+        return Response(
+            {
+                'detail': 'Individual billing synchronized',
+                'plan': subscription.plan,
+                'status': subscription.status,
+                'billing_period_end': subscription.current_period_end,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class BillingCancelView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not is_stripe_billing_enabled():
+            return Response(
+                {'detail': 'Stripe billing is disabled'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        if not _is_individual_billing_allowed(request.user):
+            return Response(
+                {'detail': 'Only standalone individual users can cancel individual subscriptions'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        subscription = UserSubscription.objects.filter(user=request.user).first()
+        if not subscription or not subscription.stripe_subscription_id:
+            return Response(
+                {'detail': 'No active Stripe subscription found for this user'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        try:
+            canceled_payload = cancel_subscription_at_period_end(
+                subscription_id=subscription.stripe_subscription_id,
+            )
+            _apply_subscription_payload(
+                subscription=subscription,
+                stripe_subscription_payload=canceled_payload,
+                fallback_plan_id=subscription.plan,
+                event_created_at=timezone.now(),
+            )
+        except (BillingConfigurationError, BillingProviderError) as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        subscription.refresh_from_db()
+        return Response(
+            {
+                'detail': 'Subscription canceled. Access remains active until billing period end.',
+                'status': UserSubscription.STATUS_CANCELED,
+                'cancel_at_period_end': True,
+                'billing_period_end': subscription.current_period_end,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class StripeBillingWebhookView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -441,6 +686,7 @@ class StripeBillingWebhookView(APIView):
 
         try:
             _process_stripe_event(event_payload)
+            _process_clinic_stripe_event(event_payload)
         except Exception:
             logger.error('Failed to process Stripe webhook event', exc_info=True)
             return Response({'detail': 'Webhook processing failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

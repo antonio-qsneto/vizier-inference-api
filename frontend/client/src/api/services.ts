@@ -2,10 +2,21 @@ import { apiRequest, isPaginatedResponse } from "@/api/client";
 import type { TokenExchangePayload } from "@/auth/session";
 import type {
   CategoriesCatalog,
+  ClinicBillingCancelResponse,
+  ClinicBillingCatalogResponse,
+  ClinicBillingCheckoutResponse,
+  ClinicBillingSyncResponse,
+  ClinicDowngradeResponse,
+  ClinicLeaveResponse,
+  ClinicSeatChangeResponse,
   Clinic,
   ClinicCreatePayload,
+  ClinicTeamMembersResponse,
   DoctorInvitation,
   HealthStatus,
+  IndividualBillingCancelResponse,
+  IndividualBillingSyncResponse,
+  OffboardingStatus,
   PaginatedResponse,
   Study,
   StudyResult,
@@ -71,6 +82,27 @@ export async function fetchCurrentUser(token: string, signal?: AbortSignal) {
   return apiRequest<UserProfile>("/api/auth/users/me/", { token, signal });
 }
 
+export async function fetchOffboardingStatus(token: string, signal?: AbortSignal) {
+  return apiRequest<OffboardingStatus>("/api/auth/users/offboarding_status/", {
+    token,
+    signal,
+  });
+}
+
+export async function deleteAccount(
+  token: string,
+  payload: {
+    confirm_text: string;
+    current_password?: string;
+  },
+) {
+  return apiRequest<{ detail: string }>("/api/auth/users/delete_account/", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function devMockSignup(payload: DevMockSignupPayload) {
   return apiRequest<TokenExchangePayload>("/api/auth/dev/signup/", {
     method: "POST",
@@ -114,6 +146,120 @@ export async function fetchClinicDoctors(token: string, signal?: AbortSignal) {
   return apiRequest<UserSummary[]>("/api/clinics/clinics/doctors/", {
     token,
     signal,
+  });
+}
+
+export async function cancelIndividualBilling(token: string) {
+  return apiRequest<IndividualBillingCancelResponse>("/api/auth/billing/cancel/", {
+    method: "POST",
+    token,
+  });
+}
+
+export async function syncIndividualBilling(
+  token: string,
+  checkoutSessionId?: string,
+) {
+  return apiRequest<IndividualBillingSyncResponse>("/api/auth/billing/sync/", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      checkout_session_id: checkoutSessionId,
+    }),
+  });
+}
+
+export async function fetchClinicTeamMembers(
+  token: string,
+  signal?: AbortSignal,
+) {
+  return apiRequest<ClinicTeamMembersResponse>("/api/clinics/clinics/team_members/", {
+    token,
+    signal,
+  });
+}
+
+export async function fetchClinicBillingPlans(
+  token: string,
+  signal?: AbortSignal,
+) {
+  return apiRequest<ClinicBillingCatalogResponse>("/api/clinics/clinics/billing_plans/", {
+    token,
+    signal,
+  });
+}
+
+export async function startClinicBillingCheckout(
+  token: string,
+  payload: {
+    plan_id: "clinic_monthly" | "clinic_yearly";
+    quantity?: number;
+    success_url?: string;
+    cancel_url?: string;
+  },
+) {
+  return apiRequest<ClinicBillingCheckoutResponse>("/api/clinics/clinics/billing_checkout/", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function startClinicBillingPortal(
+  token: string,
+  returnUrl?: string,
+) {
+  return apiRequest<{ url: string }>("/api/clinics/clinics/billing_portal/", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      return_url: returnUrl,
+    }),
+  });
+}
+
+export async function syncClinicBilling(
+  token: string,
+  checkoutSessionId?: string,
+) {
+  return apiRequest<ClinicBillingSyncResponse>("/api/clinics/clinics/billing_sync/", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      checkout_session_id: checkoutSessionId,
+    }),
+  });
+}
+
+export async function changeClinicSeats(
+  token: string,
+  targetQuantity: number,
+) {
+  return apiRequest<ClinicSeatChangeResponse>("/api/clinics/clinics/change_seats/", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ target_quantity: targetQuantity }),
+  });
+}
+
+export async function downgradeClinicToIndividual(token: string) {
+  return apiRequest<ClinicDowngradeResponse>("/api/clinics/clinics/downgrade_to_individual/", {
+    method: "POST",
+    token,
+  });
+}
+
+export async function cancelClinicSubscription(token: string) {
+  return apiRequest<ClinicBillingCancelResponse>("/api/clinics/clinics/cancel_subscription/", {
+    method: "POST",
+    token,
+  });
+}
+
+export async function leaveClinic(token: string) {
+  return apiRequest<ClinicLeaveResponse>("/api/clinics/clinics/leave_clinic/", {
+    method: "POST",
+    token,
   });
 }
 
@@ -176,6 +322,19 @@ export async function cancelInvitation(token: string, invitationId: string) {
       token,
     },
   );
+}
+
+export async function acknowledgeNotices(
+  token: string,
+  noticeIds?: string[],
+) {
+  return apiRequest<{ acknowledged: number }>("/api/auth/users/acknowledge_notices/", {
+    method: "POST",
+    token,
+    body: JSON.stringify(
+      noticeIds && noticeIds.length ? { notice_ids: noticeIds } : {},
+    ),
+  });
 }
 
 export async function fetchStudies(token: string, signal?: AbortSignal) {

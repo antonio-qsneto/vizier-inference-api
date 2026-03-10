@@ -135,3 +135,59 @@ class AuditService:
             resource_id=str(doctor.id),
             details={'doctor_email': doctor.email}
         )
+
+    @staticmethod
+    def log_billing_webhook_outcome(
+        clinic,
+        *,
+        event_id: str,
+        event_type: str,
+        outcome: str,
+        reason: str | None = None,
+        user=None,
+        livemode: bool = False,
+    ):
+        action = {
+            'processed': 'BILLING_WEBHOOK_PROCESSED',
+            'ignored': 'BILLING_WEBHOOK_IGNORED',
+            'failed': 'BILLING_WEBHOOK_FAILED',
+        }.get((outcome or '').strip().lower(), 'BILLING_WEBHOOK_PROCESSED')
+
+        details = {
+            'event_type': event_type,
+            'outcome': outcome,
+            'livemode': bool(livemode),
+        }
+        if reason:
+            details['reason'] = reason
+
+        AuditService.log_action(
+            clinic=clinic,
+            action=action,
+            user=user,
+            resource_id=event_id,
+            details=details,
+        )
+
+    @staticmethod
+    def log_authorization_change(
+        clinic,
+        *,
+        user,
+        change_type: str,
+        resource_id: str | None = None,
+        details: dict | None = None,
+    ):
+        normalized = (change_type or '').strip().lower()
+        action = (
+            'AUTHZ_MEMBERSHIP_CHANGED'
+            if normalized == 'membership'
+            else 'AUTHZ_ROLE_CHANGED'
+        )
+        AuditService.log_action(
+            clinic=clinic,
+            action=action,
+            user=user,
+            resource_id=resource_id,
+            details=details or {},
+        )

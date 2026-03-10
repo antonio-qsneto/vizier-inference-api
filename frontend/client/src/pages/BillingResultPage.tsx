@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
+import { ApiError } from "@/api/client";
+import { syncIndividualBilling } from "@/api/services";
 import { useAuth } from "@/auth/AuthContext";
 import { startBillingPortal } from "@/billing/adapter";
 import { Panel } from "@/components/primitives";
@@ -24,33 +26,59 @@ export default function BillingResultPage({
   const { accessToken, refreshProfile, user } = useAuth();
   const [syncingProfile, setSyncingProfile] = useState(isSuccess);
   const [openingPortal, setOpeningPortal] = useState(false);
-  const isIndividualUser = user?.role === "INDIVIDUAL" && !user?.clinic_id;
+  const effectiveRole =
+    user?.effective_role ||
+    (user?.role === "CLINIC_ADMIN"
+      ? "clinic_admin"
+      : user?.role === "CLINIC_DOCTOR"
+        ? "clinic_doctor"
+        : "individual");
+  const isIndividualUser = effectiveRole === "individual" && !user?.clinic_id;
   const currentPlan = user?.subscription_plan || FREE_PLAN;
 
   useEffect(() => {
-    if (!isSuccess || !isIndividualUser) {
+    if (!isSuccess || !isIndividualUser || !accessToken) {
       setSyncingProfile(false);
       return;
     }
 
+    const token = accessToken;
+    const checkoutSessionId =
+      new URLSearchParams(window.location.search).get("session_id") || undefined;
     let isCancelled = false;
 
     async function syncProfileAfterCheckout() {
       setSyncingProfile(true);
 
       for (let attempt = 0; attempt < WEBHOOK_SYNC_ATTEMPTS; attempt += 1) {
-        const profile = await refreshProfile();
-        if (isCancelled) {
+        try {
+          await syncIndividualBilling(token, checkoutSessionId);
+          if (isCancelled) {
+            return;
+          }
+          await refreshProfile();
+          setSyncingProfile(false);
           return;
-        }
-
-        const plan = profile?.subscription_plan || FREE_PLAN;
-        if (plan !== FREE_PLAN) {
+        } catch (requestError) {
+          const shouldRetry =
+            requestError instanceof ApiError &&
+            requestError.status === 409 &&
+            attempt < WEBHOOK_SYNC_ATTEMPTS - 1;
+          if (shouldRetry) {
+            await wait(WEBHOOK_SYNC_DELAY_MS);
+            continue;
+          }
+          if (!isCancelled) {
+            toast.error(
+              requestError instanceof Error
+                ? requestError.message
+                : "Falha ao sincronizar assinatura após checkout",
+            );
+            await refreshProfile();
+          }
           setSyncingProfile(false);
           return;
         }
-
-        await wait(WEBHOOK_SYNC_DELAY_MS);
       }
 
       setSyncingProfile(false);
@@ -61,7 +89,7 @@ export default function BillingResultPage({
     return () => {
       isCancelled = true;
     };
-  }, [isSuccess, isIndividualUser, refreshProfile]);
+  }, [accessToken, isSuccess, isIndividualUser, refreshProfile]);
 
   async function handleOpenPortal() {
     try {
@@ -92,7 +120,7 @@ export default function BillingResultPage({
         </h1>
         <p className="text-sm leading-7 text-slate-300">
           {isSuccess
-            ? "O webhook do backend atualizará sua assinatura e o perfil será sincronizado automaticamente."
+            ? "Estamos sincronizando sua assinatura com o Stripe para refletir o plano imediatamente."
             : "O plano não foi alterado. Você pode voltar ao billing e tentar novamente."}
         </p>
 
@@ -104,7 +132,7 @@ export default function BillingResultPage({
 
         {isSuccess && syncingProfile ? (
           <p className="text-xs uppercase tracking-[0.2em] text-sky-300/80">
-            Sincronizando assinatura com webhook...
+            Sincronizando assinatura...
           </p>
         ) : null}
 

@@ -91,6 +91,13 @@ export default function DashboardPage() {
   const processingStudies = studies.filter(
     (study) => study.status === "PROCESSING" || study.status === "SUBMITTED",
   );
+  const effectiveRole =
+    user?.effective_role ||
+    (user?.role === "CLINIC_ADMIN"
+      ? "clinic_admin"
+      : user?.role === "CLINIC_DOCTOR"
+        ? "clinic_doctor"
+        : "individual");
 
   return (
     <motion.section
@@ -227,9 +234,11 @@ export default function DashboardPage() {
             </div>
             <div className="space-y-3 text-sm text-slate-400">
               <p>
-                {clinic
-                  ? `${clinic.active_doctors_count} active doctors and seat limit ${clinic.seat_limit}.`
-                  : "No clinic linked yet. You can complete onboarding from the Clinic page."}
+                {clinic && effectiveRole === "clinic_admin"
+                  ? `${clinic.active_doctors_count ?? 0} active doctors and seat limit ${clinic.seat_limit ?? 0}.`
+                  : clinic
+                    ? "You are linked to a clinic workspace."
+                    : "No clinic linked yet. You can complete onboarding from the Clinic page."}
               </p>
               <div className="flex items-center justify-between rounded-[12px] border border-white/8 bg-[#25262d] px-4 py-3">
                 <span>Pending invitations</span>

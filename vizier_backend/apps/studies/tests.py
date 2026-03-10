@@ -16,7 +16,7 @@ from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
 from apps.studies.models import Study
 from apps.studies.serializers import StudyCreateSerializer
-from apps.tenants.models import Clinic
+from apps.tenants.models import Clinic, Membership
 from apps.studies.views import StudyViewSet
 from services.dicom_pipeline import DicomZipToNpzService
 
@@ -207,6 +207,103 @@ class IndividualSubscriptionAccessTest(TestCase):
         )
 
         self.assertTrue(self.user.has_upload_access())
+
+
+class ClinicSeatAccessControlTest(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.admin = User.objects.create_user(
+            email='clinic-seat-admin@example.com',
+            cognito_sub='clinic-seat-admin-sub',
+            role='CLINIC_ADMIN',
+        )
+        self.clinic = Clinic.objects.create(
+            name='Clinic Seat Access',
+            owner=self.admin,
+            account_status=Clinic.ACCOUNT_STATUS_CANCELED,
+            seat_limit=1,
+            subscription_plan=Clinic.SUBSCRIPTION_PLAN_CLINIC_MONTHLY,
+        )
+        self.admin.clinic = self.clinic
+        self.admin.save(update_fields=['clinic'])
+        Membership.objects.create(
+            account=self.clinic,
+            user=self.admin,
+            role=Membership.ROLE_ADMIN,
+        )
+
+    @staticmethod
+    def _build_upload_payload():
+        return {
+            'dicom_zip': SimpleUploadedFile(
+                'sample.zip',
+                b'PK\x03\x04fakezip',
+                content_type='application/zip',
+            ),
+            'case_identification': 'CASE-CLINIC-ADMIN',
+            'patient_name': 'Patient',
+            'age': 42,
+            'exam_source': 'MRI',
+            'exam_modality': 'MRI',
+            'category_id': 'head',
+        }
+
+    def test_clinic_user_without_active_account_cannot_upload(self):
+        self.assertFalse(self.admin.has_upload_access())
+
+    def test_clinic_admin_cannot_upload_even_with_active_account(self):
+        self.clinic.account_status = Clinic.ACCOUNT_STATUS_ACTIVE
+        self.clinic.seat_limit = 1
+        self.clinic.save(update_fields=['account_status', 'seat_limit', 'updated_at'])
+
+        self.assertFalse(self.admin.has_upload_access())
+
+    def test_clinic_admin_upload_endpoint_returns_forbidden(self):
+        self.clinic.account_status = Clinic.ACCOUNT_STATUS_ACTIVE
+        self.clinic.seat_limit = 1
+        self.clinic.save(update_fields=['account_status', 'seat_limit', 'updated_at'])
+
+        request = self.factory.post(
+            '/api/studies/upload/',
+            data=self._build_upload_payload(),
+            format='multipart',
+        )
+        force_authenticate(request, user=self.admin)
+        view = StudyViewSet.as_view({'post': 'upload'})
+
+        response = view(request)
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_clinic_user_blocked_when_seat_usage_exceeds_limit(self):
+        doctor_one = User.objects.create_user(
+            email='clinic-seat-doc-1@example.com',
+            cognito_sub='clinic-seat-doc-1-sub',
+            role='CLINIC_DOCTOR',
+            clinic=self.clinic,
+        )
+        doctor_two = User.objects.create_user(
+            email='clinic-seat-doc-2@example.com',
+            cognito_sub='clinic-seat-doc-2-sub',
+            role='CLINIC_DOCTOR',
+            clinic=self.clinic,
+        )
+        Membership.objects.create(
+            account=self.clinic,
+            user=doctor_one,
+            role=Membership.ROLE_DOCTOR,
+        )
+        Membership.objects.create(
+            account=self.clinic,
+            user=doctor_two,
+            role=Membership.ROLE_DOCTOR,
+        )
+
+        self.clinic.account_status = Clinic.ACCOUNT_STATUS_ACTIVE
+        self.clinic.seat_limit = 1
+        self.clinic.save(update_fields=['account_status', 'seat_limit', 'updated_at'])
+
+        self.assertFalse(self.admin.has_upload_access())
 
 
 class NpzPreprocessingServiceTest(TestCase):

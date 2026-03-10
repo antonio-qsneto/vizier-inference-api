@@ -7,6 +7,7 @@ import logging
 
 import requests
 from django.conf import settings
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -20,7 +21,11 @@ from .dev_mock_auth import (
     is_dev_mock_auth_enabled,
 )
 from .models import User
+from .offboarding import build_offboarding_status, soft_delete_user_account
+from .rbac import RBACPermission, has_scoped_permission
 from .serializers import (
+    AcknowledgeNoticesSerializer,
+    DeleteAccountSerializer,
     DevMockLoginSerializer,
     DevMockSignupSerializer,
     UserProfileSerializer,
@@ -46,23 +51,24 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """
-        Filter users based on user's role and clinic.
-        
-        - Staff/Superuser: see all users
-        - Clinic Admin (CLINIC_ADMIN): see users in their clinic
-        - Clinic Doctor, Individual Doctor: see only themselves
+        Filter users based on scoped RBAC permissions.
+
+        - Platform admin: all users
+        - Tenant-scoped user read: users in same clinic
+        - Fallback: own profile only
         """
         user = self.request.user
-        
-        # Staff/Superuser can see all users
+
         if user.is_staff or user.is_superuser:
             return User.objects.all()
-        
-        # Clinic admin can see users in their clinic
-        if user.role == 'CLINIC_ADMIN' and user.clinic:
+
+        if has_scoped_permission(
+            user,
+            RBACPermission.USERS_READ_TENANT,
+            tenant_id=user.clinic_id,
+        ) and user.clinic:
             return User.objects.filter(clinic=user.clinic)
-        
-        # Clinic doctors, individual doctors, and others see only themselves
+
         return User.objects.filter(id=user.id)
 
     @action(detail=False, methods=['get'])
@@ -72,6 +78,61 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         """
         serializer = UserProfileSerializer(request.user)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def acknowledge_notices(self, request):
+        serializer = AcknowledgeNoticesSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+
+        notice_ids = serializer.validated_data.get('notice_ids')
+        queryset = request.user.notices.filter(acknowledged_at__isnull=True)
+        if notice_ids:
+            queryset = queryset.filter(id__in=notice_ids)
+
+        acknowledged_count = queryset.update(acknowledged_at=timezone.now())
+        return Response({'acknowledged': acknowledged_count}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def offboarding_status(self, request):
+        offboarding = build_offboarding_status(request.user)
+        return Response(offboarding.as_dict(), status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def delete_account(self, request):
+        serializer = DeleteAccountSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+
+        if serializer.validated_data.get('confirm_text') != 'EXCLUIR':
+            return Response(
+                {'detail': 'Invalid confirmation text. Type EXCLUIR to continue.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        current_password = serializer.validated_data.get('current_password') or ''
+        if request.user.has_usable_password():
+            if not current_password:
+                return Response(
+                    {'detail': 'Current password is required to delete account'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not request.user.check_password(current_password):
+                return Response(
+                    {'detail': 'Invalid password confirmation'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        offboarding = build_offboarding_status(request.user)
+        if not offboarding.can_delete_account:
+            return Response(
+                {
+                    'detail': 'Account cannot be deleted due to active billing/account blockers.',
+                    **offboarding.as_dict(),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        soft_delete_user_account(request.user)
+        return Response({'detail': 'Conta excluída com sucesso.'}, status=status.HTTP_200_OK)
 
 
 class CategoriesViewSet(viewsets.ViewSet):

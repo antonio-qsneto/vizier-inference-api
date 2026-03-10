@@ -13,6 +13,7 @@ import DashboardPage from "@/pages/DashboardPage";
 import InvitationsPage from "@/pages/InvitationsPage";
 import LoginPage from "@/pages/LoginPage";
 import NotFoundPage from "@/pages/NotFoundPage";
+import ProfilePage from "@/pages/ProfilePage";
 import StudyDetailPage from "@/pages/StudyDetailPage";
 import StudiesPage from "@/pages/StudiesPage";
 import StudyUploadPage from "@/pages/StudyUploadPage";
@@ -119,6 +120,12 @@ function Router() {
       <Route path="/billing">
         <AuthGate>
           <BillingPage />
+        </AuthGate>
+      </Route>
+
+      <Route path="/profile">
+        <AuthGate>
+          <ProfilePage />
         </AuthGate>
       </Route>
 

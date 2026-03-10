@@ -21,6 +21,7 @@ from django.utils import timezone
 from .models import Study, Job
 from .serializers import StudySerializer, StudyCreateSerializer, StudyStatusSerializer, StudyResultSerializer
 from apps.accounts.permissions import TenantQuerySetMixin
+from apps.accounts.rbac import RBACPermission, has_scoped_permission
 from apps.audit.services import AuditService
 from services.dicom_pipeline import DicomZipToNpzService, cleanup_temp_files
 from services.s3_utils import S3Utils
@@ -38,6 +39,21 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
     serializer_class = StudySerializer
     permission_classes = [IsAuthenticated]
     parser_classes = (MultiPartParser, FormParser)
+
+    @staticmethod
+    def _can_access_study(user, study, *, permission_code: str) -> bool:
+        if study.clinic_id:
+            return has_scoped_permission(
+                user,
+                permission_code,
+                tenant_id=study.clinic_id,
+            )
+
+        return has_scoped_permission(
+            user,
+            permission_code,
+            resource_owner_user_id=study.owner_id,
+        )
     
     @action(detail=False, methods=['post'], parser_classes=(MultiPartParser, FormParser))
     def upload(self, request):
@@ -54,26 +70,46 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         serializer = StudyCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Access rules:
-        # - clinic users: studies are attached to their clinic
-        # - INDIVIDUAL users: studies are personal and clinic-less
-        if not request.user.clinic and request.user.role != 'INDIVIDUAL':
-            return Response(
-                {'error': 'User must belong to a clinic'},
-                status=status.HTTP_400_BAD_REQUEST
+        if request.user.clinic_id:
+            can_create = has_scoped_permission(
+                request.user,
+                RBACPermission.STUDIES_CREATE,
+                tenant_id=request.user.clinic_id,
+            )
+        else:
+            can_create = has_scoped_permission(
+                request.user,
+                RBACPermission.STUDIES_CREATE,
+                resource_owner_user_id=request.user.id,
             )
 
-        if request.user.role == 'INDIVIDUAL' and not request.user.clinic:
-            if not request.user.has_upload_access():
+        if not can_create:
+            return Response(
+                {'error': 'Permission denied to create studies in this scope'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not request.user.has_upload_access():
+            if request.user.clinic:
                 return Response(
                     {
                         'error': (
-                            'Plano free não permite upload. '
-                            'Assine o plano individual mensal ou anual para enviar estudos.'
+                            'Conta da clínica sem acesso de upload. '
+                            'Verifique status da assinatura e limite de assentos.'
                         )
                     },
                     status=status.HTTP_403_FORBIDDEN,
                 )
+
+            return Response(
+                {
+                    'error': (
+                        'Plano free não permite upload. '
+                        'Assine o plano individual mensal ou anual para enviar estudos.'
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         # Resolve category (name + prompt) before heavy file processing.
         # Return field-specific errors for easier API testing/debugging.
@@ -201,8 +237,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                 )
             except IntegrityError as exc:
                 if (
-                    request.user.role == 'INDIVIDUAL'
-                    and not getattr(request.user, 'clinic_id', None)
+                    not getattr(request.user, 'clinic_id', None)
                     and 'clinic_id' in str(exc)
                     and 'violates not-null constraint' in str(exc)
                 ):
@@ -297,13 +332,11 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         """
         study = self.get_object()
         
-        # Check permission
-        if request.user.clinic:
-            allowed = study.clinic == request.user.clinic
-        else:
-            allowed = study.owner_id == request.user.id
-
-        if not allowed:
+        if not self._can_access_study(
+            request.user,
+            study,
+            permission_code=RBACPermission.STUDIES_READ,
+        ):
             return Response(
                 {'error': 'Permission denied'},
                 status=status.HTTP_403_FORBIDDEN
@@ -484,13 +517,11 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         """
         study = self.get_object()
         
-        # Check permission
-        if request.user.clinic:
-            allowed = study.clinic == request.user.clinic
-        else:
-            allowed = study.owner_id == request.user.id
-
-        if not allowed:
+        if not self._can_access_study(
+            request.user,
+            study,
+            permission_code=RBACPermission.STUDIES_RESULTS_READ,
+        ):
             return Response(
                 {'error': 'Permission denied'},
                 status=status.HTTP_403_FORBIDDEN

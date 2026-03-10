@@ -21,6 +21,13 @@ class InferenceClient:
     def __init__(self):
         self.base_url = settings.INFERENCE_API_URL.rstrip('/')
         self.timeout = settings.INFERENCE_API_TIMEOUT
+        self.bearer_token = getattr(settings, 'INFERENCE_API_BEARER_TOKEN', None)
+
+    def _auth_headers(self) -> dict[str, str]:
+        token = (self.bearer_token or '').strip()
+        if not token:
+            return {}
+        return {'Authorization': f'Bearer {token}'}
     
     def submit_job(self, file_path: str) -> str:
         """
@@ -43,6 +50,7 @@ class InferenceClient:
                 response = requests.post(
                     f"{self.base_url}/jobs/submit",
                     files=files,
+                    headers=self._auth_headers(),
                     timeout=self.timeout
                 )
             
@@ -78,6 +86,7 @@ class InferenceClient:
         try:
             response = requests.get(
                 f"{self.base_url}/jobs/{job_id}/status",
+                headers=self._auth_headers(),
                 timeout=self.timeout
             )
             
@@ -115,6 +124,7 @@ class InferenceClient:
             # Endpoint returns NPZ file or JSON
             response = requests.get(
                 f"{self.base_url}/jobs/{job_id}/results",
+                headers=self._auth_headers(),
                 timeout=self.timeout,
                 stream=True
             )

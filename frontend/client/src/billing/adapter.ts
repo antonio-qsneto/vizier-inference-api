@@ -70,7 +70,7 @@ export async function startBillingCheckout({
 
   const successUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/billing/success?plan=${planId}`
+      ? `${window.location.origin}/billing/success?plan=${planId}&session_id={CHECKOUT_SESSION_ID}`
       : "/billing/success";
   const cancelUrl =
     typeof window !== "undefined"

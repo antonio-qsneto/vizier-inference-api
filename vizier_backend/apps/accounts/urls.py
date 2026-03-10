@@ -18,6 +18,8 @@ urlpatterns = [
     path('dev/login/', views.DevMockLoginView.as_view(), name='dev-login'),
     path('billing/plans/', billing_views.BillingPlansView.as_view(), name='billing-plans'),
     path('billing/checkout/', billing_views.BillingCheckoutView.as_view(), name='billing-checkout'),
+    path('billing/sync/', billing_views.BillingSyncView.as_view(), name='billing-sync'),
+    path('billing/cancel/', billing_views.BillingCancelView.as_view(), name='billing-cancel'),
     path('billing/portal/', billing_views.BillingPortalView.as_view(), name='billing-portal'),
     path('billing/webhook/', billing_views.StripeBillingWebhookView.as_view(), name='billing-webhook'),
     path('', include(router.urls)),

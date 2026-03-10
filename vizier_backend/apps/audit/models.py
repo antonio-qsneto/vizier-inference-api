@@ -22,6 +22,18 @@ class AuditLog(models.Model):
         ('DOCTOR_REMOVE', 'Doctor Removed'),
         ('CLINIC_CREATED', 'Clinic Created'),
         ('CLINIC_UPDATED', 'Clinic Updated'),
+        ('BILLING_CHECKOUT_CREATED', 'Billing Checkout Created'),
+        ('BILLING_SUBSCRIPTION_UPDATED', 'Billing Subscription Updated'),
+        ('BILLING_PORTAL_OPENED', 'Billing Portal Opened'),
+        ('BILLING_SYNCED', 'Billing Synchronized'),
+        ('BILLING_SEATS_UPDATED', 'Billing Seats Updated'),
+        ('BILLING_DOWNGRADE_SCHEDULED', 'Billing Downgrade Scheduled'),
+        ('BILLING_DOWNGRADE_APPLIED', 'Billing Downgrade Applied'),
+        ('BILLING_WEBHOOK_PROCESSED', 'Billing Webhook Processed'),
+        ('BILLING_WEBHOOK_IGNORED', 'Billing Webhook Ignored'),
+        ('BILLING_WEBHOOK_FAILED', 'Billing Webhook Failed'),
+        ('AUTHZ_ROLE_CHANGED', 'Authorization Role Changed'),
+        ('AUTHZ_MEMBERSHIP_CHANGED', 'Authorization Membership Changed'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

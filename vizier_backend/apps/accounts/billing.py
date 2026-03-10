@@ -5,12 +5,15 @@ Stripe billing helpers for individual-user subscriptions.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
+import hashlib
 from typing import Any
 
 from django.conf import settings
+from django.utils import timezone
 
 from .models import UserSubscription
+from apps.tenants.billing_ledger import mark_event_applied, register_individual_event
 
 
 class BillingConfigurationError(Exception):
@@ -60,8 +63,33 @@ def _obj_get(obj: Any, key: str, default: Any = None) -> Any:
     return getattr(obj, key, default)
 
 
+def _obj_to_dict(obj: Any) -> dict[str, Any]:
+    if isinstance(obj, dict):
+        return obj
+    to_recursive = getattr(obj, 'to_dict_recursive', None)
+    if callable(to_recursive):
+        return to_recursive()
+    to_dict = getattr(obj, 'to_dict', None)
+    if callable(to_dict):
+        return to_dict()
+    return {}
+
+
 def is_stripe_billing_enabled() -> bool:
     return bool(getattr(settings, 'ENABLE_STRIPE_BILLING', False))
+
+
+def configured_dunning_grace_days() -> int:
+    raw = getattr(settings, 'BILLING_DUNNING_GRACE_DAYS', 7)
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 7
+
+
+def compute_grace_until(reference_dt: datetime | None = None) -> datetime:
+    reference_dt = reference_dt or timezone.now()
+    return reference_dt + timedelta(days=configured_dunning_grace_days())
 
 
 def get_plan_definition(plan_id: str) -> BillingPlanDefinition:
@@ -274,6 +302,20 @@ def create_customer_portal_session(*, customer_id: str, return_url: str):
         raise BillingProviderError(f'Failed to create Stripe customer portal session: {exc}') from exc
 
 
+def cancel_subscription_at_period_end(*, subscription_id: str):
+    stripe = _get_stripe_sdk()
+    stripe.api_key = _get_stripe_secret_key()
+
+    try:
+        return stripe.Subscription.modify(
+            subscription_id,
+            cancel_at_period_end=True,
+            proration_behavior='none',
+        )
+    except Exception as exc:
+        raise BillingProviderError(f'Failed to cancel Stripe subscription at period end: {exc}') from exc
+
+
 def construct_webhook_event(*, payload: bytes, signature: str):
     stripe = _get_stripe_sdk()
     stripe.api_key = _get_stripe_secret_key()
@@ -372,3 +414,122 @@ def infer_plan_id_from_price_id(price_id: str | None) -> str | None:
     if interval == 'year':
         return UserSubscription.PLAN_INDIVIDUAL_ANNUAL
     return None
+
+
+def apply_subscription_payload(
+    *,
+    subscription: UserSubscription,
+    stripe_subscription_payload: Any,
+    fallback_plan_id: str | None = None,
+    event_created_at: datetime | None = None,
+) -> UserSubscription:
+    stripe_status = _obj_get(stripe_subscription_payload, 'status')
+    stripe_subscription_id = _obj_get(stripe_subscription_payload, 'id')
+    stripe_customer_id = _obj_get(stripe_subscription_payload, 'customer')
+    cancel_at_period_end = bool(_obj_get(stripe_subscription_payload, 'cancel_at_period_end', False))
+    current_period_end = timestamp_to_datetime(
+        _obj_get(stripe_subscription_payload, 'current_period_end')
+    )
+    price_id = extract_subscription_price_id(stripe_subscription_payload)
+    inferred_plan = infer_plan_id_from_price_id(price_id)
+
+    target_plan = inferred_plan or fallback_plan_id or subscription.plan
+    if target_plan not in {
+        UserSubscription.PLAN_INDIVIDUAL_MONTHLY,
+        UserSubscription.PLAN_INDIVIDUAL_ANNUAL,
+    }:
+        target_plan = subscription.plan or UserSubscription.PLAN_FREE
+
+    subscription.plan = target_plan
+    normalized_status = normalize_subscription_status(stripe_status)
+    if cancel_at_period_end and normalized_status in {
+        UserSubscription.STATUS_ACTIVE,
+        UserSubscription.STATUS_TRIALING,
+        UserSubscription.STATUS_PAST_DUE,
+    }:
+        normalized_status = UserSubscription.STATUS_CANCELED
+    subscription.status = normalized_status
+    if stripe_subscription_id:
+        subscription.stripe_subscription_id = stripe_subscription_id
+    if stripe_customer_id:
+        subscription.stripe_customer_id = stripe_customer_id
+    if price_id:
+        subscription.stripe_price_id = price_id
+    subscription.current_period_end = current_period_end
+    subscription.cancel_at_period_end = cancel_at_period_end
+
+    if subscription.status == UserSubscription.STATUS_CANCELED:
+        if not subscription.canceled_at:
+            subscription.canceled_at = event_created_at or timezone.now()
+    elif not cancel_at_period_end:
+        subscription.canceled_at = None
+
+    if subscription.status == UserSubscription.STATUS_PAST_DUE:
+        computed_grace_until = compute_grace_until(event_created_at)
+        if (
+            not subscription.billing_grace_until
+            or subscription.billing_grace_until < computed_grace_until
+        ):
+            subscription.billing_grace_until = computed_grace_until
+    elif subscription.status in {UserSubscription.STATUS_ACTIVE, UserSubscription.STATUS_TRIALING}:
+        subscription.billing_grace_until = None
+    elif subscription.status in {
+        UserSubscription.STATUS_CANCELED,
+        UserSubscription.STATUS_INACTIVE,
+    }:
+        subscription.billing_grace_until = None
+
+    subscription.save()
+    return subscription
+
+
+def subscription_state_fingerprint(subscription_payload: Any) -> str:
+    signature = '|'.join(
+        [
+            str(_obj_get(subscription_payload, 'id') or ''),
+            str(_obj_get(subscription_payload, 'status') or ''),
+            str(_obj_get(subscription_payload, 'current_period_end') or ''),
+            str(extract_subscription_price_id(subscription_payload) or ''),
+        ]
+    )
+    return hashlib.sha256(signature.encode('utf-8')).hexdigest()[:24]
+
+
+def reconcile_individual_subscription_state(*, subscription: UserSubscription) -> bool:
+    stripe_subscription_id = subscription.stripe_subscription_id
+    if not stripe_subscription_id:
+        return False
+
+    stripe_subscription_payload = retrieve_subscription(stripe_subscription_id)
+    event_created_at = timezone.now()
+    idempotency_key = (
+        f"reconcile:individual:{subscription.user_id}:"
+        f"{subscription_state_fingerprint(stripe_subscription_payload)}"
+    )
+    registration = register_individual_event(
+        user=subscription.user,
+        source='reconciliation',
+        event_type='subscription.snapshot',
+        event_created_at=event_created_at,
+        idempotency_key=idempotency_key,
+        stripe_event_id=None,
+        stripe_subscription_id=str(stripe_subscription_id),
+        payload=_obj_to_dict(stripe_subscription_payload),
+    )
+    if not registration.should_apply:
+        return False
+
+    ledger_entry = registration.entry
+    try:
+        apply_subscription_payload(
+            subscription=subscription,
+            stripe_subscription_payload=stripe_subscription_payload,
+            fallback_plan_id=subscription.plan,
+            event_created_at=event_created_at,
+        )
+        mark_event_applied(ledger_entry)
+        return True
+    except Exception:
+        if ledger_entry:
+            ledger_entry.delete()
+        raise

@@ -73,16 +73,31 @@ export default function StudyUploadPage() {
     formState.examModality && formState.categoryId
       ? catalog[formState.examModality]?.[formState.categoryId] || []
       : [];
-  const isIndividualFreePlan =
-    user?.role === "INDIVIDUAL" &&
-    !user?.clinic_id &&
-    (user?.subscription_plan === "free" || !user?.subscription_plan);
+  const effectiveRole =
+    user?.effective_role ||
+    (user?.role === "CLINIC_ADMIN"
+      ? "clinic_admin"
+      : user?.role === "CLINIC_DOCTOR"
+        ? "clinic_doctor"
+        : "individual");
+  const isClinicAdmin = effectiveRole === "clinic_admin";
+  const uploadEnabled = Boolean(user?.upload_enabled);
+  const canUpgradeIndividually =
+    effectiveRole === "individual" && !user?.clinic_id;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isIndividualFreePlan) {
-      toast.error("Plano free não permite upload. Faça upgrade no billing.");
-      navigate("/billing");
+    if (isClinicAdmin) {
+      toast.error("Admins de clínica não possuem permissão de upload.");
+      return;
+    }
+    if (!uploadEnabled) {
+      if (canUpgradeIndividually) {
+        toast.error("Upload indisponível. Faça upgrade no billing.");
+        navigate("/billing");
+      } else {
+        toast.error("Upload indisponível para o estado atual da conta.");
+      }
       return;
     }
 
@@ -138,17 +153,29 @@ export default function StudyUploadPage() {
         description="O payload segue exatamente o serializer do backend: arquivo + `case_identification`, `patient_name`, `age`, `exam_source`, `exam_modality` e `category_id`."
       />
 
-      {isIndividualFreePlan ? (
-        <InlineNotice title="Upload bloqueado no plano free">
-          Para enviar estudos, assine o plano individual mensal ou anual na
-          página de billing.
-          <span className="ml-2 inline-flex">
-            <Link href="/billing">
-              <a className="font-semibold text-sky-300 underline underline-offset-4">
-                Ir para billing
-              </a>
-            </Link>
-          </span>
+      {isClinicAdmin ? (
+        <InlineNotice title="Upload bloqueado para admin">
+          O perfil `CLINIC_ADMIN` é apenas gerencial e não pode enviar estudos.
+        </InlineNotice>
+      ) : null}
+
+      {!isClinicAdmin && !uploadEnabled ? (
+        <InlineNotice title="Upload bloqueado">
+          {canUpgradeIndividually ? (
+            <>
+              Para enviar estudos, assine o plano individual mensal ou anual na
+              página de billing.
+              <span className="ml-2 inline-flex">
+                <Link href="/billing">
+                  <a className="font-semibold text-sky-300 underline underline-offset-4">
+                    Ir para billing
+                  </a>
+                </Link>
+              </span>
+            </>
+          ) : (
+            <>Seu perfil não possui upload habilitado neste momento.</>
+          )}
         </InlineNotice>
       ) : null}
 
@@ -156,10 +183,11 @@ export default function StudyUploadPage() {
         <InlineNotice title="Catalog load failed">{error}</InlineNotice>
       ) : null}
 
-      <form
-        onSubmit={handleSubmit}
-        className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]"
-      >
+      {!isClinicAdmin && uploadEnabled ? (
+        <form
+          onSubmit={handleSubmit}
+          className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]"
+        >
         <Panel className="space-y-5">
           <div className="grid gap-4 md:grid-cols-2">
             <input
@@ -294,7 +322,7 @@ export default function StudyUploadPage() {
 
           <button
             type="submit"
-            disabled={submitting || isIndividualFreePlan}
+            disabled={submitting || !uploadEnabled}
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? <Spinner className="size-4" /> : null}
@@ -339,7 +367,8 @@ export default function StudyUploadPage() {
             )}
           </Panel>
         </div>
-      </form>
+        </form>
+      ) : null}
     </motion.section>
   );
 }

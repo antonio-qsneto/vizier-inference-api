@@ -20,6 +20,7 @@ from .dev_mock_auth import (
     parse_dev_mock_access_token,
 )
 from .models import User
+from .rbac import RBACRole, resolve_effective_role
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,12 @@ class CognitoJWTAuthentication(TokenAuthentication):
 
     @staticmethod
     def _should_use_development_auth() -> bool:
+        if not getattr(settings, 'DEBUG', False):
+            return False
+
+        if not getattr(settings, 'ALLOW_INSECURE_DEV_AUTH_FALLBACK', False):
+            return False
+
         if not getattr(settings, 'DEVELOPMENT_MODE', False):
             return False
 
@@ -78,7 +85,7 @@ class CognitoJWTAuthentication(TokenAuthentication):
             # In development mode without Cognito, create a dummy user
             if self._should_use_development_auth():
                 # Development mode: create or get dummy user
-                from apps.tenants.models import Clinic
+                from apps.tenants.models import Clinic, Membership
 
                 owner, _ = User.objects.get_or_create(
                     cognito_sub='dev-owner',
@@ -90,10 +97,17 @@ class CognitoJWTAuthentication(TokenAuthentication):
                         'is_staff': True,
                     }
                 )
+                if owner.is_deleted():
+                    raise AuthenticationFailed('Account has been deleted')
 
                 clinic, _ = Clinic.objects.get_or_create(
                     name='Development Clinic',
                     defaults={'cnpj': '00000000000191', 'owner': owner}
+                )
+                Membership.objects.get_or_create(
+                    account=clinic,
+                    user=owner,
+                    defaults={'role': Membership.ROLE_ADMIN},
                 )
 
                 user, _ = User.objects.get_or_create(
@@ -102,10 +116,22 @@ class CognitoJWTAuthentication(TokenAuthentication):
                         'email': 'dev@example.com',
                         'first_name': 'Dev',
                         'last_name': 'User',
+                        'role': 'CLINIC_ADMIN',
                         'clinic': clinic,
                         'is_active': True,
                         'is_staff': True,
                     }
+                )
+                if user.is_deleted():
+                    raise AuthenticationFailed('Account has been deleted')
+                if user.clinic_id != clinic.id or user.role != 'CLINIC_ADMIN':
+                    user.clinic = clinic
+                    user.role = 'CLINIC_ADMIN'
+                    user.save(update_fields=['clinic', 'role', 'updated_at'])
+                Membership.objects.get_or_create(
+                    account=clinic,
+                    user=user,
+                    defaults={'role': Membership.ROLE_ADMIN},
                 )
                 logger.info("Development mode: authenticated as %s", user.email)
                 return (user, token)
@@ -136,6 +162,8 @@ class CognitoJWTAuthentication(TokenAuthentication):
             # the token does not include role information.
             user_qs = User.objects.filter(cognito_sub=cognito_sub)
             if not user_qs.exists():
+                role_before_update = None
+                clinic_before_update = None
                 defaults = {
                     'email': email,
                     'is_active': True,
@@ -144,8 +172,13 @@ class CognitoJWTAuthentication(TokenAuthentication):
                 user = User.objects.create(cognito_sub=cognito_sub, **defaults)
             else:
                 user = user_qs.first()
+                if user.is_deleted():
+                    raise AuthenticationFailed('Account has been deleted')
+                role_before_update = user.role
+                clinic_before_update = user.clinic_id
                 user.email = email
-                user.is_active = True
+                if user.account_lifecycle_status == User.ACCOUNT_LIFECYCLE_ACTIVE:
+                    user.is_active = True
                 # Only update role if the token provides it.
                 if token_role:
                     user.role = token_role
@@ -159,9 +192,44 @@ class CognitoJWTAuthentication(TokenAuthentication):
                     user.save(update_fields=['clinic', 'updated_at'])
                 except Clinic.DoesNotExist:
                     logger.warning("Clinic %s not found for user %s", clinic_id, email)
+
+            from apps.audit.services import AuditService
+            if (
+                token_role
+                and role_before_update
+                and role_before_update != user.role
+                and user.clinic_id
+            ):
+                AuditService.log_authorization_change(
+                    clinic=user.clinic,
+                    user=user,
+                    change_type='role',
+                    resource_id=str(user.id),
+                    details={
+                        'source': 'cognito_claim',
+                        'before': role_before_update,
+                        'after': user.role,
+                    },
+                )
+            if (
+                clinic_id
+                and clinic_before_update != user.clinic_id
+                and user.clinic_id
+            ):
+                AuditService.log_authorization_change(
+                    clinic=user.clinic,
+                    user=user,
+                    change_type='membership',
+                    resource_id=str(user.id),
+                    details={
+                        'source': 'cognito_claim',
+                        'before_clinic_id': str(clinic_before_update),
+                        'after_clinic_id': str(user.clinic_id),
+                    },
+                )
             
-            # Auto-accept pending invitations if user doesn't belong to a clinic
-            if not user.clinic and user.role == 'INDIVIDUAL':
+            # Auto-accept pending invitations for individual users without a clinic.
+            if not user.clinic and resolve_effective_role(user) == RBACRole.INDIVIDUAL:
                 from apps.tenants.models import DoctorInvitation
                 now = timezone.now()
 
@@ -184,20 +252,48 @@ class CognitoJWTAuthentication(TokenAuthentication):
                 if len(valid_invitations) == 1:
                     invitation = valid_invitations[0]
                     try:
-                        invitation.accept()
-                        user.clinic = invitation.clinic
-                        user.role = 'CLINIC_DOCTOR'
-                        user.save(update_fields=['clinic', 'role', 'updated_at'])
+                        from django.db import transaction
+                        from apps.tenants.billing import sync_seat_quantity_with_stripe
+                        from apps.tenants.models import Membership
+
+                        with transaction.atomic():
+                            invitation.accept()
+                            user.clinic = invitation.clinic
+                            user.role = 'CLINIC_DOCTOR'
+                            user.save(update_fields=['clinic', 'role', 'updated_at'])
+
+                            membership, created = Membership.objects.get_or_create(
+                                account=invitation.clinic,
+                                user=user,
+                                defaults={'role': Membership.ROLE_DOCTOR},
+                            )
+                            if not created and membership.role != Membership.ROLE_DOCTOR:
+                                membership.role = Membership.ROLE_DOCTOR
+                                membership.save(update_fields=['role', 'updated_at'])
+
+                            if invitation.clinic.stripe_subscription_id:
+                                sync_seat_quantity_with_stripe(clinic=invitation.clinic)
+
                         logger.info(
                             "Auto-accepted invitation %s for %s to clinic %s",
                             invitation.id,
                             user.email,
                             invitation.clinic_id,
                         )
+                        AuditService.log_authorization_change(
+                            clinic=invitation.clinic,
+                            user=user,
+                            change_type='membership',
+                            resource_id=str(user.id),
+                            details={
+                                'source': 'invitation_auto_accept',
+                                'invitation_id': str(invitation.id),
+                                'assigned_role': 'CLINIC_DOCTOR',
+                            },
+                        )
                     except Exception:
                         logger.error("Failed to auto-accept invitation %s", invitation.id, exc_info=True)
 
-            from apps.audit.services import AuditService
             AuditService.log_login(user)
 
             return (user, token)

@@ -2,6 +2,8 @@
 User and authentication models.
 """
 
+import uuid
+
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
@@ -47,6 +49,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('CLINIC_ADMIN', 'Clinic Administrator'),
         ('CLINIC_DOCTOR', 'Clinic Doctor'),
     ]
+    ACCOUNT_LIFECYCLE_ACTIVE = 'active'
+    ACCOUNT_LIFECYCLE_DELETED = 'deleted'
+    ACCOUNT_LIFECYCLE_CHOICES = [
+        (ACCOUNT_LIFECYCLE_ACTIVE, 'Active'),
+        (ACCOUNT_LIFECYCLE_DELETED, 'Deleted'),
+    ]
     
     # Cognito integration
     cognito_sub = models.CharField(
@@ -77,6 +85,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Status
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    account_lifecycle_status = models.CharField(
+        max_length=20,
+        choices=ACCOUNT_LIFECYCLE_CHOICES,
+        default=ACCOUNT_LIFECYCLE_ACTIVE,
+    )
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    anonymized_at = models.DateTimeField(null=True, blank=True)
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -95,6 +110,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             models.Index(fields=['cognito_sub']),
             models.Index(fields=['email']),
             models.Index(fields=['clinic', 'role']),
+            models.Index(fields=['account_lifecycle_status']),
         ]
     
     def __str__(self):
@@ -107,18 +123,27 @@ class User(AbstractBaseUser, PermissionsMixin):
     def get_short_name(self):
         """Return the user's short name."""
         return self.first_name or self.email
+
+    def is_deleted(self) -> bool:
+        return self.account_lifecycle_status == self.ACCOUNT_LIFECYCLE_DELETED
     
     def is_clinic_admin(self):
         """Check if user is a clinic administrator."""
-        return self.role == 'CLINIC_ADMIN'
+        from .rbac import RBACRole, resolve_effective_role
+
+        return resolve_effective_role(self) == RBACRole.CLINIC_ADMIN
     
     def is_clinic_doctor(self):
         """Check if user is a clinic doctor."""
-        return self.role == 'CLINIC_DOCTOR'
+        from .rbac import RBACRole, resolve_effective_role
+
+        return resolve_effective_role(self) == RBACRole.CLINIC_DOCTOR
     
     def is_individual_doctor(self):
         """Check if user is an individual doctor."""
-        return self.role == 'INDIVIDUAL'
+        from .rbac import RBACRole, resolve_effective_role
+
+        return resolve_effective_role(self) == RBACRole.INDIVIDUAL
 
     def get_effective_subscription_plan(self) -> str:
         """
@@ -128,7 +153,9 @@ class User(AbstractBaseUser, PermissionsMixin):
         - Individual users rely on active Stripe-backed subscription
         """
         if self.clinic:
-            return self.clinic.subscription_plan or 'free'
+            if self.clinic.can_use_clinic_resources():
+                return self.clinic.subscription_plan or 'free'
+            return 'free'
 
         subscription = UserSubscription.objects.filter(user=self).first()
         if subscription and subscription.has_active_access():
@@ -140,13 +167,32 @@ class User(AbstractBaseUser, PermissionsMixin):
         """
         Upload permission business rule.
 
-        - Clinic members keep existing access rules
+        - Clinic members require an active clinic account and valid seat usage
         - Individual users require active paid subscription
         """
-        if self.clinic:
-            return True
+        from .rbac import RBACPermission, has_scoped_permission
 
-        if self.role != 'INDIVIDUAL':
+        if not self.is_active or self.is_deleted():
+            return False
+
+        if self.clinic:
+            clinic = self.clinic
+            if clinic.plan_type != clinic.PLAN_TYPE_CLINIC:
+                return False
+            if not clinic.can_use_clinic_resources():
+                return False
+
+            return has_scoped_permission(
+                self,
+                RBACPermission.STUDIES_CREATE,
+                tenant_id=self.clinic_id,
+            )
+
+        if not has_scoped_permission(
+            self,
+            RBACPermission.STUDIES_CREATE,
+            resource_owner_user_id=self.id,
+        ):
             return False
 
         subscription = UserSubscription.objects.filter(user=self).first()
@@ -194,6 +240,9 @@ class UserSubscription(models.Model):
     stripe_checkout_session_id = models.CharField(max_length=255, null=True, blank=True)
     stripe_price_id = models.CharField(max_length=255, null=True, blank=True)
     current_period_end = models.DateTimeField(null=True, blank=True)
+    billing_grace_until = models.DateTimeField(null=True, blank=True)
+    cancel_at_period_end = models.BooleanField(default=False)
+    canceled_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -213,10 +262,51 @@ class UserSubscription(models.Model):
         if self.plan == self.PLAN_FREE:
             return False
 
-        if self.status not in {self.STATUS_ACTIVE, self.STATUS_TRIALING}:
-            return False
+        if self.status in {self.STATUS_ACTIVE, self.STATUS_TRIALING, self.STATUS_CANCELED}:
+            if self.current_period_end:
+                return self.current_period_end > timezone.now()
+            return self.status in {self.STATUS_ACTIVE, self.STATUS_TRIALING}
 
-        if self.current_period_end:
-            return self.current_period_end > timezone.now()
+        if (
+            self.status == self.STATUS_PAST_DUE
+            and self.billing_grace_until
+            and self.billing_grace_until > timezone.now()
+        ):
+            return True
 
-        return True
+        return False
+
+
+class UserNotice(models.Model):
+    """
+    In-app notices that require explicit user acknowledgement.
+    """
+
+    TYPE_CLINIC_REMOVED = 'CLINIC_REMOVED'
+    TYPE_CHOICES = [
+        (TYPE_CLINIC_REMOVED, 'Clinic removed'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='notices',
+    )
+    type = models.CharField(max_length=64, choices=TYPE_CHOICES)
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    payload = models.JSONField(default=dict, blank=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'accounts_user_notice'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'acknowledged_at', 'created_at']),
+            models.Index(fields=['type', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} - {self.type}"

@@ -3,7 +3,8 @@ Serializers for accounts app.
 """
 
 from rest_framework import serializers
-from .models import User, UserSubscription
+from .models import User, UserNotice, UserSubscription
+from .rbac import RBACRole, resolve_effective_role
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -49,7 +50,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
     clinic_name = serializers.SerializerMethodField()
     subscription_plan = serializers.SerializerMethodField()
     seat_limit = serializers.SerializerMethodField()
+    seat_used = serializers.SerializerMethodField()
+    account_status = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
+    effective_role = serializers.SerializerMethodField()
+    notices = serializers.SerializerMethodField()
+    account_lifecycle_status = serializers.CharField(read_only=True)
+    upload_enabled = serializers.SerializerMethodField()
     
     class Meta:
         model = User
@@ -60,10 +67,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'first_name',
             'last_name',
             'role',
+            'effective_role',
             'clinic_id',
             'clinic_name',
             'subscription_plan',
             'seat_limit',
+            'seat_used',
+            'account_status',
+            'account_lifecycle_status',
+            'upload_enabled',
+            'notices',
             'is_active',
             'created_at',
         ]
@@ -80,7 +93,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_subscription_plan(self, obj):
         """Get subscription plan."""
         if obj.clinic:
-            return obj.clinic.subscription_plan
+            if resolve_effective_role(obj) == RBACRole.CLINIC_DOCTOR:
+                return None
+            if obj.clinic.can_use_clinic_resources():
+                return obj.clinic.subscription_plan
+            return 'free'
 
         subscription = UserSubscription.objects.filter(user=obj).first()
         if subscription and subscription.has_active_access():
@@ -91,12 +108,73 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_seat_limit(self, obj):
         """Get seat limit."""
         if obj.clinic:
+            if resolve_effective_role(obj) == RBACRole.CLINIC_DOCTOR:
+                return None
             return obj.clinic.seat_limit
+        return None
+
+    def get_seat_used(self, obj):
+        if obj.clinic:
+            if resolve_effective_role(obj) == RBACRole.CLINIC_DOCTOR:
+                return None
+            return obj.clinic.get_seat_usage()
+        return None
+
+    def get_account_status(self, obj):
+        if obj.clinic:
+            if resolve_effective_role(obj) == RBACRole.CLINIC_DOCTOR:
+                return None
+            return obj.clinic.account_status
         return None
     
     def get_full_name(self, obj):
         """Get full name."""
         return obj.get_full_name()
+
+    def get_effective_role(self, obj):
+        return resolve_effective_role(obj)
+
+    def get_notices(self, obj):
+        pending_notices = obj.notices.filter(acknowledged_at__isnull=True).order_by('-created_at')
+        return UserNoticeSerializer(pending_notices, many=True).data
+
+    def get_upload_enabled(self, obj):
+        try:
+            return bool(obj.has_upload_access())
+        except Exception:
+            return False
+
+
+class UserNoticeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserNotice
+        fields = [
+            'id',
+            'type',
+            'title',
+            'message',
+            'payload',
+            'created_at',
+        ]
+        read_only_fields = fields
+
+
+class AcknowledgeNoticesSerializer(serializers.Serializer):
+    notice_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=True,
+    )
+
+
+class DeleteAccountSerializer(serializers.Serializer):
+    confirm_text = serializers.CharField()
+    current_password = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=False,
+        write_only=True,
+    )
 
 
 class DevMockSignupSerializer(serializers.Serializer):
@@ -154,3 +232,9 @@ class BillingPortalSerializer(serializers.Serializer):
     """Payload for Stripe customer portal."""
 
     return_url = serializers.URLField(required=False)
+
+
+class BillingSyncSerializer(serializers.Serializer):
+    """Payload for explicit individual billing synchronization."""
+
+    checkout_session_id = serializers.CharField(required=False, allow_blank=False)

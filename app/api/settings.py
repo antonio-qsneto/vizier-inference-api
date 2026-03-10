@@ -15,6 +15,8 @@ class Settings(BaseSettings):
 
     API_TITLE: str = "Vizier Inference API"
     API_VERSION: str = "2.0.0"
+    API_AUTH_ENABLED: bool = True
+    API_AUTH_BEARER_TOKEN: str | None = None
 
     class Config:
         env_file = ".env"

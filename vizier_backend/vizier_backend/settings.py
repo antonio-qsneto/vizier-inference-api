@@ -284,6 +284,13 @@ DEV_MOCK_TOKEN_MAX_AGE_SECONDS = max(
     60,
     config('DEV_MOCK_TOKEN_MAX_AGE_SECONDS', default=12 * 60 * 60, cast=int),
 )
+# Unsafe fallback that auto-authenticates a local dummy admin when Cognito is
+# absent. Keep disabled by default to avoid fail-open auth in production.
+ALLOW_INSECURE_DEV_AUTH_FALLBACK = config(
+    'ALLOW_INSECURE_DEV_AUTH_FALLBACK',
+    default=False,
+    cast=bool,
+)
 
 # ============================================================================
 # INFERENCE API
@@ -292,6 +299,7 @@ DEV_MOCK_TOKEN_MAX_AGE_SECONDS = max(
 INFERENCE_API_URL = config('INFERENCE_API_URL', default='http://localhost:8000')
 INFERENCE_API_TIMEOUT = 300  # 5 minutes
 INFERENCE_POLL_INTERVAL = 5  # seconds
+INFERENCE_API_BEARER_TOKEN = config('INFERENCE_API_BEARER_TOKEN', default=None)
 
 # ============================================================================
 # DICOM PROCESSING
@@ -337,6 +345,14 @@ STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL = config(
     'STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL',
     default=None,
 )
+STRIPE_PRICE_ID_CLINIC_MONTHLY = config(
+    'STRIPE_PRICE_ID_CLINIC_MONTHLY',
+    default='price_1T8SaSRVF2Q4eoQbLMeyYW3u',
+)
+STRIPE_PRICE_ID_CLINIC_YEARLY = config(
+    'STRIPE_PRICE_ID_CLINIC_YEARLY',
+    default='price_1T8ScTRVF2Q4eoQbCpsCFqN1',
+)
 STRIPE_PAYMENT_LINK_INDIVIDUAL_MONTHLY = config(
     'STRIPE_PAYMENT_LINK_INDIVIDUAL_MONTHLY',
     default='https://buy.stripe.com/test_cNicN755J5Ra3wwfvp5wI00',
@@ -345,6 +361,17 @@ STRIPE_PAYMENT_LINK_INDIVIDUAL_ANNUAL = config(
     'STRIPE_PAYMENT_LINK_INDIVIDUAL_ANNUAL',
     default='https://buy.stripe.com/test_9B6cN7eGja7q5EE0Av5wI01',
 )
+STRIPE_ALLOWED_REDIRECT_ORIGINS = config(
+    'STRIPE_ALLOWED_REDIRECT_ORIGINS',
+    default=(
+        'http://localhost:3000,'
+        'http://127.0.0.1:3000,'
+        'http://localhost:5173,'
+        'http://127.0.0.1:5173'
+    ),
+    cast=Csv(),
+)
+BILLING_DUNNING_GRACE_DAYS = config('BILLING_DUNNING_GRACE_DAYS', default=7, cast=int)
 
 # ============================================================================
 # FEATURE FLAGS

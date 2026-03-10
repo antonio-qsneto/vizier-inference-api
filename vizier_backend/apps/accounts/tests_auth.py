@@ -1,10 +1,13 @@
 from unittest.mock import Mock, patch
 
+from datetime import timedelta
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APIClient
 
 from apps.accounts.auth import CognitoJWTAuthentication
+from apps.accounts.models import User, UserNotice, UserSubscription
 
 
 @override_settings(COGNITO_AUDIENCE='test-client-id')
@@ -91,20 +94,58 @@ class CognitoIdentityFallbackTest(SimpleTestCase):
 
 
 class CognitoDevelopmentAuthModeTest(SimpleTestCase):
-    @override_settings(DEVELOPMENT_MODE=True, COGNITO_USER_POOL_ID='')
+    @override_settings(
+        DEBUG=True,
+        DEVELOPMENT_MODE=True,
+        ALLOW_INSECURE_DEV_AUTH_FALLBACK=True,
+        COGNITO_USER_POOL_ID='',
+    )
     def test_uses_development_auth_without_pool_id(self):
         self.assertTrue(CognitoJWTAuthentication._should_use_development_auth())
 
-    @override_settings(DEVELOPMENT_MODE=True, COGNITO_USER_POOL_ID='us-east-1_xxxxxxxxx')
+    @override_settings(
+        DEBUG=True,
+        DEVELOPMENT_MODE=True,
+        ALLOW_INSECURE_DEV_AUTH_FALLBACK=True,
+        COGNITO_USER_POOL_ID='us-east-1_xxxxxxxxx',
+    )
     def test_uses_development_auth_for_placeholder_pool_id(self):
         self.assertTrue(CognitoJWTAuthentication._should_use_development_auth())
 
-    @override_settings(DEVELOPMENT_MODE=True, COGNITO_USER_POOL_ID='us-east-1_realpool')
+    @override_settings(
+        DEBUG=True,
+        DEVELOPMENT_MODE=True,
+        ALLOW_INSECURE_DEV_AUTH_FALLBACK=True,
+        COGNITO_USER_POOL_ID='us-east-1_realpool',
+    )
     def test_disables_development_auth_when_pool_id_is_real(self):
         self.assertFalse(CognitoJWTAuthentication._should_use_development_auth())
 
-    @override_settings(DEVELOPMENT_MODE=False, COGNITO_USER_POOL_ID='')
+    @override_settings(
+        DEBUG=True,
+        DEVELOPMENT_MODE=False,
+        ALLOW_INSECURE_DEV_AUTH_FALLBACK=True,
+        COGNITO_USER_POOL_ID='',
+    )
     def test_disables_development_auth_when_flag_is_false(self):
+        self.assertFalse(CognitoJWTAuthentication._should_use_development_auth())
+
+    @override_settings(
+        DEBUG=True,
+        DEVELOPMENT_MODE=True,
+        ALLOW_INSECURE_DEV_AUTH_FALLBACK=False,
+        COGNITO_USER_POOL_ID='',
+    )
+    def test_disables_development_auth_when_insecure_fallback_is_disabled(self):
+        self.assertFalse(CognitoJWTAuthentication._should_use_development_auth())
+
+    @override_settings(
+        DEBUG=False,
+        DEVELOPMENT_MODE=True,
+        ALLOW_INSECURE_DEV_AUTH_FALLBACK=True,
+        COGNITO_USER_POOL_ID='',
+    )
+    def test_disables_development_auth_when_debug_is_false(self):
         self.assertFalse(CognitoJWTAuthentication._should_use_development_auth())
 
 
@@ -283,3 +324,207 @@ class DevMockAuthDisabledTest(TestCase):
             format='json',
         )
         self.assertEqual(response.status_code, 403)
+
+
+class UserNoticesApiTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='notice-user@example.com',
+            cognito_sub='notice-user-sub',
+            role='INDIVIDUAL',
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_me_exposes_effective_role_and_pending_notices(self):
+        notice = UserNotice.objects.create(
+            user=self.user,
+            type=UserNotice.TYPE_CLINIC_REMOVED,
+            title='Aviso',
+            message='Você foi desligado',
+            payload={'clinic_name': 'Demo'},
+        )
+
+        response = self.client.get('/api/auth/users/me/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['effective_role'], 'individual')
+        self.assertEqual(len(response.data['notices']), 1)
+        self.assertEqual(response.data['notices'][0]['id'], str(notice.id))
+
+    def test_acknowledge_notices_marks_selected_rows(self):
+        first_notice = UserNotice.objects.create(
+            user=self.user,
+            type=UserNotice.TYPE_CLINIC_REMOVED,
+            title='Aviso 1',
+            message='Primeiro',
+        )
+        second_notice = UserNotice.objects.create(
+            user=self.user,
+            type=UserNotice.TYPE_CLINIC_REMOVED,
+            title='Aviso 2',
+            message='Segundo',
+        )
+
+        response = self.client.post(
+            '/api/auth/users/acknowledge_notices/',
+            {'notice_ids': [str(first_notice.id)]},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['acknowledged'], 1)
+
+        first_notice.refresh_from_db()
+        second_notice.refresh_from_db()
+        self.assertIsNotNone(first_notice.acknowledged_at)
+        self.assertIsNone(second_notice.acknowledged_at)
+
+    def test_acknowledge_notices_without_ids_marks_all_pending(self):
+        UserNotice.objects.create(
+            user=self.user,
+            type=UserNotice.TYPE_CLINIC_REMOVED,
+            title='Aviso 1',
+            message='Primeiro',
+        )
+        UserNotice.objects.create(
+            user=self.user,
+            type=UserNotice.TYPE_CLINIC_REMOVED,
+            title='Aviso 2',
+            message='Segundo',
+        )
+
+        response = self.client.post(
+            '/api/auth/users/acknowledge_notices/',
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['acknowledged'], 2)
+        self.assertEqual(self.user.notices.filter(acknowledged_at__isnull=True).count(), 0)
+
+
+class OffboardingApiTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='offboarding-user@example.com',
+            cognito_sub='offboarding-user-sub',
+            role='INDIVIDUAL',
+        )
+        self.user.set_password('offboarding-pass-123')
+        self.user.save(update_fields=['password', 'updated_at'])
+        self.client.force_authenticate(user=self.user)
+
+    @patch('apps.accounts.offboarding.retrieve_individual_subscription')
+    def test_offboarding_status_blocks_active_individual_subscription(
+        self,
+        retrieve_individual_subscription_mock,
+    ):
+        UserSubscription.objects.create(
+            user=self.user,
+            plan=UserSubscription.PLAN_INDIVIDUAL_MONTHLY,
+            status=UserSubscription.STATUS_ACTIVE,
+            stripe_subscription_id='sub_offboarding_active',
+            current_period_end=timezone.now() + timedelta(days=20),
+        )
+        retrieve_individual_subscription_mock.return_value = {
+            'id': 'sub_offboarding_active',
+            'status': 'active',
+            'current_period_end': int((timezone.now() + timedelta(days=20)).timestamp()),
+        }
+
+        response = self.client.get('/api/auth/users/offboarding_status/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data['can_delete_account'])
+        blocker_codes = {item['code'] for item in response.data['blockers']}
+        self.assertIn('INDIVIDUAL_SUBSCRIPTION_ACTIVE', blocker_codes)
+
+    def test_delete_account_requires_confirmation_text(self):
+        response = self.client.post(
+            '/api/auth/users/delete_account/',
+            {'confirm_text': 'WRONG', 'current_password': 'offboarding-pass-123'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    @patch('apps.accounts.offboarding.retrieve_individual_subscription')
+    def test_delete_account_blocks_while_subscription_is_active(
+        self,
+        retrieve_individual_subscription_mock,
+    ):
+        UserSubscription.objects.create(
+            user=self.user,
+            plan=UserSubscription.PLAN_INDIVIDUAL_MONTHLY,
+            status=UserSubscription.STATUS_ACTIVE,
+            stripe_subscription_id='sub_delete_blocked',
+            current_period_end=timezone.now() + timedelta(days=5),
+        )
+        retrieve_individual_subscription_mock.return_value = {
+            'id': 'sub_delete_blocked',
+            'status': 'active',
+            'current_period_end': int((timezone.now() + timedelta(days=5)).timestamp()),
+        }
+
+        response = self.client.post(
+            '/api/auth/users/delete_account/',
+            {'confirm_text': 'EXCLUIR', 'current_password': 'offboarding-pass-123'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.account_lifecycle_status, User.ACCOUNT_LIFECYCLE_ACTIVE)
+
+    def test_delete_account_soft_deletes_and_anonymizes_user(self):
+        response = self.client.post(
+            '/api/auth/users/delete_account/',
+            {'confirm_text': 'EXCLUIR', 'current_password': 'offboarding-pass-123'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)
+        self.assertEqual(self.user.account_lifecycle_status, User.ACCOUNT_LIFECYCLE_DELETED)
+        self.assertTrue(self.user.email.startswith(f'deleted+{self.user.id}@deleted.local'))
+        self.assertEqual(self.user.first_name, '')
+        self.assertEqual(self.user.last_name, '')
+        self.assertIsNotNone(self.user.deleted_at)
+        self.assertIsNotNone(self.user.anonymized_at)
+
+
+class CognitoDeletedUserAuthTest(TestCase):
+    @patch('apps.accounts.auth.CognitoJWTAuthentication._validate_token')
+    @patch('apps.accounts.auth.CognitoJWTAuthentication._authenticate_dev_mock_token')
+    @patch('apps.accounts.auth.CognitoJWTAuthentication._should_use_development_auth')
+    def test_authentication_rejects_deleted_user(
+        self,
+        should_use_development_auth_mock,
+        authenticate_dev_mock_token_mock,
+        validate_token_mock,
+    ):
+        should_use_development_auth_mock.return_value = False
+        authenticate_dev_mock_token_mock.return_value = None
+        validate_token_mock.return_value = {
+            'sub': 'deleted-user-sub',
+            'email': 'deleted-user@example.com',
+            'token_use': 'access',
+            'client_id': 'test-client-id',
+        }
+
+        deleted_user = User.objects.create_user(
+            email='deleted-user@example.com',
+            cognito_sub='deleted-user-sub',
+            role='INDIVIDUAL',
+        )
+        deleted_user.account_lifecycle_status = User.ACCOUNT_LIFECYCLE_DELETED
+        deleted_user.is_active = False
+        deleted_user.save(update_fields=['account_lifecycle_status', 'is_active', 'updated_at'])
+
+        auth = CognitoJWTAuthentication()
+        with self.assertRaises(AuthenticationFailed):
+            auth.authenticate_credentials('jwt-token')

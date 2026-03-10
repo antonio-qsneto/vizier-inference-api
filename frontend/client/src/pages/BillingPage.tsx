@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import { Link } from "wouter";
 import { useAuth } from "@/auth/AuthContext";
 import {
   type BillingPlan,
@@ -49,8 +50,16 @@ export default function BillingPage() {
   );
   const [confirmPassword, setConfirmPassword] = useState("");
   const [confirmingPlanChange, setConfirmingPlanChange] = useState(false);
-  const isIndividualUser = user?.role === "INDIVIDUAL" && !user?.clinic_id;
+  const effectiveRole =
+    user?.effective_role ||
+    (user?.role === "CLINIC_ADMIN"
+      ? "clinic_admin"
+      : user?.role === "CLINIC_DOCTOR"
+        ? "clinic_doctor"
+        : "individual");
+  const isIndividualUser = effectiveRole === "individual" && !user?.clinic_id;
   const currentPlanId = normalizePlanId(user?.subscription_plan);
+  const isIndividualFreeUser = isIndividualUser && currentPlanId === "free";
 
   useEffect(() => {
     void refreshProfile();
@@ -173,92 +182,119 @@ export default function BillingPage() {
 
       {!isIndividualUser ? (
         <InlineNotice title="Plano individual">
-          Esta tela de assinatura Stripe está habilitada para usuários
-          individuais. Usuários de clínica seguem o fluxo de tenant.
+          Esta tela de assinatura Stripe está habilitada apenas para usuários
+          individuais sem vínculo com clínica.
         </InlineNotice>
       ) : null}
 
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={() => void handleOpenPortal()}
-          disabled={openingPortal || !isIndividualUser}
-          className="rounded-2xl border border-white/10 bg-white/6 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {openingPortal
-            ? "Abrindo portal..."
-            : "Gerenciar/cancelar assinatura no Stripe"}
-        </button>
-      </div>
+      {isIndividualFreeUser ? (
+        <InlineNotice title="Quer plano de clínica?">
+          Para ativar cobrança por assentos (múltiplos médicos), use o fluxo de upgrade em{" "}
+          <Link href="/clinic">
+            <a className="font-semibold text-sky-200 underline">Clinic</a>
+          </Link>
+          .
+        </InlineNotice>
+      ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-3">
-        {billingPlans.map((plan) => {
-          const isCurrent = matchesCurrentPlan(
-            user?.subscription_plan,
-            plan.id,
-          );
-          const isFree = plan.id === "free";
-          return (
-            <Panel
-              key={plan.id}
-              className={
-                isCurrent
-                  ? "border-sky-300/30 shadow-[0_30px_90px_rgba(1,149,248,0.18)]"
-                  : undefined
-              }
+      {isIndividualUser ? (
+        <>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => void handleOpenPortal()}
+              disabled={openingPortal}
+              className="rounded-2xl border border-white/10 bg-white/6 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <div className="space-y-5">
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    {plan.label}
-                  </p>
-                  {plan.id === "plano_individual_anual" ? (
-                    <p className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">
-                      10% de desconto
-                    </p>
-                  ) : null}
-                  <h2 className="text-3xl font-semibold text-white">
-                    {plan.priceLabel}
-                  </h2>
-                  <p className="text-sm leading-7 text-slate-300">
-                    {plan.summary}
-                  </p>
-                </div>
+              {openingPortal
+                ? "Abrindo portal..."
+                : "Gerenciar/cancelar assinatura no Stripe"}
+            </button>
+          </div>
 
-                <div className="space-y-2">
-                  {plan.features.map((feature) => (
-                    <div
-                      key={feature}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200"
-                    >
-                      {feature}
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => void handleSelectPlan(plan.id)}
-                  disabled={isCurrent || isFree || !isIndividualUser}
+          <div className="grid gap-5 xl:grid-cols-3">
+            {billingPlans.map((plan) => {
+              const isCurrent = matchesCurrentPlan(
+                user?.subscription_plan,
+                plan.id,
+              );
+              const isFree = plan.id === "free";
+              return (
+                <Panel
+                  key={plan.id}
                   className={
                     isCurrent
-                      ? "rounded-2xl border border-white/10 bg-white/6 px-5 py-3 text-sm font-semibold text-slate-100 transition"
-                      : isFree
-                        ? "rounded-2xl border border-white/10 bg-white/6 px-5 py-3 text-sm font-semibold text-slate-400 transition"
-                        : "rounded-2xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400"
+                      ? "border-sky-300/30 shadow-[0_30px_90px_rgba(1,149,248,0.18)]"
+                      : undefined
                   }
                 >
-                  {isCurrent
-                    ? "Plano atual"
-                    : isFree
-                      ? "Plano base"
-                      : "Assinar plano"}
-                </button>
-              </div>
-            </Panel>
-          );
-        })}
-      </div>
+                  <div className="space-y-5">
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        {plan.label}
+                      </p>
+                      {plan.id === "plano_individual_anual" ? (
+                        <p className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">
+                          10% de desconto
+                        </p>
+                      ) : null}
+                      <h2 className="text-3xl font-semibold text-white">
+                        {plan.priceLabel}
+                      </h2>
+                      <p className="text-sm leading-7 text-slate-300">
+                        {plan.summary}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      {plan.features.map((feature) => (
+                        <div
+                          key={feature}
+                          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200"
+                        >
+                          {feature}
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleSelectPlan(plan.id)}
+                      disabled={isCurrent || isFree}
+                      className={
+                        isCurrent
+                          ? "rounded-2xl border border-white/10 bg-white/6 px-5 py-3 text-sm font-semibold text-slate-100 transition"
+                          : isFree
+                            ? "rounded-2xl border border-white/10 bg-white/6 px-5 py-3 text-sm font-semibold text-slate-400 transition"
+                            : "rounded-2xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400"
+                      }
+                    >
+                      {isCurrent
+                        ? "Plano atual"
+                        : isFree
+                          ? "Plano base"
+                          : "Assinar plano"}
+                    </button>
+                  </div>
+                </Panel>
+              );
+            })}
+          </div>
+        </>
+      ) : effectiveRole === "clinic_admin" ? (
+        <InlineNotice title="Gerenciamento de clínica">
+          Contas admin de clínica gerenciam assinatura e cancelamento na página{" "}
+          <Link href="/clinic">
+            <a className="font-semibold text-sky-200 underline">Clinic</a>
+          </Link>
+          .
+        </InlineNotice>
+      ) : (
+        <InlineNotice title="Billing indisponível">
+          Desvincule-se da clínica para voltar ao plano free individual e acessar
+          os planos de billing.
+        </InlineNotice>
+      )}
 
       <Dialog
         open={Boolean(pendingPlanChange)}

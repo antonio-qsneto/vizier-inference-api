@@ -1,5 +1,15 @@
 export type UserRole = "CLINIC_ADMIN" | "CLINIC_DOCTOR" | "INDIVIDUAL" | string;
+export type EffectiveRole =
+  | "platform_admin"
+  | "clinic_admin"
+  | "clinic_doctor"
+  | "individual"
+  | string;
 export type StudyStatusValue = "SUBMITTED" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | string;
+export type ClinicPlanType = "individual" | "clinic" | string;
+export type ClinicSubscriptionPlan = "free" | "clinic_monthly" | "clinic_yearly" | string;
+export type ClinicAccountStatus = "active" | "past_due" | "canceled" | string;
+export type AccountLifecycleStatus = "active" | "deleted" | string;
 
 export interface HealthStatus {
   status: string;
@@ -14,11 +24,26 @@ export interface UserProfile {
   first_name: string;
   last_name: string;
   role: UserRole;
+  effective_role: EffectiveRole;
   clinic_id: string | null;
   clinic_name: string | null;
   subscription_plan: string | null;
   seat_limit: number | null;
+  seat_used: number | null;
+  account_status: ClinicAccountStatus | null;
+  account_lifecycle_status: AccountLifecycleStatus;
+  upload_enabled: boolean;
+  notices: UserNotice[];
   is_active: boolean;
+  created_at: string;
+}
+
+export interface UserNotice {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  payload: Record<string, unknown>;
   created_at: string;
 }
 
@@ -38,13 +63,19 @@ export interface UserSummary {
 export interface Clinic {
   id: string;
   name: string;
-  cnpj: string | null;
-  owner: UserSummary;
-  seat_limit: number;
-  subscription_plan: string;
-  active_doctors_count: number;
-  created_at: string;
-  updated_at: string;
+  cnpj?: string | null;
+  owner?: UserSummary | null;
+  seat_limit?: number;
+  seat_used?: number;
+  subscription_plan?: ClinicSubscriptionPlan;
+  plan_type?: ClinicPlanType;
+  account_status?: ClinicAccountStatus;
+  active_doctors_count?: number;
+  scheduled_seat_limit?: number | null;
+  scheduled_seat_effective_at?: string | null;
+  has_pending_seat_reduction?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface DoctorInvitation {
@@ -128,8 +159,113 @@ export interface PaginatedResponse<T> {
 export interface ClinicCreatePayload {
   name: string;
   cnpj: string;
+  seat_limit?: number;
+  subscription_plan?: string;
+}
+
+export interface ClinicBillingPlan {
+  id: "clinic_monthly" | "clinic_yearly";
+  label: string;
+  price_label: string;
+  summary: string;
+  interval: "month" | "year" | string;
+  lookup_key: string;
+  discount: string | null;
+}
+
+export interface ClinicBillingCatalogResponse {
+  plans: ClinicBillingPlan[];
+  current_plan: ClinicSubscriptionPlan;
+  account_status: ClinicAccountStatus;
   seat_limit: number;
+  seat_used: number;
+  billing_enabled: boolean;
+}
+
+export interface ClinicBillingCheckoutResponse {
+  mode?: "subscription_updated";
+  detail?: string;
+  checkout_url?: string;
+  checkout_session_id?: string;
+  seat_limit?: number;
+  seat_used?: number;
+}
+
+export interface ClinicTeamMembersResponse {
+  admins: UserSummary[];
+  doctors: UserSummary[];
+  seats_used: number;
+  seat_limit: number;
+  account_status: ClinicAccountStatus;
+}
+
+export interface ClinicSeatChangeResponse {
+  detail: string;
+  seat_limit: number;
+  seat_used: number;
+  scheduled_seat_limit: number | null;
+  scheduled_seat_effective_at: string | null;
+}
+
+export interface ClinicBillingSyncResponse {
+  detail: string;
+  plan: ClinicSubscriptionPlan;
+  account_status: ClinicAccountStatus;
+  seat_limit: number;
+  seat_used: number;
+}
+
+export interface IndividualBillingCancelResponse {
+  detail: string;
+  status: string;
+  cancel_at_period_end: boolean;
+  billing_period_end: string | null;
+}
+
+export interface IndividualBillingSyncResponse {
+  detail: string;
+  plan: string;
+  status: string;
+  billing_period_end: string | null;
+}
+
+export interface ClinicBillingCancelResponse {
+  detail: string;
+  account_status: ClinicAccountStatus;
+  cancel_at_period_end: boolean;
+  billing_period_end: string | null;
+}
+
+export interface ClinicDowngradeResponse {
+  detail: string;
+  plan_type: ClinicPlanType;
+  account_status: ClinicAccountStatus;
+  seat_limit: number;
+  seat_used: number;
+  scheduled_seat_limit?: number | null;
+  scheduled_seat_effective_at?: string | null;
+}
+
+export interface ClinicLeaveResponse {
+  detail: string;
+  new_role: UserRole;
+  clinic_id: string | null;
   subscription_plan: string;
+}
+
+export interface OffboardingBlocker {
+  code: string;
+  message: string;
+}
+
+export interface OffboardingStatus {
+  effective_role: EffectiveRole;
+  can_cancel_subscription: boolean;
+  can_delete_account: boolean;
+  blockers: OffboardingBlocker[];
+  subscription_scope: "individual" | "clinic" | "none" | string;
+  status: string | null;
+  billing_period_end: string | null;
 }
 
 export interface StudyUploadInput {
