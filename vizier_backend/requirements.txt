@@ -26,6 +26,7 @@ scipy>=1.11.0
 # HTTP & API
 requests>=2.31.0
 httpx>=0.25.0
+google-genai
 
 # Database
 psycopg2-binary>=2.9.0

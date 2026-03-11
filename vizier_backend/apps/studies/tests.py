@@ -18,6 +18,7 @@ from apps.studies.models import Study
 from apps.studies.serializers import StudyCreateSerializer
 from apps.tenants.models import Clinic, Membership
 from apps.studies.views import StudyViewSet
+from apps.studies.gemini_service import build_descriptive_prompt, call_gemini
 from services.dicom_pipeline import DicomZipToNpzService
 
 
@@ -426,6 +427,48 @@ class SegmentationLegendTest(TestCase):
             out_data = np.asanyarray(out_img.dataobj)
             self.assertIn(3, np.unique(out_data))
 
+    @override_settings(AWS_ACCESS_KEY_ID='', AWS_SECRET_ACCESS_KEY='')
+    def test_create_result_file_handles_uncompressed_original_nifti(self):
+        user = User.objects.create_user(
+            email='nifti-regression@example.com',
+            cognito_sub='nifti-regression-sub',
+            role='INDIVIDUAL',
+        )
+        study = Study.objects.create(
+            owner=user,
+            category='head',
+            status='COMPLETED',
+        )
+        owner_scope = study.get_owner_scope()
+
+        storage_root = Path('/tmp/vizier-med')
+        original_nifti_path = storage_root / f"uploads/{owner_scope}/{study.id}/original_image.nii"
+        mask_npz_path = storage_root / f"results/{owner_scope}/{study.id}/mask.npz"
+        original_nifti_path.parent.mkdir(parents=True, exist_ok=True)
+        mask_npz_path.parent.mkdir(parents=True, exist_ok=True)
+
+        reference = np.random.rand(20, 64, 64).astype(np.float32)
+        nib.save(nib.Nifti1Image(reference, np.eye(4)), str(original_nifti_path))
+
+        segs = np.zeros((10, 32, 32), dtype=np.uint8)
+        segs[2:8, 8:20, 8:24] = 5
+        np.savez(mask_npz_path, segs=segs)
+
+        view = StudyViewSet()
+        view._create_result_file(study)
+
+        image_output_path = storage_root / f"results/{owner_scope}/{study.id}/image.nii.gz"
+        mask_output_path = storage_root / f"results/{owner_scope}/{study.id}/mask.nii.gz"
+
+        self.assertTrue(image_output_path.exists())
+        self.assertTrue(mask_output_path.exists())
+
+        image_out = nib.load(str(image_output_path))
+        mask_out = nib.load(str(mask_output_path))
+        self.assertEqual(tuple(image_out.shape), (20, 64, 64))
+        self.assertEqual(tuple(mask_out.shape), (20, 64, 64))
+        self.assertIn(5, np.unique(np.asanyarray(mask_out.dataobj)))
+
     def test_load_mask_labels_accepts_mask_preds_key(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             mask_npz_path = os.path.join(tmpdir, 'mask_preds.npz')
@@ -437,6 +480,116 @@ class SegmentationLegendTest(TestCase):
 
             self.assertEqual(tuple(loaded.shape), (8, 16, 16))
             self.assertEqual(int(loaded.max()), 4)
+
+
+class GeminiServiceTest(TestCase):
+    def test_build_descriptive_prompt_has_expected_sections(self):
+        study = Study(
+            category='mri_glioma',
+            exam_modality='MRI',
+        )
+        legend = [
+            {
+                'id': 3,
+                'label': 'brain tumor',
+                'percentage': 2.15,
+                'voxels': 1500,
+            }
+        ]
+
+        prompt = build_descriptive_prompt(study, legend)
+
+        self.assertIn('modalidade=MRI', prompt)
+        self.assertIn('categoria=mri_glioma', prompt)
+        self.assertIn('"label": "brain tumor"', prompt)
+
+    @patch.dict(os.environ, {'GOOGLE_API_KEY': ''}, clear=False)
+    def test_call_gemini_without_api_key_returns_none(self):
+        self.assertIsNone(call_gemini("Prompt de teste"))
+
+
+class StudyResultDescriptiveAnalysisTest(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.user = User.objects.create_user(
+            email='analysis-user@example.com',
+            cognito_sub='analysis-user-sub',
+            role='INDIVIDUAL',
+        )
+        self.study = Study.objects.create(
+            owner=self.user,
+            category='mri_glioma',
+            exam_modality='MRI',
+            status='COMPLETED',
+        )
+
+    def _call_result(self):
+        view = StudyViewSet.as_view({'get': 'result'})
+        request = self.factory.get(f'/api/studies/{self.study.id}/result/')
+        force_authenticate(request, user=self.user)
+        return view(request, pk=str(self.study.id))
+
+    def _mock_s3(self, mock_s3_cls):
+        mock_s3 = mock_s3_cls.return_value
+        mock_s3.object_exists.return_value = True
+        mock_s3.generate_presigned_url.side_effect = lambda key: f"https://signed/{key}"
+        return mock_s3
+
+    def test_result_generates_and_persists_descriptive_analysis(self):
+        with (
+            patch.object(StudyViewSet, '_can_access_study', return_value=True),
+            patch('apps.studies.views.S3Utils') as mock_s3_cls,
+            patch.object(StudyViewSet, '_build_segments_legend_for_study', return_value=[]),
+            patch('apps.studies.views.build_descriptive_prompt', return_value='prompt') as mock_prompt,
+            patch('apps.studies.views.call_gemini', return_value='Resumo medico gerado.') as mock_call,
+            patch('apps.studies.views.AuditService.log_result_download'),
+        ):
+            self._mock_s3(mock_s3_cls)
+            response = self._call_result()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['descriptive_analysis'], 'Resumo medico gerado.')
+        self.study.refresh_from_db()
+        self.assertEqual(self.study.descriptive_analysis, 'Resumo medico gerado.')
+        mock_prompt.assert_called_once()
+        mock_call.assert_called_once_with('prompt')
+
+    def test_result_returns_null_when_gemini_fails(self):
+        with (
+            patch.object(StudyViewSet, '_can_access_study', return_value=True),
+            patch('apps.studies.views.S3Utils') as mock_s3_cls,
+            patch.object(StudyViewSet, '_build_segments_legend_for_study', return_value=[]),
+            patch('apps.studies.views.build_descriptive_prompt', return_value='prompt'),
+            patch('apps.studies.views.call_gemini', return_value=None),
+            patch('apps.studies.views.AuditService.log_result_download'),
+        ):
+            self._mock_s3(mock_s3_cls)
+            response = self._call_result()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data.get('descriptive_analysis'))
+        self.study.refresh_from_db()
+        self.assertIsNone(self.study.descriptive_analysis)
+
+    def test_result_reuses_cached_descriptive_analysis(self):
+        self.study.descriptive_analysis = 'Analise previamente salva.'
+        self.study.save(update_fields=['descriptive_analysis', 'updated_at'])
+
+        with (
+            patch.object(StudyViewSet, '_can_access_study', return_value=True),
+            patch('apps.studies.views.S3Utils') as mock_s3_cls,
+            patch.object(StudyViewSet, '_build_segments_legend_for_study', return_value=[]),
+            patch('apps.studies.views.build_descriptive_prompt') as mock_prompt,
+            patch('apps.studies.views.call_gemini') as mock_call,
+            patch('apps.studies.views.AuditService.log_result_download'),
+        ):
+            self._mock_s3(mock_s3_cls)
+            response = self._call_result()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['descriptive_analysis'], 'Analise previamente salva.')
+        mock_prompt.assert_not_called()
+        mock_call.assert_not_called()
 
 
 class IntensityNormalizationServiceTest(TestCase):

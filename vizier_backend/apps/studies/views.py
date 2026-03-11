@@ -27,6 +27,7 @@ from services.dicom_pipeline import DicomZipToNpzService, cleanup_temp_files
 from services.s3_utils import S3Utils
 from services.nifti_converter import NiftiConverter
 from apps.inference.client import InferenceClient
+from .gemini_service import build_descriptive_prompt, call_gemini
 import logging
 
 logger = logging.getLogger(__name__)
@@ -564,6 +565,23 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             except Exception:
                 logger.warning("Failed to build segmentation legend for study %s", study.id, exc_info=True)
 
+            descriptive_analysis = str(study.descriptive_analysis or '').strip() or None
+            if not descriptive_analysis:
+                try:
+                    prompt = build_descriptive_prompt(study=study, segments_legend=segments_legend)
+                    generated_analysis = call_gemini(prompt)
+                    if generated_analysis:
+                        descriptive_analysis = generated_analysis
+                        study.descriptive_analysis = descriptive_analysis
+                        study.save(update_fields=['descriptive_analysis', 'updated_at'])
+                except Exception:
+                    logger.warning(
+                        "Failed to generate descriptive analysis for study %s",
+                        study.id,
+                        exc_info=True,
+                    )
+                    descriptive_analysis = None
+
             # Log audit
             AuditService.log_result_download(study, request.user)
 
@@ -572,6 +590,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                 'image_url': image_url,
                 'mask_url': mask_url,
                 'segments_legend': segments_legend,
+                'descriptive_analysis': descriptive_analysis,
                 'expires_in': 3600,
                 'image_file_name': f"study_{study.id}_image.nii.gz",
                 'mask_file_name': f"study_{study.id}_mask.nii.gz",
@@ -648,6 +667,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             logger.info(f"Created temp directory: {temp_dir}")
 
             # Retrieve original-resolution NIfTI (preferred), fallback to legacy NPZ.
+            # Always normalize visualization image output to image.nii.gz.
             image_nifti_path = os.path.join(temp_dir, "image.nii.gz")
             original_nifti_key_candidates = [
                 f"uploads/{owner_scope}/{study.id}/original_image.nii.gz",
@@ -661,10 +681,17 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             original_npz_key = None
             original_npz_path = os.path.join(temp_dir, "file.npz")
             if original_nifti_key:
+                source_nifti_ext = ".nii.gz" if original_nifti_key.endswith(".nii.gz") else ".nii"
+                source_nifti_path = os.path.join(temp_dir, f"original_image{source_nifti_ext}")
                 logger.info("Retrieving original NIfTI from storage: %s", original_nifti_key)
-                if not s3_utils.download_file(original_nifti_key, image_nifti_path):
+                if not s3_utils.download_file(original_nifti_key, source_nifti_path):
                     raise FileNotFoundError(f"Original NIfTI not found: {original_nifti_key}")
-                logger.info("Original NIfTI retrieved: %s", image_nifti_path)
+                logger.info("Original NIfTI retrieved: %s", source_nifti_path)
+                logger.info("Normalizing original NIfTI to gzipped visualization file: %s", image_nifti_path)
+                if not self._normalize_nifti_to_gzip(source_nifti_path, image_nifti_path):
+                    raise Exception("Failed to normalize original NIfTI to gzipped visualization file")
+                if not os.path.exists(image_nifti_path):
+                    raise FileNotFoundError(f"Image NIfTI file not created: {image_nifti_path}")
             else:
                 original_npz_key_candidates = [
                     f"uploads/{owner_scope}/{study.id}/file.npz",
@@ -1233,6 +1260,23 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         y_idx = np.round(np.linspace(0, volume.shape[1] - 1, target_shape[1])).astype(np.int64)
         x_idx = np.round(np.linspace(0, volume.shape[2] - 1, target_shape[2])).astype(np.int64)
         return volume[np.ix_(z_idx, y_idx, x_idx)]
+
+    @staticmethod
+    def _normalize_nifti_to_gzip(input_nifti_path: str, output_nifti_path: str) -> bool:
+        """Load NIfTI from any supported extension and save as gzipped NIfTI."""
+        try:
+            Path(output_nifti_path).parent.mkdir(parents=True, exist_ok=True)
+            image = nib.load(input_nifti_path)
+            nib.save(image, output_nifti_path)
+            return True
+        except Exception:
+            logger.warning(
+                "Failed to normalize NIfTI to gzipped file (input=%s output=%s)",
+                input_nifti_path,
+                output_nifti_path,
+                exc_info=True,
+            )
+            return False
 
     @staticmethod
     def _convert_mask_npz_to_reference_nifti(

@@ -186,6 +186,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
             maskUrl={result.mask_url}
             modality={study.exam_modality}
             segmentsLegend={result.segments_legend}
+            descriptiveAnalysis={result.descriptive_analysis}
           />
         </div>
       ) : (

@@ -107,6 +107,12 @@ class Study(models.Model):
         null=True,
         help_text='S3 path to segmentation NIfTI for visualization'
     )
+
+    descriptive_analysis = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Cached descriptive medical analysis generated from segmentation summary',
+    )
     
     # Error handling
     error_message = models.TextField(

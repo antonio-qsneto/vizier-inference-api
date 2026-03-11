@@ -155,6 +155,7 @@ class StudyResultSerializer(serializers.Serializer):
     image_url = serializers.CharField()
     mask_url = serializers.CharField()
     segments_legend = serializers.ListField(child=serializers.DictField(), required=False)
+    descriptive_analysis = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     expires_in = serializers.IntegerField()
     image_file_name = serializers.CharField()
     mask_file_name = serializers.CharField()

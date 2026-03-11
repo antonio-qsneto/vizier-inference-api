@@ -142,6 +142,7 @@ export interface StudyResult {
   image_url: string;
   mask_url: string;
   segments_legend: SegmentLegendItem[];
+  descriptive_analysis?: string | null;
   expires_in: number;
   image_file_name: string;
   mask_file_name: string;

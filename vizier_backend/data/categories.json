@@ -1,7 +1,7 @@
 {
   "CT": {
     "head": [
-      "head-neck cancer"
+      "cancer"
     ],
     "torax": [
       "lung lesions",
@@ -12,7 +12,9 @@
       "kidney lesions/cysts L/R",
       "liver tumors",
       "pancreas tumors",
-      "colon cancer primaries"
+      "colon",
+      "colon cancer primaries",
+      "pancreas"
     ],
     "whole-body": [
       "whole-body lesion",
@@ -21,15 +23,10 @@
   },
   "MRI": {
     "head": [
-      "brain tumor",
-      "stroke lesion",
-      "GTVp/GTVn tumor",
-      "vestibular schwannoma intra/extra-meatal",
-      "non-enhancing tumor core",
-      "non-enhancing FLAIR hyperintensity",
-      "enhancing tissue",
-      "resection cavity",
-      "WM hyperintensities FLAIR/T1"
+      "Visualization of non-enhancing tumor core in head post-contrast T1-weighted MR",
+      "Segmentation of surrounding non-enhancing FLAIR hyperintensity in head post-contrast T1-weighted MR",
+      "Segmentation of enhancing tissue in head post-contrast T1-weighted MR",
+      "Segmentation of resection cavity in head post-contrast T1-weighted MR"
     ],
     "GU": [
       "prostate lesion"

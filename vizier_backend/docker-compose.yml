@@ -57,6 +57,7 @@ services:
       # 3. o container acessa esse forward via host.docker.internal:18001
       INFERENCE_API_URL: http://host.docker.internal:18001
       INFERENCE_API_TIMEOUT: 300
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
 
     ports:
       - "8000:8000"

@@ -100,11 +100,13 @@ export function OrthogonalViewer({
   maskUrl,
   modality,
   segmentsLegend,
+  descriptiveAnalysis,
 }: {
   imageUrl: string;
   maskUrl: string;
   modality: string | null;
   segmentsLegend: SegmentLegendItem[];
+  descriptiveAnalysis?: string | null;
 }) {
   const [imageVolume, setImageVolume] = useState<VolumeData | null>(null);
   const [maskVolume, setMaskVolume] = useState<VolumeData | null>(null);
@@ -999,6 +1001,9 @@ export function OrthogonalViewer({
     );
   }
 
+  const descriptiveAnalysisText =
+    descriptiveAnalysis?.trim() || "análise descritiva não disponível";
+
   return (
     <div
       ref={viewerRootRef}
@@ -1129,6 +1134,20 @@ export function OrthogonalViewer({
             )}
             {cinePlaying ? "Pause" : "Cine"}
           </button>
+        </div>
+      </div>
+
+      <div className="border-b border-white/6 bg-[#2a2c35] px-3 py-3">
+        <div className="flex items-start gap-2">
+          <BadgeInfo className="mt-0.5 h-3.5 w-3.5 text-sky-300/80" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-200/85">
+              Análise descritiva
+            </p>
+            <p className="mt-1 text-sm leading-6 text-slate-200">
+              {descriptiveAnalysisText}
+            </p>
+          </div>
         </div>
       </div>
 
