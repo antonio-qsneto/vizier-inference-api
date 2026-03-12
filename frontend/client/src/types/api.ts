@@ -17,6 +17,21 @@ export interface HealthStatus {
   version: string;
 }
 
+export interface ConsultationRequestPayload {
+  first_name?: string;
+  last_name?: string;
+  company_name?: string;
+  job_title?: string;
+  email: string;
+  country: string;
+  message?: string;
+  discovery_source?: string;
+}
+
+export interface ConsultationRequestResponse {
+  detail: string;
+}
+
 export interface UserProfile {
   id: number;
   email: string;

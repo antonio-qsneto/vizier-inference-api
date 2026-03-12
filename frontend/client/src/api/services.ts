@@ -1,6 +1,8 @@
 import { apiRequest, isPaginatedResponse } from "@/api/client";
 import type { TokenExchangePayload } from "@/auth/session";
 import type {
+  ConsultationRequestPayload,
+  ConsultationRequestResponse,
   CategoriesCatalog,
   ClinicBillingCancelResponse,
   ClinicBillingCatalogResponse,
@@ -76,6 +78,15 @@ export function getPageResults<T>(payload: PaginatedResponse<T> | T[]) {
 
 export async function fetchHealth(signal?: AbortSignal) {
   return apiRequest<HealthStatus>("/api/health/", { signal });
+}
+
+export async function submitConsultationRequest(
+  payload: ConsultationRequestPayload,
+) {
+  return apiRequest<ConsultationRequestResponse>("/api/auth/consultation-request/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function fetchCurrentUser(token: string, signal?: AbortSignal) {

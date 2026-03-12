@@ -10,6 +10,7 @@ import BillingPage from "@/pages/BillingPage";
 import BillingResultPage from "@/pages/BillingResultPage";
 import ClinicPage from "@/pages/ClinicPage";
 import DashboardPage from "@/pages/DashboardPage";
+import HomePage from "@/pages/HomePage";
 import InvitationsPage from "@/pages/InvitationsPage";
 import LoginPage from "@/pages/LoginPage";
 import NotFoundPage from "@/pages/NotFoundPage";
@@ -36,26 +37,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <AppShell>{children}</AppShell>;
 }
 
-function HomeRoute() {
-  const { status } = useAuth();
-  const [, navigate] = useLocation();
-
-  useEffect(() => {
-    if (status === "authenticated") {
-      navigate("/dashboard");
-    }
-    if (status === "guest") {
-      navigate("/login");
-    }
-  }, [navigate, status]);
-
-  return <LoadingState label="Preparing workspace..." />;
-}
-
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={HomeRoute} />
+      <Route path="/" component={HomePage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/auth/callback" component={AuthCallbackPage} />
 
