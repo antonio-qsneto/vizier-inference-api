@@ -2,7 +2,6 @@ version: 1
 applications:
   - appRoot: frontend
     frontend:
-      buildPath: /
       phases:
         preBuild:
           commands:
@@ -11,14 +10,12 @@ applications:
             - pnpm install --frozen-lockfile
         build:
           commands:
-            - cd frontend
             - pnpm run build
       artifacts:
-        baseDirectory: frontend/dist
+        baseDirectory: dist
         files:
           - '**/*'
       cache:
         paths:
           - node_modules/**/*
-          - frontend/node_modules/**/*
           - ~/.pnpm-store/**/*
