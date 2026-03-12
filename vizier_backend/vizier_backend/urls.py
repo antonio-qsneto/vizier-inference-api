@@ -18,6 +18,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework import routers
+from apps.accounts import views as account_views
 from apps.accounts import billing_views
 
 urlpatterns = [
@@ -26,6 +27,16 @@ urlpatterns = [
     
     # API v1
     path('api/health/', include('apps.health.urls')),
+    path(
+        'api/auth/consultation-request/',
+        account_views.ConsultationRequestView.as_view(),
+        name='consultation-request-root',
+    ),
+    path(
+        'api/auth/consultation-request',
+        account_views.ConsultationRequestView.as_view(),
+        name='consultation-request-root-noslash',
+    ),
     path('api/auth/', include('apps.accounts.urls')),
     path(
         'api/stripe/webhook/',

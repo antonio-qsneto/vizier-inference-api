@@ -20,11 +20,13 @@ from .dev_mock_auth import (
     build_dev_mock_token_payload,
     is_dev_mock_auth_enabled,
 )
+from .emails import send_consultation_request_email
 from .models import User
 from .offboarding import build_offboarding_status, soft_delete_user_account
 from .rbac import RBACPermission, has_scoped_permission
 from .serializers import (
     AcknowledgeNoticesSerializer,
+    ConsultationRequestSerializer,
     DeleteAccountSerializer,
     DevMockLoginSerializer,
     DevMockSignupSerializer,
@@ -243,6 +245,34 @@ class CognitoCallbackView(APIView):
                 'tokens': token_response,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class ConsultationRequestView(APIView):
+    """Public endpoint for 'Solicite uma consulta' submissions."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ConsultationRequestSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            send_consultation_request_email(serializer.validated_data)
+        except Exception as exc:
+            logger.error(
+                'Failed to send consultation request email: %s',
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {'error': 'Failed to send consultation request'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {'detail': 'Solicitação enviada com sucesso.'},
+            status=status.HTTP_201_CREATED,
         )
 
 

@@ -14,6 +14,11 @@ router.register(r'categories', views.CategoriesViewSet, basename='category')
 urlpatterns = [
     path('me/', views.UserViewSet.as_view({'get': 'me'}), name='user-me'),
     path('cognito/callback/', views.CognitoCallbackView.as_view(), name='cognito-callback'),
+    path(
+        'consultation-request/',
+        views.ConsultationRequestView.as_view(),
+        name='consultation-request',
+    ),
     path('dev/signup/', views.DevMockSignupView.as_view(), name='dev-signup'),
     path('dev/login/', views.DevMockLoginView.as_view(), name='dev-login'),
     path('billing/plans/', billing_views.BillingPlansView.as_view(), name='billing-plans'),

@@ -528,3 +528,93 @@ class CognitoDeletedUserAuthTest(TestCase):
         auth = CognitoJWTAuthentication()
         with self.assertRaises(AuthenticationFailed):
             auth.authenticate_credentials('jwt-token')
+
+
+@override_settings(DEFAULT_FROM_EMAIL='no-reply@vizier.com')
+class ConsultationRequestViewTest(SimpleTestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.url = '/api/auth/consultation-request/'
+
+    @patch('apps.accounts.emails.send_mail')
+    def test_valid_payload_returns_201_and_calls_send_mail(self, send_mail_mock):
+        response = self.client.post(
+            self.url,
+            {
+                'first_name': 'Ana',
+                'last_name': 'Silva',
+                'company_name': 'Hospital Central',
+                'job_title': 'Radiologista',
+                'email': 'ana.silva@example.com',
+                'country': 'Brasil',
+                'message': 'Gostaria de agendar uma apresentação da plataforma.',
+                'discovery_source': 'Indicação',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['detail'], 'Solicitação enviada com sucesso.')
+        send_mail_mock.assert_called_once()
+        self.assertEqual(
+            send_mail_mock.call_args.kwargs['recipient_list'],
+            ['vizier.med@gmail.com'],
+        )
+
+    def test_missing_email_returns_400(self):
+        response = self.client.post(
+            self.url,
+            {
+                'country': 'Brasil',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('email', response.data)
+
+    def test_missing_country_returns_400(self):
+        response = self.client.post(
+            self.url,
+            {
+                'email': 'lead@example.com',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('country', response.data)
+
+    @patch('apps.accounts.emails.send_mail')
+    def test_optional_fields_accept_blank_values(self, send_mail_mock):
+        response = self.client.post(
+            self.url,
+            {
+                'first_name': '',
+                'last_name': '',
+                'company_name': '',
+                'job_title': '',
+                'email': 'lead@example.com',
+                'country': 'Portugal',
+                'message': '',
+                'discovery_source': '',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        send_mail_mock.assert_called_once()
+
+    @patch('apps.accounts.emails.send_mail', side_effect=RuntimeError('smtp down'))
+    def test_email_send_failure_returns_500(self, _send_mail_mock):
+        response = self.client.post(
+            self.url,
+            {
+                'email': 'lead@example.com',
+                'country': 'Brasil',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.data['error'], 'Failed to send consultation request')

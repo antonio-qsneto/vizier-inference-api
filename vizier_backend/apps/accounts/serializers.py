@@ -209,6 +209,43 @@ class DevMockLoginSerializer(serializers.Serializer):
         return value.strip().lower()
 
 
+class ConsultationRequestSerializer(serializers.Serializer):
+    """Serializer for public consultation requests from the marketing site."""
+
+    first_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    company_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    job_title = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    email = serializers.EmailField()
+    country = serializers.CharField(max_length=100)
+    message = serializers.CharField(required=False, allow_blank=True, max_length=4000)
+    discovery_source = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=500,
+    )
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+    def validate_country(self, value):
+        return value.strip()
+
+    def validate(self, attrs):
+        for field in (
+            "first_name",
+            "last_name",
+            "company_name",
+            "job_title",
+            "message",
+            "discovery_source",
+        ):
+            if field in attrs and isinstance(attrs[field], str):
+                attrs[field] = attrs[field].strip()
+
+        return attrs
+
+
 class BillingCheckoutSerializer(serializers.Serializer):
     """Payload for Stripe checkout session creation."""
 
