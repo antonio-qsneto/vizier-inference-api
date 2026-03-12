@@ -6,13 +6,13 @@ applications:
         preBuild:
           commands:
             - corepack enable
-            - corepack prepare pnpm@latest --activate
+            - corepack prepare pnpm@10.4.1 --activate
             - pnpm install --frozen-lockfile
         build:
           commands:
             - pnpm run build
       artifacts:
-        baseDirectory: dist
+        baseDirectory: dist/public
         files:
           - '**/*'
       cache:
