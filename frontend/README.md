@@ -41,6 +41,11 @@ Frontend React + TypeScript + Vite reconstruído para encaixar nos contratos rea
 - `POST /api/studies/upload/`
 - `GET /api/studies/<study_id>/status/`
 - `GET /api/studies/<study_id>/result/`
+- `POST /api/inference/jobs/`
+- `POST /api/inference/jobs/<job_id>/upload-complete/`
+- `GET /api/inference/jobs/<job_id>/status/`
+- `GET /api/inference/jobs/<job_id>/outputs/`
+- `POST /api/inference/jobs/<job_id>/outputs/<output_id>/presign-download/`
 
 ## Upload contract
 
@@ -59,6 +64,16 @@ O formulário envia exatamente o que o serializer do backend exige:
 
 O frontend deriva o nome correto do campo de arquivo pela extensão enviada.
 
+## Async S3-first upload
+
+Com `VITE_USE_ASYNC_S3_UPLOAD=true`, o upload usa o novo fluxo assíncrono:
+
+1. `POST /api/inference/jobs/` para criar o job e receber `presigned POST`.
+2. Upload binário direto para o S3 no browser.
+3. `POST /api/inference/jobs/<job_id>/upload-complete/`.
+4. Polling por `GET /api/inference/jobs/<job_id>/status/`.
+5. Download de outputs por presigned URL.
+
 ## Ambiente
 
 Copie `.env.example` e ajuste:
@@ -72,6 +87,7 @@ Copie `.env.example` e ajuste:
 - `VITE_COGNITO_REDIRECT_URI`
 - `VITE_COGNITO_LOGOUT_URI`
 - `VITE_ENABLE_DEV_MOCK_AUTH`
+- `VITE_USE_ASYNC_S3_UPLOAD`
 - `VITE_STRIPE_PUBLISHABLE_KEY`
 - `VITE_ENABLE_BILLING`
 - `VITE_BILLING_CHECKOUT_ENDPOINT`
@@ -108,6 +124,7 @@ pnpm cognito-env
 ## Desenvolvimento local com assets `file://`
 
 Quando o backend está em modo dev e `S3Utils.generate_presigned_url()` retorna `file://...`, o frontend transforma a URL para `GET /__vizier/local-file?path=...`.
+Esse proxy local só fica ativo com `VITE_ENABLE_LOCAL_FILE_PROXY=true`.
 
 O proxy só atende arquivos dentro de:
 
@@ -127,7 +144,7 @@ O compose do backend deve montar:
 - `/tmp/vizier-med:/tmp/vizier-med`
 - `/tmp/vizier-analysis:/tmp/vizier-analysis`
 
-O frontend já está preparado para ler esses caminhos pelo proxy local.
+O frontend já está preparado para ler esses caminhos pelo proxy local quando `VITE_ENABLE_LOCAL_FILE_PROXY=true`.
 
 No compose deste repositório, o backend Docker também usa:
 

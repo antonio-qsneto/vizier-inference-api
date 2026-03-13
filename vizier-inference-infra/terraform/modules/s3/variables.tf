@@ -25,3 +25,21 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "cors_allowed_origins" {
+  type        = list(string)
+  description = "Allowed origins for browser uploads/downloads"
+  default     = []
+}
+
+variable "lifecycle_noncurrent_days" {
+  type        = number
+  description = "Days to keep noncurrent object versions"
+  default     = 30
+}
+
+variable "lifecycle_expiration_days" {
+  type        = number
+  description = "Days to expire audit/temporary prefixes"
+  default     = 365
+}

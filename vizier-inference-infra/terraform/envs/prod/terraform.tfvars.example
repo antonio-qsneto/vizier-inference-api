@@ -1,0 +1,19 @@
+aws_region                 = "us-east-1"
+project_name               = "vizier-inference"
+environment                = "prod"
+backend_image_tag          = "latest"
+biomedparse_image_tag      = "latest"
+biomedparse_image_override = ""
+
+rds_password      = "change-me"
+django_secret_key = "change-me"
+
+inference_api_bearer_token = ""
+
+frontend_upload_allowed_origins = [
+  "https://app.example.com",
+]
+
+alb_ingress_cidrs = [
+  "0.0.0.0/0",
+]

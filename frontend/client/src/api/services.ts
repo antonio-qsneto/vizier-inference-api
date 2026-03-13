@@ -16,6 +16,10 @@ import type {
   ClinicTeamMembersResponse,
   DoctorInvitation,
   HealthStatus,
+  InferenceJobCreateResponse,
+  InferenceJobOutputsResponse,
+  InferenceJobStatus,
+  InferenceOutputPresignResponse,
   IndividualBillingCancelResponse,
   IndividualBillingSyncResponse,
   OffboardingStatus,
@@ -70,6 +74,21 @@ export function buildStudyUploadFormData(input: StudyUploadInput) {
   formData.append("exam_modality", input.examModality);
   formData.append("category_id", input.categoryId);
   return formData;
+}
+
+export interface InferenceJobCreateInput {
+  fileName: string;
+  fileSize: number;
+  contentType: string;
+  caseIdentification?: string;
+  patientName?: string;
+  age?: number;
+  examSource?: string;
+  examModality?: string;
+  categoryId?: string;
+  requestedDevice?: "cuda" | "cpu";
+  sliceBatchSize?: number;
+  correlationId?: string;
 }
 
 export function getPageResults<T>(payload: PaginatedResponse<T> | T[]) {
@@ -372,6 +391,125 @@ export async function uploadStudy(token: string, input: StudyUploadInput) {
     token,
     body: buildStudyUploadFormData(input),
   });
+}
+
+export async function createInferenceJob(
+  token: string,
+  input: InferenceJobCreateInput,
+  idempotencyKey?: string,
+) {
+  const headers: Record<string, string> = {};
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
+  }
+
+  return apiRequest<InferenceJobCreateResponse>("/api/inference/jobs/", {
+    method: "POST",
+    token,
+    headers,
+    body: JSON.stringify({
+      file_name: input.fileName,
+      file_size: input.fileSize,
+      content_type: input.contentType || "application/octet-stream",
+      case_identification: input.caseIdentification || "",
+      patient_name: input.patientName || "",
+      age: input.age,
+      exam_source: input.examSource || "",
+      exam_modality: input.examModality || "",
+      category_id: input.categoryId || "",
+      requested_device: input.requestedDevice || "cuda",
+      slice_batch_size: input.sliceBatchSize,
+      correlation_id: input.correlationId,
+    }),
+  });
+}
+
+export async function uploadFileDirectToS3(
+  upload: InferenceJobCreateResponse["upload"],
+  file: File,
+) {
+  const formData = new FormData();
+  Object.entries(upload.fields || {}).forEach(([key, value]) => {
+    formData.append(key, value);
+  });
+  formData.append("file", file);
+
+  const response = await fetch(upload.url, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "");
+    throw new Error(
+      `S3 upload failed (${response.status}): ${errorBody || response.statusText}`,
+    );
+  }
+}
+
+export async function completeInferenceJobUpload(
+  token: string,
+  jobId: string,
+  payload: {
+    inputArtifactId?: string;
+    key?: string;
+    sizeBytes?: number;
+    etag?: string;
+  },
+) {
+  return apiRequest<InferenceJobStatus>(
+    `/api/inference/jobs/${jobId}/upload-complete/`,
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify({
+        input_artifact_id: payload.inputArtifactId,
+        key: payload.key,
+        size_bytes: payload.sizeBytes,
+        etag: payload.etag,
+      }),
+    },
+  );
+}
+
+export async function fetchInferenceJobStatus(
+  token: string,
+  jobId: string,
+  signal?: AbortSignal,
+) {
+  return apiRequest<InferenceJobStatus>(`/api/inference/jobs/${jobId}/status/`, {
+    token,
+    signal,
+  });
+}
+
+export async function fetchInferenceJobOutputs(
+  token: string,
+  jobId: string,
+  signal?: AbortSignal,
+) {
+  return apiRequest<InferenceJobOutputsResponse>(
+    `/api/inference/jobs/${jobId}/outputs/`,
+    {
+      token,
+      signal,
+    },
+  );
+}
+
+export async function presignInferenceOutputDownload(
+  token: string,
+  jobId: string,
+  outputId: string,
+) {
+  return apiRequest<InferenceOutputPresignResponse>(
+    `/api/inference/jobs/${jobId}/outputs/${outputId}/presign-download/`,
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify({}),
+    },
+  );
 }
 
 export async function fetchStudyStatus(

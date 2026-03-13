@@ -46,6 +46,10 @@ export const env = {
     import.meta.env.VITE_ENABLE_DEV_MOCK_AUTH,
     import.meta.env.DEV,
   ),
+  useAsyncS3Upload: parseBoolean(
+    import.meta.env.VITE_USE_ASYNC_S3_UPLOAD,
+    false,
+  ),
 };
 
 export const isCognitoConfigured = Boolean(

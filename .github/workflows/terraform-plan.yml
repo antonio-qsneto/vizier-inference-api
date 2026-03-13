@@ -1,0 +1,62 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    paths:
+      - "vizier-inference-infra/terraform/**"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ["dev", "prod"]
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      TF_IN_AUTOMATION: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Terraform init
+        working-directory: vizier-inference-infra/terraform/envs/${{ matrix.environment }}
+        run: terraform init -backend=false -input=false
+
+      - name: Terraform validate
+        working-directory: vizier-inference-infra/terraform/envs/${{ matrix.environment }}
+        run: terraform validate
+
+      - name: Terraform plan
+        working-directory: vizier-inference-infra/terraform/envs/${{ matrix.environment }}
+        run: |
+          terraform plan \
+            -input=false \
+            -lock=false \
+            -no-color \
+            -var="rds_password=dummy-password" \
+            -var="django_secret_key=dummy-secret" \
+            -var="inference_api_bearer_token=" \
+            -var="backend_image_tag=plan-${GITHUB_SHA::12}" \
+            -out="tfplan-${{ matrix.environment }}"
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ matrix.environment }}
+          path: vizier-inference-infra/terraform/envs/${{ matrix.environment }}/tfplan-${{ matrix.environment }}

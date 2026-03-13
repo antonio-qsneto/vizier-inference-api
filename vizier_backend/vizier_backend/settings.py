@@ -123,6 +123,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'vizier_backend.middleware.RequestIDMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -169,7 +170,14 @@ if config('DATABASE_URL', default=None):
     import dj_database_url
     DATABASES['default'] = dj_database_url.config(
         default=config('DATABASE_URL'),
-        conn_max_age=600,
+        conn_max_age=config('DB_CONN_MAX_AGE', default=600, cast=int),
+        ssl_require=config('DB_SSL_REQUIRE', default=not DEBUG, cast=bool),
+    )
+
+if not DEBUG and DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
+    raise RuntimeError(
+        'Production configuration requires DATABASE_URL for PostgreSQL (RDS). '
+        'SQLite is not allowed when DEBUG=False.'
     )
 
 # ============================================================================
@@ -231,6 +239,18 @@ AWS_REGION = config('AWS_REGION', default='us-east-1')
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default=None)
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default=None)
 S3_BUCKET = config('S3_BUCKET', default='vizier-med-results')
+S3_LOCAL_DEV_MODE = config('S3_LOCAL_DEV_MODE', default=False, cast=bool)
+S3_LOCAL_STORAGE_ROOT = config('S3_LOCAL_STORAGE_ROOT', default='/tmp/vizier-med')
+AWS_S3_PRESIGNED_EXPIRES = config('AWS_S3_PRESIGNED_EXPIRES', default=3600, cast=int)
+
+# Async inference control-plane flags
+INFERENCE_ASYNC_S3_ENABLED = config('INFERENCE_ASYNC_S3_ENABLED', default=False, cast=bool)
+INFERENCE_ASYNC_MAX_UPLOAD_BYTES = config(
+    'INFERENCE_ASYNC_MAX_UPLOAD_BYTES',
+    default=2 * 1024 * 1024 * 1024,
+    cast=int,
+)
+INFERENCE_JOBS_QUEUE_URL = config('INFERENCE_JOBS_QUEUE_URL', default='')
 
 # ============================================================================
 # COGNITO CONFIGURATION
@@ -300,6 +320,16 @@ INFERENCE_API_URL = config('INFERENCE_API_URL', default='http://localhost:8000')
 INFERENCE_API_TIMEOUT = 300  # 5 minutes
 INFERENCE_POLL_INTERVAL = 5  # seconds
 INFERENCE_API_BEARER_TOKEN = config('INFERENCE_API_BEARER_TOKEN', default=None)
+
+# ECS GPU BiomedParse execution
+BIO_ECS_CLUSTER = config('BIO_ECS_CLUSTER', default='')
+BIO_ECS_TASK_DEFINITION = config('BIO_ECS_TASK_DEFINITION', default='')
+BIO_ECS_CAPACITY_PROVIDER = config('BIO_ECS_CAPACITY_PROVIDER', default='')
+BIO_ECS_SUBNETS = config('BIO_ECS_SUBNETS', default='')
+BIO_ECS_SECURITY_GROUPS = config('BIO_ECS_SECURITY_GROUPS', default='')
+BIO_ECS_CONTAINER_NAME = config('BIO_ECS_CONTAINER_NAME', default='biomedparse')
+BIO_ECS_TASK_POLL_SECONDS = config('BIO_ECS_TASK_POLL_SECONDS', default=15, cast=int)
+BIO_ECS_TASK_TIMEOUT_SECONDS = config('BIO_ECS_TASK_TIMEOUT_SECONDS', default=3600, cast=int)
 
 # ============================================================================
 # DICOM PROCESSING
@@ -400,6 +430,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # ============================================================================
 
 LOG_LEVEL = config('LOG_LEVEL', default='INFO')
+LOG_JSON = config('LOG_JSON', default=False, cast=bool)
 
 LOGGING = {
     'version': 1,
@@ -417,7 +448,7 @@ LOGGING = {
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
+            'formatter': 'json' if LOG_JSON else 'verbose',
         },
     },
     'root': {

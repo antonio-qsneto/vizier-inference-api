@@ -1,17 +1,3 @@
-data "aws_region" "current" {}
-
-# Keep the original ECS GPU AMI lookup for non-baked instances (CPU LT uses it).
-data "aws_ami" "ecs_gpu_default" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["amzn2-ami-ecs-gpu-hvm-*-x86_64-ebs"]
-  }
-}
-
-
 resource "aws_ecs_cluster" "this" {
   name = var.cluster_name
   tags = var.tags
@@ -23,11 +9,6 @@ locals {
               echo "ECS_CLUSTER=${var.cluster_name}" >> /etc/ecs/ecs.config
               echo "ECS_IMAGE_PULL_BEHAVIOR=prefer-cached" >> /etc/ecs/ecs.config
               echo "ECS_DISABLE_IMAGE_CLEANUP=true" >> /etc/ecs/ecs.config
-              EOF
-
-  cpu_user_data = <<-EOF
-              #!/bin/bash
-              echo "ECS_CLUSTER=${var.cluster_name}" >> /etc/ecs/ecs.config
               EOF
 }
 
@@ -46,7 +27,7 @@ resource "aws_launch_template" "gpu" {
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
-      volume_size           = 200
+      volume_size           = var.root_volume_size_gb
       volume_type           = "gp3"
       delete_on_termination = true
     }
@@ -81,63 +62,6 @@ resource "aws_autoscaling_group" "gpu" {
   }
 }
 
-resource "aws_launch_template" "cpu" {
-  name_prefix   = "${var.cluster_name}-cpu-"
-  image_id      = data.aws_ami.ecs_gpu_default.id
-  instance_type = var.cpu_instance_type
-
-  iam_instance_profile {
-    name = var.instance_profile_name
-  }
-
-  vpc_security_group_ids = [var.ecs_sg_id]
-  user_data              = base64encode(local.cpu_user_data)
-
-  tag_specifications {
-    resource_type = "instance"
-    tags = merge(var.tags, {
-      Name = "${var.cluster_name}-cpu"
-    })
-  }
-}
-
-resource "aws_autoscaling_group" "cpu" {
-  name                = "${var.cluster_name}-cpu-asg"
-  min_size            = var.cpu_asg_min
-  desired_capacity    = var.cpu_asg_desired
-  max_size            = var.cpu_asg_max
-  vpc_zone_identifier = var.private_subnet_ids
-
-  launch_template {
-    id      = aws_launch_template.cpu.id
-    version = "$Latest"
-  }
-
-  tag {
-    key                 = "AmazonECSManaged"
-    value               = "true"
-    propagate_at_launch = true
-  }
-}
-
-resource "aws_ecs_capacity_provider" "cpu" {
-  name = "${var.cluster_name}-cpu-cp"
-
-  auto_scaling_group_provider {
-    auto_scaling_group_arn = aws_autoscaling_group.cpu.arn
-
-    managed_scaling {
-      status                    = "ENABLED"
-      target_capacity           = 100
-      minimum_scaling_step_size = 1
-      maximum_scaling_step_size = 1
-      instance_warmup_period    = 60
-    }
-
-    managed_termination_protection = "DISABLED"
-  }
-}
-
 resource "aws_ecs_capacity_provider" "gpu" {
   name = "${var.cluster_name}-gpu-cp"
 
@@ -148,7 +72,8 @@ resource "aws_ecs_capacity_provider" "gpu" {
       status                    = "ENABLED"
       target_capacity           = 100
       minimum_scaling_step_size = 1
-      maximum_scaling_step_size = 1
+      maximum_scaling_step_size = 2
+      instance_warmup_period    = 120
     }
 
     managed_termination_protection = "DISABLED"
@@ -158,34 +83,36 @@ resource "aws_ecs_capacity_provider" "gpu" {
 resource "aws_ecs_cluster_capacity_providers" "this" {
   cluster_name = aws_ecs_cluster.this.name
   capacity_providers = [
-    aws_ecs_capacity_provider.gpu.name,
-    aws_ecs_capacity_provider.cpu.name
+    aws_ecs_capacity_provider.gpu.name
   ]
 
   default_capacity_provider_strategy {
-    capacity_provider = aws_ecs_capacity_provider.cpu.name
+    capacity_provider = aws_ecs_capacity_provider.gpu.name
     weight            = 1
     base              = 0
   }
 }
 
-resource "aws_ecs_service" "worker" {
-  name            = "vizier-worker"
-  cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.worker.arn
-  desired_count   = 1
+resource "aws_autoscaling_schedule" "business_hours_scale_up" {
+  count = var.enable_business_hours_schedule ? 1 : 0
 
-  capacity_provider_strategy {
-    capacity_provider = aws_ecs_capacity_provider.cpu.name
-    weight            = 1
-  }
+  scheduled_action_name  = "${var.cluster_name}-gpu-business-hours-up"
+  autoscaling_group_name = aws_autoscaling_group.gpu.name
+  min_size               = var.business_hours_min_size
+  desired_capacity       = var.business_hours_desired_capacity
+  max_size               = var.asg_max
+  recurrence             = var.business_hours_scale_up_cron
+  time_zone              = var.business_hours_time_zone
+}
 
-  network_configuration {
-    subnets          = var.private_subnet_ids
-    security_groups  = [var.ecs_sg_id]
-    assign_public_ip = false
-  }
+resource "aws_autoscaling_schedule" "business_hours_scale_down" {
+  count = var.enable_business_hours_schedule ? 1 : 0
 
-  propagate_tags         = "TASK_DEFINITION"
-  enable_execute_command = true
+  scheduled_action_name  = "${var.cluster_name}-gpu-business-hours-down"
+  autoscaling_group_name = aws_autoscaling_group.gpu.name
+  min_size               = 0
+  desired_capacity       = 0
+  max_size               = var.asg_max
+  recurrence             = var.business_hours_scale_down_cron
+  time_zone              = var.business_hours_time_zone
 }

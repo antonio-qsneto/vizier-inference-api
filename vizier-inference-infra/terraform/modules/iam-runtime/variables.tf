@@ -1,18 +1,29 @@
-variable "sqs_queue_arn" { type = string }
-
-variable "jobs_table_arn" {
-  type        = string
-  description = "DynamoDB jobs table ARN"
+variable "sqs_queue_arn" {
+  type = string
 }
 
 variable "artifacts_bucket_arn" {
-  type        = string
-  description = "S3 artifacts bucket ARN"
+  type = string
 }
 
-variable "job_artifacts_prefix" {
-  type        = string
-  description = "Artifacts prefix within the bucket"
+variable "app_secret_arns" {
+  type    = list(string)
+  default = []
+}
+
+variable "name_prefix" {
+  type    = string
+  default = "vizier"
+}
+
+variable "biomedparse_cluster_arn" {
+  type    = string
+  default = ""
+}
+
+variable "biomedparse_task_definition_arn" {
+  type    = string
+  default = ""
 }
 
 variable "tags" {

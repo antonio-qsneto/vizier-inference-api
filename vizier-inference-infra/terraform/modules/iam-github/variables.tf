@@ -9,6 +9,12 @@ variable "github_branch" {
   default     = "main"
 }
 
+variable "github_environments" {
+  description = "Optional GitHub environments allowed to assume this role"
+  type        = list(string)
+  default     = []
+}
+
 variable "aws_region" {
   type = string
 }

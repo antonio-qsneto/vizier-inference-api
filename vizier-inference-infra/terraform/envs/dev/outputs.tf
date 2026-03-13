@@ -2,34 +2,104 @@ output "region" {
   value = var.aws_region
 }
 
-output "jobs_queue_url" { value = module.sqs.queue_url }
-output "jobs_queue_arn" { value = module.sqs.queue_arn }
-output "jobs_dlq_url" { value = module.sqs.dlq_url }
-output "jobs_dlq_arn" { value = module.sqs.dlq_arn }
+output "alb_dns_name" {
+  value = module.alb.alb_dns_name
+}
 
-output "artifacts_bucket_name" { value = module.s3.bucket_name }
-output "artifacts_bucket_arn" { value = module.s3.bucket_arn }
-output "jobs_table_name" { value = module.dynamodb.table_name }
-output "jobs_table_arn" { value = module.dynamodb.table_arn }
+output "alb_arn" {
+  value = module.alb.alb_arn
+}
 
-output "ecs_cluster_name" { value = module.ecs_gpu.cluster_name }
-output "ecs_capacity_provider" { value = module.ecs_gpu.capacity_provider_name }
-output "gpu_asg_name" { value = module.ecs_gpu.asg_name }
+output "jobs_queue_url" {
+  value = module.sqs.queue_url
+}
 
-output "api_task_role_arn" { value = module.iam_runtime.api_task_role_arn }
-output "worker_task_role_arn" { value = module.iam_runtime.worker_task_role_arn }
-output "ecs_task_execution_role_arn" { value = module.iam_runtime.ecs_task_execution_role_arn }
+output "jobs_queue_arn" {
+  value = module.sqs.queue_arn
+}
 
-output "api_service_discovery_dns" {
-  value = module.ecs.service_discovery_dns_name
+output "jobs_dlq_url" {
+  value = module.sqs.dlq_url
+}
+
+output "jobs_dlq_arn" {
+  value = module.sqs.dlq_arn
+}
+
+output "artifacts_bucket_name" {
+  value = module.s3.bucket_name
+}
+
+output "artifacts_bucket_arn" {
+  value = module.s3.bucket_arn
+}
+
+output "backend_ecr_repository_url" {
+  value = module.ecr_backend.repository_url
+}
+
+output "biomedparse_ecr_repository_url" {
+  value = module.ecr_biomedparse.repository_url
+}
+
+output "ecs_gpu_cluster_name" {
+  value = module.ecs_gpu.cluster_name
+}
+
+output "ecs_gpu_capacity_provider" {
+  value = module.ecs_gpu.capacity_provider_name
+}
+
+output "ecs_gpu_biomedparse_task_definition_arn" {
+  value = module.ecs_gpu.biomedparse_task_def_arn
+}
+
+output "ecs_gpu_asg_name" {
+  value = module.ecs_gpu.asg_name
+}
+
+output "ecs_fargate_django_service_name" {
+  value = module.ecs_fargate_django.service_name
+}
+
+output "ecs_fargate_django_task_definition_arn" {
+  value = module.ecs_fargate_django.task_definition_arn
+}
+
+output "ecs_fargate_worker_service_name" {
+  value = module.ecs_fargate_worker.service_name
+}
+
+output "rds_endpoint" {
+  value = module.rds_postgres.endpoint
+}
+
+output "rds_port" {
+  value = module.rds_postgres.port
+}
+
+output "rds_instance_id" {
+  value = module.rds_postgres.instance_id
+}
+
+output "rds_security_group_id" {
+  value = module.rds_postgres.security_group_id
+}
+
+output "django_app_secret_arn" {
+  value = module.app_secrets.secret_arn
+}
+
+output "private_subnet_ids" {
+  value = module.network.private_subnet_ids
+}
+
+output "fargate_app_security_group_id" {
+  value = aws_security_group.fargate_app.id
 }
 
 output "cognito_user_pool_id" {
   value = module.cognito.user_pool_id
-}
-
-output "cognito_user_pool_arn" {
-  value = module.cognito.user_pool_arn
 }
 
 output "cognito_user_pool_client_id" {
@@ -40,22 +110,6 @@ output "cognito_user_pool_domain" {
   value = module.cognito.user_pool_domain
 }
 
-output "cognito_hosted_ui_base_url" {
-  value = "https://${module.cognito.user_pool_domain}.auth.${var.aws_region}.amazoncognito.com"
-}
-
-output "cognito_oauth_authorize_url_example" {
-  value = "https://${module.cognito.user_pool_domain}.auth.${var.aws_region}.amazoncognito.com/oauth2/authorize?client_id=${module.cognito.user_pool_client_id}&response_type=code&scope=${urlencode("openid email profile")}&redirect_uri=${urlencode(var.cognito_callback_urls[0])}"
-}
-
-output "cognito_oauth_token_url" {
-  value = "https://${module.cognito.user_pool_domain}.auth.${var.aws_region}.amazoncognito.com/oauth2/token"
-}
-
-output "cognito_callback_urls" {
-  value = var.cognito_callback_urls
-}
-
-output "cognito_logout_urls" {
-  value = var.cognito_logout_urls
+output "github_actions_role_arn" {
+  value = module.iam_github.github_actions_role_arn
 }

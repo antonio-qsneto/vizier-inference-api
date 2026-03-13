@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { fetchStudy, fetchStudyResult, fetchStudyStatus } from "@/api/services";
+import {
+  fetchInferenceJobOutputs,
+  fetchInferenceJobStatus,
+  fetchStudy,
+  fetchStudyResult,
+  fetchStudyStatus,
+  presignInferenceOutputDownload,
+} from "@/api/services";
 import { useAuth } from "@/auth/AuthContext";
 import {
   InlineNotice,
@@ -15,29 +22,88 @@ import {
   useStudyStatusPolling,
 } from "@/hooks/useStudyStatusPolling";
 import { formatDateTime, formatPercentage } from "@/lib/format";
-import type { Study, StudyResult, StudyStatus } from "@/types/api";
+import { env } from "@/env";
+import type {
+  InferenceJobStatus,
+  InferenceOutputArtifact,
+  Study,
+  StudyResult,
+  StudyStatus,
+} from "@/types/api";
+
+interface AsyncOutputLink {
+  output: InferenceOutputArtifact;
+  url: string;
+  expiresIn: number;
+}
+
+function isAsyncTerminalStatus(status?: string | null) {
+  return status === "COMPLETED" || status === "FAILED";
+}
 
 export default function StudyDetailPage({ studyId }: { studyId: string }) {
   const { accessToken } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [study, setStudy] = useState<Study | null>(null);
   const [statusSnapshot, setStatusSnapshot] = useState<StudyStatus | null>(null);
   const [result, setResult] = useState<StudyResult | null>(null);
 
-  const loadStudy = useCallback(async () => {
+  const [asyncStatus, setAsyncStatus] = useState<InferenceJobStatus | null>(null);
+  const [asyncOutputs, setAsyncOutputs] = useState<AsyncOutputLink[]>([]);
+
+  const isAsyncFlow = useMemo(() => {
+    if (!env.useAsyncS3Upload || typeof window === "undefined") {
+      return false;
+    }
+    return new URLSearchParams(window.location.search).get("async") === "1";
+  }, []);
+
+  const loadAsyncOutputs = useCallback(async () => {
+    if (!accessToken || !studyId) {
+      return;
+    }
+
+    const outputsPayload = await fetchInferenceJobOutputs(accessToken, studyId);
+    const links = await Promise.all(
+      outputsPayload.outputs.map(async (output) => {
+        const signed = await presignInferenceOutputDownload(
+          accessToken,
+          studyId,
+          output.id,
+        );
+        return {
+          output,
+          url: signed.url,
+          expiresIn: signed.expires_in,
+        };
+      }),
+    );
+    setAsyncOutputs(links);
+  }, [accessToken, studyId]);
+
+  const loadData = useCallback(async () => {
     if (!accessToken) {
       return;
     }
 
     setLoading(true);
     try {
-      const studyPayload = await fetchStudy(accessToken, studyId);
-      const statusPayload = isTerminalStudyStatus(studyPayload.status)
-        ? null
-        : await fetchStudyStatus(accessToken, studyId);
-      setStudy(studyPayload);
-      setStatusSnapshot(statusPayload);
+      if (isAsyncFlow) {
+        const payload = await fetchInferenceJobStatus(accessToken, studyId);
+        setAsyncStatus(payload);
+        if (payload.status === "COMPLETED") {
+          await loadAsyncOutputs();
+        }
+      } else {
+        const studyPayload = await fetchStudy(accessToken, studyId);
+        const statusPayload = isTerminalStudyStatus(studyPayload.status)
+          ? null
+          : await fetchStudyStatus(accessToken, studyId);
+        setStudy(studyPayload);
+        setStatusSnapshot(statusPayload);
+      }
       setError(null);
     } catch (requestError) {
       if (requestError instanceof Error) {
@@ -46,20 +112,26 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, studyId]);
+  }, [accessToken, isAsyncFlow, loadAsyncOutputs, studyId]);
 
   useEffect(() => {
-    void loadStudy();
-  }, [loadStudy]);
+    void loadData();
+  }, [loadData]);
 
+  // Legacy study polling
   const polling = useStudyStatusPolling({
     studyId,
     token: accessToken,
     initialValue: statusSnapshot,
-    enabled: Boolean(statusSnapshot && !isTerminalStudyStatus(statusSnapshot.status)),
+    enabled:
+      !isAsyncFlow &&
+      Boolean(statusSnapshot && !isTerminalStudyStatus(statusSnapshot.status)),
   });
 
   useEffect(() => {
+    if (isAsyncFlow) {
+      return;
+    }
     const nextStatus = polling.value;
     if (!nextStatus) {
       return;
@@ -85,10 +157,36 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
           : currentStudy.job,
       };
     });
-  }, [polling.value]);
+  }, [isAsyncFlow, polling.value]);
+
+  // Async job polling
+  useEffect(() => {
+    if (!isAsyncFlow || !accessToken || !asyncStatus) {
+      return;
+    }
+    if (isAsyncTerminalStatus(asyncStatus.status)) {
+      return;
+    }
+
+    const timer = window.setInterval(async () => {
+      try {
+        const next = await fetchInferenceJobStatus(accessToken, studyId);
+        setAsyncStatus(next);
+        if (next.status === "COMPLETED") {
+          await loadAsyncOutputs();
+        }
+      } catch (requestError) {
+        if (requestError instanceof Error) {
+          setError(requestError.message);
+        }
+      }
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [accessToken, asyncStatus, isAsyncFlow, loadAsyncOutputs, studyId]);
 
   const loadResult = useCallback(async () => {
-    if (!accessToken || !studyId) {
+    if (!accessToken || !studyId || isAsyncFlow) {
       return;
     }
 
@@ -98,16 +196,114 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
     } catch {
       setResult(null);
     }
-  }, [accessToken, studyId]);
+  }, [accessToken, isAsyncFlow, studyId]);
 
   useEffect(() => {
-    if ((statusSnapshot?.status || study?.status) === "COMPLETED") {
+    if (!isAsyncFlow && (statusSnapshot?.status || study?.status) === "COMPLETED") {
       void loadResult();
     }
-  }, [loadResult, statusSnapshot?.status, study?.status]);
+  }, [isAsyncFlow, loadResult, statusSnapshot?.status, study?.status]);
 
   if (loading) {
     return <LoadingState label="Carregando estudo..." />;
+  }
+
+  if (isAsyncFlow) {
+    if (!asyncStatus) {
+      return (
+        <InlineNotice title="Inference job not found" tone="danger">
+          {error || "The inference job could not be loaded."}
+        </InlineNotice>
+      );
+    }
+
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+        className="space-y-6"
+      >
+        <PageIntro
+          eyebrow="Inference job"
+          title={`Job ${asyncStatus.id}`}
+          description="Fluxo assíncrono S3-first: upload direto no S3, processamento por fila e outputs com presigned download."
+          actions={
+            <button
+              type="button"
+              onClick={() => void loadData()}
+              className="rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+            >
+              Refresh
+            </button>
+          }
+        />
+
+        {error ? <InlineNotice title="Job request failed">{error}</InlineNotice> : null}
+
+        <Panel className="space-y-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <StatusPill status={asyncStatus.status} />
+            <p className="text-sm text-slate-300">Correlation {asyncStatus.correlation_id}</p>
+          </div>
+          <div>
+            <div className="flex items-center justify-between text-xs uppercase tracking-[0.16em] text-slate-400">
+              <span>Progress</span>
+              <span>{formatPercentage(asyncStatus.progress_percent || 0)}</span>
+            </div>
+            <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/8">
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,#0195f8,#38bdf8)] transition-all"
+                style={{
+                  width: `${Math.min(Math.max(asyncStatus.progress_percent || 0, 0), 100)}%`,
+                }}
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Created</p>
+              <p className="mt-2 text-sm font-semibold text-white">{formatDateTime(asyncStatus.created_at)}</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Updated</p>
+              <p className="mt-2 text-sm font-semibold text-white">{formatDateTime(asyncStatus.updated_at)}</p>
+            </div>
+          </div>
+
+          {asyncStatus.error_message ? (
+            <InlineNotice title="Processing error" tone="danger">
+              {asyncStatus.error_message}
+            </InlineNotice>
+          ) : null}
+        </Panel>
+
+        <Panel className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+            Output artifacts
+          </p>
+          {asyncOutputs.length ? (
+            <div className="space-y-3">
+              {asyncOutputs.map((item) => (
+                <a
+                  key={item.output.id}
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white hover:bg-white/10"
+                >
+                  {item.output.kind} · {item.output.key}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm leading-7 text-slate-300">
+              Outputs will appear after `COMPLETED`.
+            </p>
+          )}
+        </Panel>
+      </motion.section>
+    );
   }
 
   if (!study) {
@@ -136,7 +332,7 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
           <div className="flex gap-3">
             <button
               type="button"
-              onClick={() => void loadStudy()}
+              onClick={() => void loadData()}
               className="rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
             >
               Refresh

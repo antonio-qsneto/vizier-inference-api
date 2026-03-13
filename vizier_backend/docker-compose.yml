@@ -42,12 +42,13 @@ services:
       DEBUG: "True"
       DATABASE_URL: postgresql://vizier_user:vizier_password@db:5432/vizier_med
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: dev-secret-key-change-in-production
+      DJANGO_SECRET_KEY: dev-secret-key-change-in-production
       ALLOWED_HOSTS: localhost,127.0.0.1,web
       CORS_ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173
       COGNITO_REGION: us-east-1
       AWS_REGION: us-east-1
       S3_BUCKET: vizier-med-bucket
+      S3_LOCAL_DEV_MODE: "True"
       SAVE_ANALYSIS_ARTIFACTS: "True"
       ANALYSIS_ROOT_DIR: /tmp/vizier-analysis
 

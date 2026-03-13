@@ -1,0 +1,140 @@
+name: Deploy Dev
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_DIR: vizier-inference-infra/terraform/envs/dev
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_VAR_rds_password: ${{ secrets.TF_VAR_RDS_PASSWORD }}
+  TF_VAR_django_secret_key: ${{ secrets.TF_VAR_DJANGO_SECRET_KEY }}
+  TF_VAR_inference_api_bearer_token: ${{ secrets.TF_VAR_INFERENCE_API_BEARER_TOKEN }}
+  TF_VAR_biomedparse_image_override: ${{ vars.BIOMEDPARSE_IMAGE_OVERRIDE }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Terraform init (dev)
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          if [[ -z "${TF_STATE_BUCKET}" ]]; then
+            echo "TF_STATE_BUCKET GitHub variable is required."
+            exit 1
+          fi
+          BACKEND_ARGS=(
+            "-backend-config=bucket=${TF_STATE_BUCKET}"
+            "-backend-config=key=envs/dev/terraform.tfstate"
+            "-backend-config=region=${AWS_REGION}"
+            "-backend-config=encrypt=true"
+          )
+          if [[ -n "${TF_STATE_LOCK_TABLE}" ]]; then
+            BACKEND_ARGS+=("-backend-config=dynamodb_table=${TF_STATE_LOCK_TABLE}")
+          fi
+          terraform init -input=false -reconfigure "${BACKEND_ARGS[@]}"
+
+      - name: Ensure ECR repositories exist
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform apply \
+            -input=false \
+            -auto-approve \
+            -target=module.ecr_backend \
+            -target=module.ecr_biomedparse \
+            -var="backend_image_tag=bootstrap" \
+            -var="biomedparse_image_tag=bootstrap"
+
+      - name: Resolve ECR backend repository
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          echo "BACKEND_ECR_REPOSITORY_URL=$(terraform output -raw backend_ecr_repository_url)" >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=${GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./vizier_backend
+          file: ./vizier_backend/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ env.BACKEND_ECR_REPOSITORY_URL }}:${{ env.IMAGE_TAG }}
+            ${{ env.BACKEND_ECR_REPOSITORY_URL }}:dev-latest
+
+      - name: Terraform apply (dev)
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform apply \
+            -input=false \
+            -auto-approve \
+            -var="backend_image_tag=${IMAGE_TAG}"
+
+      - name: Export runtime outputs
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          echo "ECS_CLUSTER=$(terraform output -raw ecs_gpu_cluster_name)" >> "$GITHUB_ENV"
+          echo "TASK_DEFINITION_ARN=$(terraform output -raw ecs_fargate_django_task_definition_arn)" >> "$GITHUB_ENV"
+          echo "MIGRATION_CONTAINER_NAME=$(terraform output -raw ecs_fargate_django_service_name)" >> "$GITHUB_ENV"
+          echo "BOOTSTRAP_CONTAINER_NAME=$(terraform output -raw ecs_fargate_django_service_name)" >> "$GITHUB_ENV"
+          echo "SUBNET_IDS=$(terraform output -json private_subnet_ids | jq -r 'join(\",\")')" >> "$GITHUB_ENV"
+          echo "SECURITY_GROUP_IDS=$(terraform output -raw fargate_app_security_group_id)" >> "$GITHUB_ENV"
+          echo "ALB_DNS_NAME=$(terraform output -raw alb_dns_name)" >> "$GITHUB_ENV"
+
+      - name: Run database migrations
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          ECS_CLUSTER: ${{ env.ECS_CLUSTER }}
+          TASK_DEFINITION_ARN: ${{ env.TASK_DEFINITION_ARN }}
+          SUBNET_IDS: ${{ env.SUBNET_IDS }}
+          SECURITY_GROUP_IDS: ${{ env.SECURITY_GROUP_IDS }}
+          MIGRATION_CONTAINER_NAME: ${{ env.MIGRATION_CONTAINER_NAME }}
+        run: ./scripts/deploy/run_ecs_migrate.sh
+
+      - name: Bootstrap initial tenant/admin
+        if: ${{ vars.BOOTSTRAP_ADMIN_EMAIL != '' }}
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          ECS_CLUSTER: ${{ env.ECS_CLUSTER }}
+          TASK_DEFINITION_ARN: ${{ env.TASK_DEFINITION_ARN }}
+          SUBNET_IDS: ${{ env.SUBNET_IDS }}
+          SECURITY_GROUP_IDS: ${{ env.SECURITY_GROUP_IDS }}
+          BOOTSTRAP_CONTAINER_NAME: ${{ env.BOOTSTRAP_CONTAINER_NAME }}
+          BOOTSTRAP_ADMIN_EMAIL: ${{ vars.BOOTSTRAP_ADMIN_EMAIL }}
+          BOOTSTRAP_CREATE_USER_IF_MISSING: "1"
+          BOOTSTRAP_MAKE_SUPERUSER: "1"
+        run: ./scripts/deploy/run_bootstrap.sh
+
+      - name: API smoke test
+        env:
+          API_BASE_URL: http://${{ env.ALB_DNS_NAME }}
+          AUTH_TOKEN: ${{ secrets.SMOKE_AUTH_TOKEN }}
+        run: ./scripts/deploy/smoke_api.sh

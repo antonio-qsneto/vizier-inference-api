@@ -2,6 +2,13 @@ data "tls_certificate" "github_actions" {
   url = "https://token.actions.githubusercontent.com"
 }
 
+locals {
+  github_subjects = concat(
+    ["repo:${var.github_repo}:ref:refs/heads/${var.github_branch}"],
+    [for env_name in var.github_environments : "repo:${var.github_repo}:environment:${env_name}"],
+  )
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
@@ -26,7 +33,7 @@ data "aws_iam_policy_document" "github_oidc_trust" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/${var.github_branch}"]
+      values   = local.github_subjects
     }
   }
 }
@@ -40,9 +47,23 @@ data "aws_iam_policy_document" "terraform_permissions" {
   statement {
     effect = "Allow"
     actions = [
-      "ec2:*", "ecs:*", "iam:*", "sqs:*", "dynamodb:*",
-      "logs:*", "ecr:*", "elasticloadbalancing:*",
-      "autoscaling:*", "apigateway:*", "cloudwatch:*"
+      "ec2:*",
+      "ecs:*",
+      "iam:*",
+      "sqs:*",
+      "logs:*",
+      "ecr:*",
+      "elasticloadbalancing:*",
+      "autoscaling:*",
+      "cloudwatch:*",
+      "rds:*",
+      "s3:*",
+      "dynamodb:*",
+      "secretsmanager:*",
+      "kms:*",
+      "cognito-idp:*",
+      "ssm:*",
+      "sts:GetCallerIdentity"
     ]
     resources = ["*"]
   }

@@ -1,57 +1,23 @@
-resource "aws_ecs_task_definition" "worker" {
-  family                   = "vizier-worker"
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["EC2"]
-  cpu                      = "1024"
-  memory                   = "2048"
+resource "aws_cloudwatch_log_group" "biomedparse" {
+  name              = var.biomedparse_log_group_name
+  retention_in_days = var.biomedparse_log_retention_days
 
-  execution_role_arn = var.worker_task_execution_role_arn
-  task_role_arn      = var.worker_task_role_arn
-
-  container_definitions = jsonencode([
-    {
-      name      = "worker"
-      image     = var.worker_image
-      essential = true
-
-      environment = [
-        { name = "SQS_QUEUE_URL", value = var.sqs_queue_url },
-        { name = "JOBS_TABLE_NAME", value = var.jobs_table_name },
-        { name = "ARTIFACTS_BUCKET", value = var.artifacts_bucket },
-        { name = "AWS_REGION", value = var.aws_region },
-        { name = "ECS_CLUSTER", value = var.cluster_name },
-        { name = "BIO_TASK_DEF", value = aws_ecs_task_definition.biomedparse.arn },
-        { name = "TASK_SUBNETS", value = join(",", var.private_subnet_ids) },
-        { name = "TASK_SECURITY_GROUPS", value = var.ecs_sg_id },
-        { name = "CAPACITY_PROVIDER", value = aws_ecs_capacity_provider.gpu.name }
-      ]
-
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = "/ecs/vizier-worker"
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "worker"
-        }
-      }
-    }
-  ])
+  tags = var.tags
 }
 
-# BiomedParse GPU task definition (ephemeral per job)
 resource "aws_ecs_task_definition" "biomedparse" {
   family                   = "vizier-biomedparse"
   network_mode             = "awsvpc"
   requires_compatibilities = ["EC2"]
-  cpu                      = "4096"
-  memory                   = "14336"
+  cpu                      = tostring(var.biomedparse_cpu)
+  memory                   = tostring(var.biomedparse_memory)
 
   execution_role_arn = var.worker_task_execution_role_arn
   task_role_arn      = var.worker_task_role_arn
 
   container_definitions = jsonencode([
     {
-      name      = "biomedparse"
+      name      = var.biomedparse_container_name
       image     = var.biomedparse_image
       essential = true
 
@@ -67,14 +33,14 @@ resource "aws_ecs_task_definition" "biomedparse" {
       resourceRequirements = [
         {
           type  = "GPU"
-          value = "1"
+          value = tostring(var.biomedparse_gpu_count)
         }
       ]
 
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          awslogs-group         = "/ecs/vizier-biomedparse"
+          awslogs-group         = aws_cloudwatch_log_group.biomedparse.name
           awslogs-region        = var.aws_region
           awslogs-stream-prefix = "biomedparse"
         }

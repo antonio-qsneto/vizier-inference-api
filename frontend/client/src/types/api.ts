@@ -6,6 +6,18 @@ export type EffectiveRole =
   | "individual"
   | string;
 export type StudyStatusValue = "SUBMITTED" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | string;
+export type InferenceJobStatusValue =
+  | "CREATED"
+  | "UPLOAD_PENDING"
+  | "UPLOADED"
+  | "VALIDATING"
+  | "PREPROCESSING"
+  | "QUEUED"
+  | "RUNNING"
+  | "POSTPROCESSING"
+  | "COMPLETED"
+  | "FAILED"
+  | string;
 export type ClinicPlanType = "individual" | "clinic" | string;
 export type ClinicSubscriptionPlan = "free" | "clinic_monthly" | "clinic_yearly" | string;
 export type ClinicAccountStatus = "active" | "past_due" | "canceled" | string;
@@ -161,6 +173,87 @@ export interface StudyResult {
   expires_in: number;
   image_file_name: string;
   mask_file_name: string;
+}
+
+export interface InferenceUploadInstructions {
+  method: "POST";
+  url: string;
+  fields: Record<string, string>;
+  key: string;
+  expires_in: number;
+  bucket: string;
+  input_artifact_id: string;
+}
+
+export interface InferenceJobCreateResponse {
+  job_id: string;
+  status: InferenceJobStatusValue;
+  tenant_id: string;
+  correlation_id: string;
+  upload: InferenceUploadInstructions;
+}
+
+export interface InferenceInputArtifact {
+  id: string;
+  bucket: string;
+  key: string;
+  kind: string;
+  original_filename: string | null;
+  content_type: string | null;
+  size_bytes: number | null;
+  etag: string | null;
+  upload_status: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InferenceJobStatus {
+  id: string;
+  tenant: string;
+  owner: number;
+  status: InferenceJobStatusValue;
+  progress_percent: number;
+  requested_device: "cuda" | "cpu" | string;
+  slice_batch_size: number | null;
+  gpu_task_arn: string | null;
+  attempt_count: number;
+  correlation_id: string;
+  idempotency_key: string | null;
+  error_type: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  uploaded_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  input_artifacts: InferenceInputArtifact[];
+}
+
+export interface InferenceOutputArtifact {
+  id: string;
+  job: string;
+  bucket: string;
+  key: string;
+  kind: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  etag: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface InferenceJobOutputsResponse {
+  job_id: string;
+  status: InferenceJobStatusValue;
+  outputs: InferenceOutputArtifact[];
+}
+
+export interface InferenceOutputPresignResponse {
+  output_id: string;
+  kind: string;
+  url: string;
+  expires_in: number;
 }
 
 export type CategoriesCatalog = Record<string, Record<string, string[]>>;

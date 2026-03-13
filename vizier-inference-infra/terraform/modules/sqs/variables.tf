@@ -42,7 +42,7 @@ variable "dlq_message_retention_seconds" {
 variable "max_receive_count" {
   type        = number
   description = "How many receives before moving to DLQ"
-  default     = 3
+  default     = 5
 }
 
 variable "tags" {

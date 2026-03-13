@@ -2,10 +2,6 @@ variable "cluster_name" {
   type = string
 }
 
-variable "vpc_id" {
-  type = string
-}
-
 variable "private_subnet_ids" {
   type = list(string)
 }
@@ -19,19 +15,17 @@ variable "instance_profile_name" {
 }
 
 variable "gpu_ami_id" {
-  type        = string
-  description = "Baked ECS GPU AMI ID used by g4dn worker nodes"
+  type = string
 }
 
 variable "instance_type" {
-  type = string
-  # default = "inf2.xlarge"
+  type    = string
   default = "g4dn.xlarge"
 }
 
-variable "cpu_instance_type" {
-  type    = string
-  default = "t3.medium"
+variable "root_volume_size_gb" {
+  type    = number
+  default = 200
 }
 
 variable "asg_min" {
@@ -49,32 +43,68 @@ variable "asg_max" {
   default = 2
 }
 
-variable "cpu_asg_min" {
+variable "enable_business_hours_schedule" {
+  type    = bool
+  default = true
+}
+
+variable "business_hours_time_zone" {
+  type    = string
+  default = "America/Sao_Paulo"
+}
+
+variable "business_hours_scale_up_cron" {
+  type    = string
+  default = "0 7 * * *"
+}
+
+variable "business_hours_scale_down_cron" {
+  type    = string
+  default = "0 18 * * *"
+}
+
+variable "business_hours_min_size" {
   type    = number
   default = 1
 }
 
-variable "cpu_asg_desired" {
+variable "business_hours_desired_capacity" {
   type    = number
   default = 1
-}
-
-variable "cpu_asg_max" {
-  type    = number
-  default = 2
-}
-
-variable "tags" {
-  type    = map(string)
-  default = {}
-}
-
-variable "worker_image" {
-  type = string
 }
 
 variable "biomedparse_image" {
   type = string
+}
+
+variable "biomedparse_container_name" {
+  type    = string
+  default = "biomedparse"
+}
+
+variable "biomedparse_gpu_count" {
+  type    = number
+  default = 1
+}
+
+variable "biomedparse_cpu" {
+  type    = number
+  default = 4096
+}
+
+variable "biomedparse_memory" {
+  type    = number
+  default = 14336
+}
+
+variable "biomedparse_log_group_name" {
+  type    = string
+  default = "/ecs/vizier-biomedparse"
+}
+
+variable "biomedparse_log_retention_days" {
+  type    = number
+  default = 30
 }
 
 variable "worker_task_execution_role_arn" {
@@ -85,18 +115,11 @@ variable "worker_task_role_arn" {
   type = string
 }
 
-variable "sqs_queue_url" {
-  type = string
-}
-
-variable "jobs_table_name" {
-  type = string
-}
-
-variable "artifacts_bucket" {
-  type = string
-}
-
 variable "aws_region" {
   type = string
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
 }

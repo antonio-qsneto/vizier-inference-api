@@ -8,6 +8,7 @@ Aplicação backend Django para processamento de imagens médicas (DICOM) com se
 - **Multi-tenancy**: Suporte a múltiplas clínicas com isolamento de dados
 - **Pipeline DICOM**: Conversão automática ZIP → DICOM → NPZ
 - **Inferência Assíncrona**: Submissão de jobs a API externa com polling
+- **Control Plane assíncrono S3-first**: criação de jobs + presigned upload/download sem proxy de binários no Django
 - **Armazenamento S3**: Resultados em NIfTI (.nii.gz) com URLs assinadas
 - **Audit Logging**: Conformidade LGPD com rastreamento completo
 - **API RESTful**: Django REST Framework com documentação Swagger
@@ -145,6 +146,32 @@ vizier_backend/
 - `GET /api/studies/{id}/result/` - URLs assinadas dos NIfTI (imagem + máscara) para overlay no frontend
 - `GET /api/studies/{id}/visualization/` - Alias do endpoint acima
 
+### Inference (novo fluxo assíncrono S3-first)
+- `POST /api/inference/jobs/` - Criar job e receber instruções de upload direto no S3 (presigned POST)
+- `POST /api/inference/jobs/{job_id}/upload-complete/` - Confirmar upload, validar objeto e enfileirar processamento
+- `GET /api/inference/jobs/{job_id}/status/` - Obter estado detalhado do job
+- `GET /api/inference/jobs/{job_id}/outputs/` - Listar artefatos de saída
+- `POST /api/inference/jobs/{job_id}/outputs/{output_id}/presign-download/` - Gerar URL temporária para download
+
+Contrato da mensagem SQS (v2):
+```json
+{
+  "schema_version": 2,
+  "event_type": "inference.job.uploaded",
+  "job_id": "uuid",
+  "tenant_id": "uuid",
+  "input_artifact_id": "uuid",
+  "input_bucket": "bucket-name",
+  "input_key": "raw/<tenant>/<job>/input/file.nii.gz",
+  "correlation_id": "uuid",
+  "requested_by_user_id": 123,
+  "requested_model_version": "biomedparse-v1",
+  "requested_device": "cuda",
+  "slice_batch_size": 8,
+  "requested_at": "2026-03-12T00:00:00Z"
+}
+```
+
 Regra de negócio:
 - Usuário individual em plano `free` não pode fazer upload.
 - Upload individual é liberado apenas em `plano_individual_mensal` ou `plano_individual_anual`.
@@ -154,7 +181,7 @@ Regra de negócio:
 ```env
 # Django
 DEBUG=False
-SECRET_KEY=your-secret-key
+DJANGO_SECRET_KEY=your-secret-key
 ALLOWED_HOSTS=localhost,127.0.0.1
 
 # Database
@@ -165,6 +192,22 @@ AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=your-access-key
 AWS_SECRET_ACCESS_KEY=your-secret-key
 S3_BUCKET=vizier-med-bucket
+AWS_S3_PRESIGNED_EXPIRES=3600
+S3_LOCAL_DEV_MODE=False
+S3_LOCAL_STORAGE_ROOT=/tmp/vizier-med
+
+# Async control plane
+INFERENCE_ASYNC_S3_ENABLED=True
+INFERENCE_ASYNC_MAX_UPLOAD_BYTES=2147483648
+INFERENCE_JOBS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/<account>/<queue>
+BIO_ECS_CLUSTER=vizier-dev-gpu
+BIO_ECS_TASK_DEFINITION=arn:aws:ecs:us-east-1:<account-id>:task-definition/vizier-biomedparse:1
+BIO_ECS_CAPACITY_PROVIDER=vizier-dev-gpu-cp
+BIO_ECS_SUBNETS=subnet-1,subnet-2
+BIO_ECS_SECURITY_GROUPS=sg-1234567890
+BIO_ECS_CONTAINER_NAME=biomedparse
+BIO_ECS_TASK_POLL_SECONDS=15
+BIO_ECS_TASK_TIMEOUT_SECONDS=3600
 
 # AWS Cognito
 COGNITO_REGION=us-east-1
@@ -200,6 +243,8 @@ INVITATION_LOGIN_URL=https://vizier.com/login
 # Inference API
 INFERENCE_API_URL=http://inference-api:8001
 INFERENCE_API_TIMEOUT=300
+INFERENCE_POLL_INTERVAL=5
+INFERENCE_API_BEARER_TOKEN=
 
 # DICOM Processing
 DICOM_TARGET_HW=(512, 512)
@@ -262,6 +307,11 @@ docker build -t vizier-med-backend:latest .
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
 docker tag vizier-med-backend:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/vizier-med-backend:latest
 docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/vizier-med-backend:latest
+```
+
+### Worker assíncrono (Django command)
+```bash
+python manage.py run_inference_worker
 ```
 
 ### AWS Lambda (Serverless)

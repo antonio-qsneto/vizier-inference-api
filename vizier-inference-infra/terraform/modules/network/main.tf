@@ -27,6 +27,17 @@ resource "aws_subnet" "public" {
   }
 }
 
+resource "aws_subnet" "public_b" {
+  vpc_id                  = aws_vpc.this.id
+  cidr_block              = var.public_subnet_cidr_b
+  availability_zone       = var.availability_zone_b
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "vizier-public-b"
+  }
+}
+
 resource "aws_subnet" "private" {
   vpc_id            = aws_vpc.this.id
   cidr_block        = var.private_subnet_cidr
@@ -34,6 +45,16 @@ resource "aws_subnet" "private" {
 
   tags = {
     Name = "vizier-private"
+  }
+}
+
+resource "aws_subnet" "private_b" {
+  vpc_id            = aws_vpc.this.id
+  cidr_block        = var.private_subnet_cidr_b
+  availability_zone = var.availability_zone_b
+
+  tags = {
+    Name = "vizier-private-b"
   }
 }
 
@@ -73,6 +94,11 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
+resource "aws_route_table_association" "public_b" {
+  subnet_id      = aws_subnet.public_b.id
+  route_table_id = aws_route_table.public.id
+}
+
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.this.id
 
@@ -92,6 +118,11 @@ resource "aws_route_table" "private" {
 
 resource "aws_route_table_association" "private" {
   subnet_id      = aws_subnet.private.id
+  route_table_id = aws_route_table.private.id
+}
+
+resource "aws_route_table_association" "private_b" {
+  subnet_id      = aws_subnet.private_b.id
   route_table_id = aws_route_table.private.id
 }
 
@@ -125,7 +156,7 @@ data "aws_region" "current" {}
 resource "aws_vpc_endpoint" "s3" {
   count             = var.enable_vpc_endpoints ? 1 : 0
   vpc_id            = aws_vpc.this.id
-  service_name      = "com.amazonaws.${data.aws_region.current.region}.s3"
+  service_name      = "com.amazonaws.${data.aws_region.current.name}.s3"
   vpc_endpoint_type = "Gateway"
 
   route_table_ids = [
@@ -134,21 +165,6 @@ resource "aws_vpc_endpoint" "s3" {
 
   tags = {
     Name = "vizier-s3-endpoint"
-  }
-}
-
-resource "aws_vpc_endpoint" "dynamodb" {
-  count             = var.enable_vpc_endpoints ? 1 : 0
-  vpc_id            = aws_vpc.this.id
-  service_name      = "com.amazonaws.${data.aws_region.current.region}.dynamodb"
-  vpc_endpoint_type = "Gateway"
-
-  route_table_ids = [
-    aws_route_table.private.id
-  ]
-
-  tags = {
-    Name = "vizier-dynamodb-endpoint"
   }
 }
 
@@ -205,9 +221,9 @@ resource "aws_vpc_endpoint" "interface" {
   for_each          = local.interface_endpoints
   vpc_id            = aws_vpc.this.id
   vpc_endpoint_type = "Interface"
-  service_name      = "com.amazonaws.${data.aws_region.current.region}.${each.key}"
+  service_name      = "com.amazonaws.${data.aws_region.current.name}.${each.key}"
 
-  subnet_ids          = [aws_subnet.private.id]
+  subnet_ids          = [aws_subnet.private.id, aws_subnet.private_b.id]
   security_group_ids  = [aws_security_group.endpoints.id]
   private_dns_enabled = true
 

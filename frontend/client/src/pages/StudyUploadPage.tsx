@@ -2,7 +2,13 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { fetchCategories, uploadStudy } from "@/api/services";
+import {
+  completeInferenceJobUpload,
+  createInferenceJob,
+  fetchCategories,
+  uploadFileDirectToS3,
+  uploadStudy,
+} from "@/api/services";
 import { useAuth } from "@/auth/AuthContext";
 import {
   InlineNotice,
@@ -12,6 +18,7 @@ import {
 } from "@/components/primitives";
 import { Spinner } from "@/components/ui/spinner";
 import type { CategoriesCatalog } from "@/types/api";
+import { env } from "@/env";
 
 interface UploadFormState {
   caseIdentification: string;
@@ -114,17 +121,47 @@ export default function StudyUploadPage() {
 
     setSubmitting(true);
     try {
-      const study = await uploadStudy(accessToken, {
-        file: formState.file,
-        caseIdentification: formState.caseIdentification.trim(),
-        patientName: formState.patientName.trim(),
-        age: ageValue,
-        examSource: formState.examSource.trim(),
-        examModality: formState.examModality,
-        categoryId: formState.categoryId,
-      });
-      toast.success("Study submitted");
-      navigate(`/studies/${study.id}`);
+      if (env.useAsyncS3Upload) {
+        const correlationId = crypto.randomUUID();
+        const createResponse = await createInferenceJob(
+          accessToken,
+          {
+            fileName: formState.file.name,
+            fileSize: formState.file.size,
+            contentType: formState.file.type || "application/octet-stream",
+            caseIdentification: formState.caseIdentification.trim(),
+            patientName: formState.patientName.trim(),
+            age: ageValue,
+            examSource: formState.examSource.trim(),
+            examModality: formState.examModality,
+            categoryId: formState.categoryId,
+            correlationId,
+          },
+          correlationId,
+        );
+
+        await uploadFileDirectToS3(createResponse.upload, formState.file);
+        await completeInferenceJobUpload(accessToken, createResponse.job_id, {
+          inputArtifactId: createResponse.upload.input_artifact_id,
+          key: createResponse.upload.key,
+          sizeBytes: formState.file.size,
+        });
+
+        toast.success("Inference job submitted");
+        navigate(`/studies/${createResponse.job_id}?async=1`);
+      } else {
+        const study = await uploadStudy(accessToken, {
+          file: formState.file,
+          caseIdentification: formState.caseIdentification.trim(),
+          patientName: formState.patientName.trim(),
+          age: ageValue,
+          examSource: formState.examSource.trim(),
+          examModality: formState.examModality,
+          categoryId: formState.categoryId,
+        });
+        toast.success("Study submitted");
+        navigate(`/studies/${study.id}`);
+      }
     } catch (requestError) {
       toast.error(
         requestError instanceof Error
