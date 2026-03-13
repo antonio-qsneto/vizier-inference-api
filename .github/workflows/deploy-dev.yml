@@ -3,7 +3,19 @@ name: Deploy Dev
 on:
   push:
     branches: ["main"]
+    paths:
+      - "vizier_backend/**"
+      - "vizier-inference-infra/**"
+      - "scripts/deploy/**"
+      - ".github/workflows/deploy-dev.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/terraform-plan.yml"
+      - ".github/workflows/deploy-prod.yml"
   workflow_dispatch:
+
+concurrency:
+  group: deploy-dev-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   id-token: write
@@ -101,13 +113,29 @@ jobs:
       - name: Export runtime outputs
         working-directory: ${{ env.TF_DIR }}
         run: |
-          echo "ECS_CLUSTER=$(terraform output -raw ecs_gpu_cluster_name)" >> "$GITHUB_ENV"
-          echo "TASK_DEFINITION_ARN=$(terraform output -raw ecs_fargate_django_task_definition_arn)" >> "$GITHUB_ENV"
-          echo "MIGRATION_CONTAINER_NAME=$(terraform output -raw ecs_fargate_django_service_name)" >> "$GITHUB_ENV"
-          echo "BOOTSTRAP_CONTAINER_NAME=$(terraform output -raw ecs_fargate_django_service_name)" >> "$GITHUB_ENV"
-          echo "SUBNET_IDS=$(terraform output -json private_subnet_ids | jq -r 'join(\",\")')" >> "$GITHUB_ENV"
-          echo "SECURITY_GROUP_IDS=$(terraform output -raw fargate_app_security_group_id)" >> "$GITHUB_ENV"
-          echo "ALB_DNS_NAME=$(terraform output -raw alb_dns_name)" >> "$GITHUB_ENV"
+          set -euo pipefail
+
+          ECS_CLUSTER="$(terraform output -raw ecs_gpu_cluster_name)"
+          TASK_DEFINITION_ARN="$(terraform output -raw ecs_fargate_django_task_definition_arn)"
+          CONTAINER_NAME="$(terraform output -raw ecs_fargate_django_service_name)"
+          SUBNET_IDS="$(terraform output -json private_subnet_ids | jq -r 'join(",")')"
+          SECURITY_GROUP_IDS="$(terraform output -raw fargate_app_security_group_id)"
+          ALB_DNS_NAME="$(terraform output -raw alb_dns_name)"
+
+          if [[ -z "${SUBNET_IDS}" || "${SUBNET_IDS}" == "null" ]]; then
+            echo "private_subnet_ids terraform output is empty"
+            exit 1
+          fi
+
+          {
+            echo "ECS_CLUSTER=${ECS_CLUSTER}"
+            echo "TASK_DEFINITION_ARN=${TASK_DEFINITION_ARN}"
+            echo "MIGRATION_CONTAINER_NAME=${CONTAINER_NAME}"
+            echo "BOOTSTRAP_CONTAINER_NAME=${CONTAINER_NAME}"
+            echo "SUBNET_IDS=${SUBNET_IDS}"
+            echo "SECURITY_GROUP_IDS=${SECURITY_GROUP_IDS}"
+            echo "ALB_DNS_NAME=${ALB_DNS_NAME}"
+          } >> "$GITHUB_ENV"
 
       - name: Run database migrations
         env:

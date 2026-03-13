@@ -5,6 +5,10 @@ on:
     paths:
       - "vizier-inference-infra/terraform/**"
 
+concurrency:
+  group: terraform-plan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   id-token: write
   contents: read
