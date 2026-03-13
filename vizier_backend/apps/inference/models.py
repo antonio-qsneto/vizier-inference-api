@@ -8,16 +8,20 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+TENANT_TYPE_CLINIC = "CLINIC"
+TENANT_TYPE_INDIVIDUAL = "INDIVIDUAL"
+TENANT_TYPE_CHOICES = [
+    (TENANT_TYPE_CLINIC, "Clinic"),
+    (TENANT_TYPE_INDIVIDUAL, "Individual"),
+]
+
 
 class Tenant(models.Model):
     """Logical tenant boundary used by inference jobs."""
 
-    TYPE_CLINIC = "CLINIC"
-    TYPE_INDIVIDUAL = "INDIVIDUAL"
-    TYPE_CHOICES = [
-        (TYPE_CLINIC, "Clinic"),
-        (TYPE_INDIVIDUAL, "Individual"),
-    ]
+    TYPE_CLINIC = TENANT_TYPE_CLINIC
+    TYPE_INDIVIDUAL = TENANT_TYPE_INDIVIDUAL
+    TYPE_CHOICES = TENANT_TYPE_CHOICES
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     type = models.CharField(max_length=16, choices=TYPE_CHOICES)
@@ -50,11 +54,11 @@ class Tenant(models.Model):
             models.CheckConstraint(
                 check=(
                     (
-                        models.Q(type=TYPE_CLINIC, clinic__isnull=False)
+                        models.Q(type=TENANT_TYPE_CLINIC, clinic__isnull=False)
                         & models.Q(owner_user__isnull=True)
                     )
                     | (
-                        models.Q(type=TYPE_INDIVIDUAL, owner_user__isnull=False)
+                        models.Q(type=TENANT_TYPE_INDIVIDUAL, owner_user__isnull=False)
                         & models.Q(clinic__isnull=True)
                     )
                 ),
