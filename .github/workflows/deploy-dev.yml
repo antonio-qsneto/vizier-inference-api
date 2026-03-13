@@ -25,8 +25,13 @@ env:
   TF_VAR_django_secret_key: ${{ secrets.TF_VAR_DJANGO_SECRET_KEY }}
   TF_VAR_inference_api_bearer_token: ${{ secrets.TF_VAR_INFERENCE_API_BEARER_TOKEN }}
   TF_VAR_biomedparse_image_override: ${{ vars.BIOMEDPARSE_IMAGE_OVERRIDE || '996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse:latest' }}
+  TF_VAR_manage_backend_ecr_repository: ${{ vars.MANAGE_BACKEND_ECR_REPOSITORY || 'false' }}
+  TF_VAR_external_backend_ecr_repository_url: ${{ vars.BACKEND_ECR_REPOSITORY_URL || '' }}
+  TF_VAR_manage_biomedparse_ecr_repository: ${{ vars.MANAGE_BIOMEDPARSE_ECR_REPOSITORY || 'false' }}
+  TF_VAR_external_biomedparse_ecr_repository_url: ${{ vars.BIOMEDPARSE_ECR_REPOSITORY_URL || '' }}
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
   TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
+  BACKEND_ECR_REPOSITORY_URL: ${{ vars.BACKEND_ECR_REPOSITORY_URL || '' }}
 
 jobs:
   deploy:
@@ -71,11 +76,24 @@ jobs:
       - name: Ensure ECR repositories exist
         working-directory: ${{ env.TF_DIR }}
         run: |
+          set -euo pipefail
+          TARGET_ARGS=()
+          if [[ "${TF_VAR_manage_backend_ecr_repository}" == "true" ]]; then
+            TARGET_ARGS+=("-target=module.ecr_backend[0]")
+          fi
+          if [[ "${TF_VAR_manage_biomedparse_ecr_repository}" == "true" ]]; then
+            TARGET_ARGS+=("-target=module.ecr_biomedparse[0]")
+          fi
+
+          if [[ ${#TARGET_ARGS[@]} -eq 0 ]]; then
+            echo "Skipping ECR creation: using external repositories."
+            exit 0
+          fi
+
           terraform apply \
             -input=false \
             -auto-approve \
-            -target=module.ecr_backend \
-            -target=module.ecr_biomedparse \
+            "${TARGET_ARGS[@]}" \
             -var="backend_image_tag=bootstrap" \
             -var="biomedparse_image_tag=bootstrap"
 
@@ -83,7 +101,15 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
         run: |
           SOURCE_SHA="${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}"
-          echo "BACKEND_ECR_REPOSITORY_URL=$(terraform output -raw backend_ecr_repository_url)" >> "$GITHUB_ENV"
+          REPO_URL="${BACKEND_ECR_REPOSITORY_URL}"
+          if [[ -z "${REPO_URL}" ]]; then
+            REPO_URL="$(terraform output -raw backend_ecr_repository_url)"
+          fi
+          if [[ -z "${REPO_URL}" ]]; then
+            echo "Could not resolve BACKEND_ECR_REPOSITORY_URL."
+            exit 1
+          fi
+          echo "BACKEND_ECR_REPOSITORY_URL=${REPO_URL}" >> "$GITHUB_ENV"
           echo "IMAGE_TAG=${SOURCE_SHA}" >> "$GITHUB_ENV"
 
       - name: Login to Amazon ECR

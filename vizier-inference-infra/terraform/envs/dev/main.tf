@@ -51,17 +51,21 @@ module "sqs" {
 }
 
 module "ecr_backend" {
+  count  = var.manage_backend_ecr_repository ? 1 : 0
   source = "../../modules/ecr"
 
-  name = local.backend_ecr_name
-  tags = local.tags
+  name         = local.backend_ecr_name
+  force_delete = var.ecr_force_delete
+  tags         = local.tags
 }
 
 module "ecr_biomedparse" {
+  count  = var.manage_biomedparse_ecr_repository ? 1 : 0
   source = "../../modules/ecr"
 
-  name = local.biomedparse_ecr_name
-  tags = local.tags
+  name         = local.biomedparse_ecr_name
+  force_delete = var.ecr_force_delete
+  tags         = local.tags
 }
 
 module "iam_github" {
@@ -93,9 +97,11 @@ module "rds_postgres" {
 }
 
 locals {
-  django_database_url = "postgresql://${var.rds_username}:${var.rds_password}@${module.rds_postgres.endpoint}:${module.rds_postgres.port}/${var.rds_db_name}?sslmode=require"
-  backend_image       = "${module.ecr_backend.repository_url}:${var.backend_image_tag}"
-  biomedparse_image   = var.biomedparse_image_override != "" ? var.biomedparse_image_override : "${module.ecr_biomedparse.repository_url}:${var.biomedparse_image_tag}"
+  django_database_url            = "postgresql://${var.rds_username}:${var.rds_password}@${module.rds_postgres.endpoint}:${module.rds_postgres.port}/${var.rds_db_name}?sslmode=require"
+  backend_ecr_repository_url     = var.manage_backend_ecr_repository ? module.ecr_backend[0].repository_url : coalesce(trimspace(var.external_backend_ecr_repository_url) != "" ? trimspace(var.external_backend_ecr_repository_url) : null, "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${local.backend_ecr_name}")
+  biomedparse_ecr_repository_url = var.manage_biomedparse_ecr_repository ? module.ecr_biomedparse[0].repository_url : coalesce(trimspace(var.external_biomedparse_ecr_repository_url) != "" ? trimspace(var.external_biomedparse_ecr_repository_url) : null, "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${local.biomedparse_ecr_name}")
+  backend_image                  = "${local.backend_ecr_repository_url}:${var.backend_image_tag}"
+  biomedparse_image              = var.biomedparse_image_override != "" ? var.biomedparse_image_override : "${local.biomedparse_ecr_repository_url}:${var.biomedparse_image_tag}"
 }
 
 module "app_secrets" {

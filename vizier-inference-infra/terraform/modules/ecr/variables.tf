@@ -2,6 +2,11 @@ variable "name" {
   type = string
 }
 
+variable "force_delete" {
+  type    = bool
+  default = false
+}
+
 variable "image_tag_mutability" {
   type    = string
   default = "MUTABLE"

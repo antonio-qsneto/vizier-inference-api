@@ -66,6 +66,27 @@ resource "aws_iam_role_policy_attachment" "ecs_task_exec" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+data "aws_iam_policy_document" "ecs_task_execution_secrets" {
+  dynamic "statement" {
+    for_each = length(var.app_secret_arns) > 0 ? [1] : []
+    content {
+      sid = "ReadRuntimeSecrets"
+      actions = [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+      ]
+      resources = var.app_secret_arns
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
+  count = length(var.app_secret_arns) > 0 ? 1 : 0
+
+  role   = aws_iam_role.ecs_task_execution_role.id
+  policy = data.aws_iam_policy_document.ecs_task_execution_secrets.json
+}
+
 locals {
   all_bucket_objects_arn = "${var.artifacts_bucket_arn}/*"
 }

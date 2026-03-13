@@ -3,7 +3,12 @@ project_name               = "vizier-inference"
 environment                = "prod"
 backend_image_tag          = "latest"
 biomedparse_image_tag      = "latest"
-biomedparse_image_override = ""
+manage_backend_ecr_repository       = false
+external_backend_ecr_repository_url = "123456789012.dkr.ecr.us-east-1.amazonaws.com/vizier-backend-prod"
+manage_biomedparse_ecr_repository   = false
+external_biomedparse_ecr_repository_url = "123456789012.dkr.ecr.us-east-1.amazonaws.com/biomedparse"
+biomedparse_image_override = "123456789012.dkr.ecr.us-east-1.amazonaws.com/biomedparse:latest"
+ecr_force_delete           = false
 
 rds_password      = "change-me"
 django_secret_key = "change-me"

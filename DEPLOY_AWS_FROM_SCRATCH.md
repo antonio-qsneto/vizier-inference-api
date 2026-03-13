@@ -161,6 +161,10 @@ gh variable set AWS_REGION --repo "$GH_REPO" --env development --body "$AWS_REGI
 gh variable set TF_STATE_BUCKET --repo "$GH_REPO" --env development --body "$TF_STATE_BUCKET"
 gh variable set TF_STATE_LOCK_TABLE --repo "$GH_REPO" --env development --body "$TF_STATE_LOCK_TABLE"
 gh variable set BIOMEDPARSE_IMAGE_OVERRIDE --repo "$GH_REPO" --env development --body "$BIOMEDPARSE_IMAGE_OVERRIDE"
+gh variable set BACKEND_ECR_REPOSITORY_URL --repo "$GH_REPO" --env development --body "996561439065.dkr.ecr.${AWS_REGION}.amazonaws.com/vizier-backend-dev"
+gh variable set BIOMEDPARSE_ECR_REPOSITORY_URL --repo "$GH_REPO" --env development --body "996561439065.dkr.ecr.${AWS_REGION}.amazonaws.com/biomedparse"
+gh variable set MANAGE_BACKEND_ECR_REPOSITORY --repo "$GH_REPO" --env development --body "false"
+gh variable set MANAGE_BIOMEDPARSE_ECR_REPOSITORY --repo "$GH_REPO" --env development --body "false"
 # opcional:
 # gh variable set BOOTSTRAP_ADMIN_EMAIL --repo "$GH_REPO" --env development --body "admin@empresa.com"
 ```
@@ -179,6 +183,10 @@ gh variable set AWS_REGION --repo "$GH_REPO" --env production --body "$AWS_REGIO
 gh variable set TF_STATE_BUCKET --repo "$GH_REPO" --env production --body "$TF_STATE_BUCKET"
 gh variable set TF_STATE_LOCK_TABLE --repo "$GH_REPO" --env production --body "$TF_STATE_LOCK_TABLE"
 gh variable set BIOMEDPARSE_IMAGE_OVERRIDE --repo "$GH_REPO" --env production --body "$BIOMEDPARSE_IMAGE_OVERRIDE"
+gh variable set BACKEND_ECR_REPOSITORY_URL --repo "$GH_REPO" --env production --body "996561439065.dkr.ecr.${AWS_REGION}.amazonaws.com/vizier-backend-prod"
+gh variable set BIOMEDPARSE_ECR_REPOSITORY_URL --repo "$GH_REPO" --env production --body "996561439065.dkr.ecr.${AWS_REGION}.amazonaws.com/biomedparse"
+gh variable set MANAGE_BACKEND_ECR_REPOSITORY --repo "$GH_REPO" --env production --body "false"
+gh variable set MANAGE_BIOMEDPARSE_ECR_REPOSITORY --repo "$GH_REPO" --env production --body "false"
 # opcional:
 # gh variable set BOOTSTRAP_ADMIN_EMAIL --repo "$GH_REPO" --env production --body "admin@empresa.com"
 ```
@@ -193,7 +201,7 @@ gh run watch --repo "$GH_REPO"
 ```
 
 Esse workflow já:
-1. garante ECR
+1. resolve ECR backend (manual ou Terraform, conforme variáveis)
 2. build/push do backend
 3. `terraform apply` completo em dev
 4. migration automática (ECS one-off task)

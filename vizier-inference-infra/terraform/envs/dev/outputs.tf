@@ -35,11 +35,11 @@ output "artifacts_bucket_arn" {
 }
 
 output "backend_ecr_repository_url" {
-  value = module.ecr_backend.repository_url
+  value = local.backend_ecr_repository_url
 }
 
 output "biomedparse_ecr_repository_url" {
-  value = module.ecr_biomedparse.repository_url
+  value = local.biomedparse_ecr_repository_url
 }
 
 output "ecs_gpu_cluster_name" {

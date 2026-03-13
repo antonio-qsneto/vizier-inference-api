@@ -103,6 +103,31 @@ variable "biomedparse_ecr_repo_name" {
   default = "vizier-biomedparse"
 }
 
+variable "manage_backend_ecr_repository" {
+  type    = bool
+  default = false
+}
+
+variable "external_backend_ecr_repository_url" {
+  type    = string
+  default = ""
+}
+
+variable "manage_biomedparse_ecr_repository" {
+  type    = bool
+  default = false
+}
+
+variable "external_biomedparse_ecr_repository_url" {
+  type    = string
+  default = ""
+}
+
+variable "ecr_force_delete" {
+  type    = bool
+  default = false
+}
+
 variable "backend_image_tag" {
   type    = string
   default = "latest"
