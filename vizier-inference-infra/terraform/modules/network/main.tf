@@ -198,6 +198,7 @@ locals {
   # - ecs-telemetry, ecs-agent: ECS agent telemetry/data plane
   # - ecr.api, ecr.dkr: pull images
   # - logs: CloudWatch Logs
+  # - secretsmanager, kms: task secrets injection without NAT
   # - sqs, sts: queue access and IAM auth
   # - ssm, ec2messages, ssmmessages: ECS Exec (execute-command)
   interface_endpoints = var.enable_vpc_endpoints ? toset([
@@ -208,6 +209,8 @@ locals {
     "ecr.api",
     "ecr.dkr",
     "logs",
+    "secretsmanager",
+    "kms",
     "sqs",
     "sts",
     "ssm",

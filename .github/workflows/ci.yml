@@ -44,7 +44,7 @@ jobs:
           DJANGO_SECRET_KEY: ci-secret-key
           COGNITO_USER_POOL_ID: ""
           COGNITO_CLIENT_ID: ""
-        run: python manage.py test apps.inference --verbosity=2
+        run: python manage.py test apps.inference.tests --verbosity=2
 
   frontend:
     name: Frontend (Vite)

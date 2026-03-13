@@ -26,7 +26,7 @@ Este runbook cobre deploy do stack alvo:
    - smoke test (`smoke_api.sh`).
 3. Promoção para produção:
    - workflow manual `deploy-prod.yml`,
-   - informar `image_tag` validada em dev,
+   - informar `image_tag` validada em dev e `source_commit_sha` com CI verde,
    - aprovar ambiente `production`.
 
 ## Primeiro bootstrap manual (se necessário)
@@ -45,7 +45,7 @@ export BOOTSTRAP_MAKE_SUPERUSER=1
 
 ## Rollback
 1. Identificar tag anterior estável no ECR.
-2. Executar `deploy-prod.yml` com `image_tag=<tag_anterior>`.
+2. Executar `deploy-prod.yml` com `image_tag=<tag_anterior>` e `source_commit_sha=<sha-com-ci-success>`.
 3. Confirmar smoke e métricas de erro.
 4. Se necessário, reduzir `desired_count` do worker para conter retries.
 

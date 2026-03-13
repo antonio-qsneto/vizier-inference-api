@@ -21,7 +21,10 @@ Criar dois GitHub Environments:
 ## Variables opcionais (por environment)
 1. `TF_STATE_LOCK_TABLE` (se usar lock table)
 2. `BOOTSTRAP_ADMIN_EMAIL` (para bootstrap automático)
-3. `BIOMEDPARSE_IMAGE_OVERRIDE` (se quiser imagem externa fixa)
+3. `BIOMEDPARSE_IMAGE_OVERRIDE` (se quiser forçar outra imagem)
+
+Valor recomendado no seu cenário:
+- `996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse:latest`
 
 ## Variáveis Terraform recomendadas
 Estas podem ficar em `terraform.tfvars` ou virar `TF_VAR_*` no environment.

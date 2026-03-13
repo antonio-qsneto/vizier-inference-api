@@ -133,8 +133,10 @@ export API_BEARER_PROD="$(openssl rand -hex 32)"
 Como o BiomedParse já existe no seu ECR, informe a URI completa:
 
 ```bash
-export BIOMEDPARSE_IMAGE_OVERRIDE="<account-id>.dkr.ecr.${AWS_REGION}.amazonaws.com/vizier-biomedparse:<tag>"
+export BIOMEDPARSE_IMAGE_OVERRIDE="996561439065.dkr.ecr.${AWS_REGION}.amazonaws.com/biomedparse:latest"
 ```
+
+Observação: os workflows já têm fallback para essa imagem caso a variável não seja definida.
 
 ## 5. Criar GitHub Environments e preencher secrets/variables
 
@@ -233,7 +235,10 @@ Escolha a tag de imagem validada em dev (normalmente SHA do commit):
 
 ```bash
 IMAGE_TAG="<sha-validado-em-dev>"
-gh workflow run deploy-prod.yml --repo "$GH_REPO" --ref main -f image_tag="$IMAGE_TAG"
+SOURCE_COMMIT_SHA="<sha-com-ci-success>"
+gh workflow run deploy-prod.yml --repo "$GH_REPO" --ref main \
+  -f image_tag="$IMAGE_TAG" \
+  -f source_commit_sha="$SOURCE_COMMIT_SHA"
 gh run watch --repo "$GH_REPO"
 ```
 
@@ -259,7 +264,7 @@ Use:
 ## 11. Rollback
 
 1. Identifique tag anterior estável no ECR.
-2. Rode `deploy-prod.yml` novamente com `image_tag=<tag-anterior>`.
+2. Rode `deploy-prod.yml` novamente com `image_tag=<tag-anterior>` e `source_commit_sha=<sha-com-ci-success>`.
 3. Verifique health + alarmes + processamento de jobs.
 
 ## 12. Erros comuns

@@ -1,20 +1,16 @@
 name: Deploy Dev
 
 on:
-  push:
-    branches: ["main"]
-    paths:
-      - "vizier_backend/**"
-      - "vizier-inference-infra/**"
-      - "scripts/deploy/**"
-      - ".github/workflows/deploy-dev.yml"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/terraform-plan.yml"
-      - ".github/workflows/deploy-prod.yml"
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:
-  group: deploy-dev-${{ github.ref }}
+  group: deploy-dev-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -28,17 +24,20 @@ env:
   TF_VAR_rds_password: ${{ secrets.TF_VAR_RDS_PASSWORD }}
   TF_VAR_django_secret_key: ${{ secrets.TF_VAR_DJANGO_SECRET_KEY }}
   TF_VAR_inference_api_bearer_token: ${{ secrets.TF_VAR_INFERENCE_API_BEARER_TOKEN }}
-  TF_VAR_biomedparse_image_override: ${{ vars.BIOMEDPARSE_IMAGE_OVERRIDE }}
+  TF_VAR_biomedparse_image_override: ${{ vars.BIOMEDPARSE_IMAGE_OVERRIDE || '996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse:latest' }}
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
   TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
 
 jobs:
   deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: development
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -83,8 +82,9 @@ jobs:
       - name: Resolve ECR backend repository
         working-directory: ${{ env.TF_DIR }}
         run: |
+          SOURCE_SHA="${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}"
           echo "BACKEND_ECR_REPOSITORY_URL=$(terraform output -raw backend_ecr_repository_url)" >> "$GITHUB_ENV"
-          echo "IMAGE_TAG=${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=${SOURCE_SHA}" >> "$GITHUB_ENV"
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
