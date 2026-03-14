@@ -323,10 +323,27 @@ jobs:
           AWS_REGION: ${{ env.AWS_REGION }}
           ECS_CLUSTER: ${{ env.ECS_CLUSTER }}
           ECS_API_SERVICE_NAME: ${{ env.ECS_API_SERVICE_NAME }}
+          TF_DIR: ${{ env.TF_DIR }}
         run: |
+          set +e
+          CLUSTER="${ECS_CLUSTER:-}"
+          SERVICE="${ECS_API_SERVICE_NAME:-}"
+
+          if [[ -z "${CLUSTER}" || -z "${SERVICE}" ]]; then
+            if [[ -n "${TF_DIR:-}" && -d "${TF_DIR}" ]]; then
+              CLUSTER="$(terraform -chdir="${TF_DIR}" output -raw ecs_gpu_cluster_name 2>/dev/null || true)"
+              SERVICE="$(terraform -chdir="${TF_DIR}" output -raw ecs_fargate_django_service_name 2>/dev/null || true)"
+            fi
+          fi
+
+          if [[ -z "${CLUSTER}" || -z "${SERVICE}" ]]; then
+            echo "Skipping ECS diagnostics: ECS_CLUSTER or ECS_API_SERVICE_NAME is empty."
+            exit 0
+          fi
+
           aws ecs describe-services \
             --region "${AWS_REGION}" \
-            --cluster "${ECS_CLUSTER}" \
-            --services "${ECS_API_SERVICE_NAME}" \
+            --cluster "${CLUSTER}" \
+            --services "${SERVICE}" \
             --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,pendingCount:pendingCount,events:events[0:10]}' \
             --output json
