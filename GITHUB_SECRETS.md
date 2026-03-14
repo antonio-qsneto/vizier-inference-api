@@ -26,6 +26,11 @@ Criar dois GitHub Environments:
 5. `BIOMEDPARSE_ECR_REPOSITORY_URL` (recomendado quando ECR é manual)
 6. `MANAGE_BACKEND_ECR_REPOSITORY` (`false` para não gerenciar via Terraform)
 7. `MANAGE_BIOMEDPARSE_ECR_REPOSITORY` (`false` para não gerenciar via Terraform)
+8. `AMPLIFY_SYNC_ENABLED` (`true` para sincronizar variáveis VITE automaticamente no deploy)
+9. `AMPLIFY_APP_ID` (App ID do Amplify)
+10. `AMPLIFY_BRANCH` (ex.: `main`)
+11. `AMPLIFY_FRONTEND_BASE_URL` (ex.: `https://main.d2fezrl1u8wfmh.amplifyapp.com`)
+12. `AMPLIFY_API_SCHEME` (`http` ou `https`)
 
 Valor recomendado no seu cenário:
 - `996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse:latest`
@@ -61,3 +66,6 @@ No Amplify App, configurar por branch/ambiente:
    - `VITE_COGNITO_DOMAIN`
    - `VITE_COGNITO_REDIRECT_URI`
    - `VITE_COGNITO_LOGOUT_URI`
+
+Automação opcional:
+- Se `AMPLIFY_SYNC_ENABLED=true`, os workflows `deploy-dev` e `deploy-prod` atualizam essas variáveis automaticamente via `aws amplify update-branch`.

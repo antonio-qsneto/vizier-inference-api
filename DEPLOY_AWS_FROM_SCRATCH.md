@@ -165,6 +165,11 @@ gh variable set BACKEND_ECR_REPOSITORY_URL --repo "$GH_REPO" --env development -
 gh variable set BIOMEDPARSE_ECR_REPOSITORY_URL --repo "$GH_REPO" --env development --body "996561439065.dkr.ecr.${AWS_REGION}.amazonaws.com/biomedparse"
 gh variable set MANAGE_BACKEND_ECR_REPOSITORY --repo "$GH_REPO" --env development --body "false"
 gh variable set MANAGE_BIOMEDPARSE_ECR_REPOSITORY --repo "$GH_REPO" --env development --body "false"
+gh variable set AMPLIFY_SYNC_ENABLED --repo "$GH_REPO" --env development --body "true"
+gh variable set AMPLIFY_APP_ID --repo "$GH_REPO" --env development --body "<seu-app-id-amplify>"
+gh variable set AMPLIFY_BRANCH --repo "$GH_REPO" --env development --body "main"
+gh variable set AMPLIFY_FRONTEND_BASE_URL --repo "$GH_REPO" --env development --body "https://main.d2fezrl1u8wfmh.amplifyapp.com"
+gh variable set AMPLIFY_API_SCHEME --repo "$GH_REPO" --env development --body "http"
 # opcional:
 # gh variable set BOOTSTRAP_ADMIN_EMAIL --repo "$GH_REPO" --env development --body "admin@empresa.com"
 ```
@@ -187,6 +192,11 @@ gh variable set BACKEND_ECR_REPOSITORY_URL --repo "$GH_REPO" --env production --
 gh variable set BIOMEDPARSE_ECR_REPOSITORY_URL --repo "$GH_REPO" --env production --body "996561439065.dkr.ecr.${AWS_REGION}.amazonaws.com/biomedparse"
 gh variable set MANAGE_BACKEND_ECR_REPOSITORY --repo "$GH_REPO" --env production --body "false"
 gh variable set MANAGE_BIOMEDPARSE_ECR_REPOSITORY --repo "$GH_REPO" --env production --body "false"
+gh variable set AMPLIFY_SYNC_ENABLED --repo "$GH_REPO" --env production --body "true"
+gh variable set AMPLIFY_APP_ID --repo "$GH_REPO" --env production --body "<seu-app-id-amplify>"
+gh variable set AMPLIFY_BRANCH --repo "$GH_REPO" --env production --body "main"
+gh variable set AMPLIFY_FRONTEND_BASE_URL --repo "$GH_REPO" --env production --body "<url-frontend-prod>"
+gh variable set AMPLIFY_API_SCHEME --repo "$GH_REPO" --env production --body "http"
 # opcional:
 # gh variable set BOOTSTRAP_ADMIN_EMAIL --repo "$GH_REPO" --env production --body "admin@empresa.com"
 ```
@@ -218,10 +228,23 @@ echo "$DEV_ALB_DNS"
 cd /home/antonio/medIA/development/vizier-inference-api
 ```
 
-No Amplify (ambiente dev), preencher:
+No Amplify (ambiente dev), se você **não** ativar a automação do workflow, preencher:
 - `VITE_API_BASE_URL=http://<DEV_ALB_DNS>`
 - `VITE_USE_ASYNC_S3_UPLOAD=true`
 - `VITE_COGNITO_*` (region, pool id, client id, domain, redirect/logout)
+
+Com `AMPLIFY_SYNC_ENABLED=true`, o `deploy-dev.yml` já atualiza esses valores automaticamente.
+
+Sincronização manual rápida (sem copy/paste):
+
+```bash
+./scripts/deploy/sync_amplify_env.sh \
+  --env dev \
+  --app-id "<seu-app-id-amplify>" \
+  --branch main \
+  --frontend-base-url "https://main.d2fezrl1u8wfmh.amplifyapp.com" \
+  --api-scheme http
+```
 
 ## 8. Validação funcional mínima (dev)
 
@@ -250,10 +273,12 @@ gh workflow run deploy-prod.yml --repo "$GH_REPO" --ref main \
 gh run watch --repo "$GH_REPO"
 ```
 
-Depois configure no Amplify prod:
+Depois configure no Amplify prod (se não usar automação):
 - `VITE_API_BASE_URL=http://<PROD_ALB_DNS>`
 - `VITE_USE_ASYNC_S3_UPLOAD=true`
 - `VITE_COGNITO_*` do ambiente prod
+
+Com `AMPLIFY_SYNC_ENABLED=true`, o `deploy-prod.yml` também sincroniza automaticamente.
 
 ## 10. Operação pós-go-live
 

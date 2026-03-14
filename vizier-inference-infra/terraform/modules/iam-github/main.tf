@@ -62,6 +62,7 @@ data "aws_iam_policy_document" "terraform_permissions" {
       "secretsmanager:*",
       "kms:*",
       "cognito-idp:*",
+      "amplify:*",
       "ssm:*",
       "sts:GetCallerIdentity"
     ]

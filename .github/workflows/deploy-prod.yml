@@ -39,6 +39,11 @@ env:
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
   TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
   BACKEND_ECR_REPOSITORY_URL: ${{ vars.BACKEND_ECR_REPOSITORY_URL || '' }}
+  AMPLIFY_SYNC_ENABLED: ${{ vars.AMPLIFY_SYNC_ENABLED || 'false' }}
+  AMPLIFY_APP_ID: ${{ vars.AMPLIFY_APP_ID || '' }}
+  AMPLIFY_BRANCH: ${{ vars.AMPLIFY_BRANCH || 'main' }}
+  AMPLIFY_FRONTEND_BASE_URL: ${{ vars.AMPLIFY_FRONTEND_BASE_URL || '' }}
+  AMPLIFY_API_SCHEME: ${{ vars.AMPLIFY_API_SCHEME || 'http' }}
 
 jobs:
   deploy:
@@ -215,6 +220,21 @@ jobs:
             -input=false \
             -auto-approve \
             -var="backend_image_tag=${{ inputs.image_tag }}"
+
+      - name: Sync Amplify environment variables (prod)
+        if: ${{ env.AMPLIFY_SYNC_ENABLED == 'true' && env.AMPLIFY_APP_ID != '' }}
+        env:
+          AMPLIFY_APP_ID: ${{ env.AMPLIFY_APP_ID }}
+          AMPLIFY_BRANCH: ${{ env.AMPLIFY_BRANCH }}
+          AMPLIFY_FRONTEND_BASE_URL: ${{ env.AMPLIFY_FRONTEND_BASE_URL }}
+          AMPLIFY_API_SCHEME: ${{ env.AMPLIFY_API_SCHEME }}
+        run: |
+          set -euo pipefail
+          ARGS=(--env prod --app-id "${AMPLIFY_APP_ID}" --branch "${AMPLIFY_BRANCH}" --api-scheme "${AMPLIFY_API_SCHEME}")
+          if [[ -n "${AMPLIFY_FRONTEND_BASE_URL}" ]]; then
+            ARGS+=(--frontend-base-url "${AMPLIFY_FRONTEND_BASE_URL}")
+          fi
+          ./scripts/deploy/sync_amplify_env.sh "${ARGS[@]}"
 
       - name: Export runtime outputs
         working-directory: ${{ env.TF_DIR }}
