@@ -224,6 +224,10 @@ module "ecs_fargate_django" {
   health_check_grace_period_seconds = 120
   environment = {
     DEBUG                        = "False"
+    SECURE_SSL_REDIRECT          = "false"
+    SESSION_COOKIE_SECURE        = "false"
+    CSRF_COOKIE_SECURE           = "false"
+    USE_X_FORWARDED_HOST         = "true"
     AWS_REGION                   = var.aws_region
     S3_BUCKET                    = module.s3.bucket_name
     INFERENCE_ASYNC_S3_ENABLED   = "true"

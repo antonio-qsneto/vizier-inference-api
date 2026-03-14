@@ -474,9 +474,15 @@ LOGGING = {
 # ============================================================================
 
 if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+    # NOTE:
+    # Keep these flags configurable because some environments may still expose
+    # only HTTP on ALB (no TLS listener/certificate yet). In that case forcing
+    # HTTPS redirect causes permanent 301 loops for health checks and API calls.
+    SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=False, cast=bool)
+    SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=False, cast=bool)
+    CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=False, cast=bool)
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    USE_X_FORWARDED_HOST = config('USE_X_FORWARDED_HOST', default=True, cast=bool)
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_SECURITY_POLICY = {
         'default-src': ("'self'",),
