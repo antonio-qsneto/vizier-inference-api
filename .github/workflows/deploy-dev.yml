@@ -196,6 +196,7 @@ jobs:
 
           {
             echo "ECS_CLUSTER=${ECS_CLUSTER}"
+            echo "ECS_API_SERVICE_NAME=${CONTAINER_NAME}"
             echo "TASK_DEFINITION_ARN=${TASK_DEFINITION_ARN}"
             echo "MIGRATION_CONTAINER_NAME=${CONTAINER_NAME}"
             echo "BOOTSTRAP_CONTAINER_NAME=${CONTAINER_NAME}"
@@ -228,8 +229,35 @@ jobs:
           BOOTSTRAP_MAKE_SUPERUSER: "1"
         run: ./scripts/deploy/run_bootstrap.sh
 
+      - name: Wait for API ECS service stable
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          ECS_CLUSTER: ${{ env.ECS_CLUSTER }}
+          ECS_API_SERVICE_NAME: ${{ env.ECS_API_SERVICE_NAME }}
+        run: |
+          aws ecs wait services-stable \
+            --region "${AWS_REGION}" \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_API_SERVICE_NAME}"
+
       - name: API smoke test
         env:
           API_BASE_URL: http://${{ env.ALB_DNS_NAME }}
           AUTH_TOKEN: ${{ secrets.SMOKE_AUTH_TOKEN }}
+          SMOKE_MAX_ATTEMPTS: "36"
+          SMOKE_SLEEP_SECONDS: "10"
         run: ./scripts/deploy/smoke_api.sh
+
+      - name: ECS diagnostics on smoke failure
+        if: failure()
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          ECS_CLUSTER: ${{ env.ECS_CLUSTER }}
+          ECS_API_SERVICE_NAME: ${{ env.ECS_API_SERVICE_NAME }}
+        run: |
+          aws ecs describe-services \
+            --region "${AWS_REGION}" \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_API_SERVICE_NAME}" \
+            --query 'services[0].{status:status,runningCount:runningCount,desiredCount:desiredCount,pendingCount:pendingCount,events:events[0:10]}' \
+            --output json
