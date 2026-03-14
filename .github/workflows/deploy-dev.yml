@@ -110,6 +110,16 @@ jobs:
           set -euo pipefail
           SECRET_NAME="vizier/dev/django-app"
           SECRET_JSON="$(mktemp)"
+          CANONICAL_ADDR="module.app_secrets.aws_secretsmanager_secret.this"
+          LEGACY_ADDR_1="module.app_secrets.aws_secretsmanager_secret.this[0]"
+          LEGACY_ADDR_2="module.app_secrets[0].aws_secretsmanager_secret.this"
+
+          if terraform state show "${LEGACY_ADDR_1}" >/dev/null 2>&1; then
+            terraform state mv "${LEGACY_ADDR_1}" "${CANONICAL_ADDR}" || true
+          fi
+          if terraform state show "${LEGACY_ADDR_2}" >/dev/null 2>&1; then
+            terraform state mv "${LEGACY_ADDR_2}" "${CANONICAL_ADDR}" || true
+          fi
 
           if aws secretsmanager describe-secret --region "${AWS_REGION}" --secret-id "${SECRET_NAME}" > "${SECRET_JSON}" 2>/dev/null; then
             DELETED_DATE="$(jq -r '.DeletedDate // empty' "${SECRET_JSON}")"
@@ -117,8 +127,8 @@ jobs:
               aws secretsmanager restore-secret --region "${AWS_REGION}" --secret-id "${SECRET_NAME}"
             fi
 
-            if ! terraform state list | grep -q '^module\.app_secrets\.aws_secretsmanager_secret\.this$'; then
-              terraform import -input=false module.app_secrets.aws_secretsmanager_secret.this "${SECRET_NAME}"
+            if ! terraform state show "${CANONICAL_ADDR}" >/dev/null 2>&1; then
+              terraform import -input=false "${CANONICAL_ADDR}" "${SECRET_NAME}"
             fi
           fi
 
