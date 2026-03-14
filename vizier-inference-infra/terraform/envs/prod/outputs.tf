@@ -10,6 +10,14 @@ output "alb_arn" {
   value = module.alb.alb_arn
 }
 
+output "api_cloudfront_distribution_id" {
+  value = module.api_cloudfront.distribution_id
+}
+
+output "api_cloudfront_domain_name" {
+  value = module.api_cloudfront.distribution_domain_name
+}
+
 output "jobs_queue_url" {
   value = module.sqs.queue_url
 }

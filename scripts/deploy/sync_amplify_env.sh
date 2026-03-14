@@ -15,6 +15,9 @@ Options:
   --frontend-base-url <url>     Frontend URL used to build redirect/logout URLs.
                                 If omitted, reads branch.webUrl from Amplify.
   --api-scheme <http|https>     Scheme for VITE_API_BASE_URL (default: http)
+  --api-base-url <url>          Explicit VITE_API_BASE_URL override
+  --enable-api-proxy            Force Amplify reverse-proxy rule /api/<*> -> ALB
+  --disable-api-proxy           Disable Amplify reverse-proxy rule automation
   --async-upload <true|false>   Value for VITE_USE_ASYNC_S3_UPLOAD (default: true)
   --keep-app-level-vite-vars    Keep managed VITE_* vars at Amplify app level
                                 (default behavior is to remove them to avoid duplicates)
@@ -32,9 +35,11 @@ APP_ID="${AMPLIFY_APP_ID:-}"
 BRANCH="main"
 FRONTEND_BASE_URL=""
 API_SCHEME="http"
+API_BASE_URL_OVERRIDE=""
 ASYNC_UPLOAD="true"
 DRY_RUN="false"
 KEEP_APP_LEVEL_VITE_VARS="false"
+ENABLE_API_PROXY="auto"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -57,6 +62,18 @@ while [[ $# -gt 0 ]]; do
     --api-scheme)
       API_SCHEME="${2:-}"
       shift 2
+      ;;
+    --api-base-url)
+      API_BASE_URL_OVERRIDE="${2:-}"
+      shift 2
+      ;;
+    --enable-api-proxy)
+      ENABLE_API_PROXY="true"
+      shift
+      ;;
+    --disable-api-proxy)
+      ENABLE_API_PROXY="false"
+      shift
       ;;
     --async-upload)
       ASYNC_UPLOAD="${2:-}"
@@ -131,6 +148,7 @@ fi
 
 REGION="$(terraform -chdir="${TF_ENV_DIR}" output -raw region)"
 ALB_DNS_NAME="$(terraform -chdir="${TF_ENV_DIR}" output -raw alb_dns_name)"
+API_CLOUDFRONT_DOMAIN="$(terraform -chdir="${TF_ENV_DIR}" output -raw api_cloudfront_domain_name 2>/dev/null || true)"
 COGNITO_USER_POOL_ID="$(terraform -chdir="${TF_ENV_DIR}" output -raw cognito_user_pool_id)"
 COGNITO_CLIENT_ID="$(terraform -chdir="${TF_ENV_DIR}" output -raw cognito_user_pool_client_id)"
 COGNITO_DOMAIN_PREFIX="$(terraform -chdir="${TF_ENV_DIR}" output -raw cognito_user_pool_domain)"
@@ -152,9 +170,38 @@ FRONTEND_BASE_URL="${FRONTEND_BASE_URL%/}"
 REDIRECT_URI="${FRONTEND_BASE_URL}/auth/callback"
 LOGOUT_URI="${FRONTEND_BASE_URL}/login"
 COGNITO_DOMAIN="https://${COGNITO_DOMAIN_PREFIX}.auth.${REGION}.amazoncognito.com"
+BACKEND_API_ORIGIN="${API_SCHEME}://${ALB_DNS_NAME}"
+BACKEND_API_HTTPS_EDGE=""
+if [[ -n "${API_CLOUDFRONT_DOMAIN}" && "${API_CLOUDFRONT_DOMAIN}" != "null" && "${API_CLOUDFRONT_DOMAIN}" != "None" ]]; then
+  BACKEND_API_HTTPS_EDGE="https://${API_CLOUDFRONT_DOMAIN}"
+fi
+
+if [[ -n "${API_BASE_URL_OVERRIDE}" ]]; then
+  API_BASE_URL="${API_BASE_URL_OVERRIDE%/}"
+else
+  API_BASE_URL="${BACKEND_API_ORIGIN}"
+fi
+
+if [[ "${ENABLE_API_PROXY}" == "auto" ]]; then
+  if [[ "${FRONTEND_BASE_URL}" == https://* && "${API_SCHEME}" == "http" ]]; then
+    if [[ -n "${BACKEND_API_HTTPS_EDGE}" ]]; then
+      ENABLE_API_PROXY="false"
+      if [[ -z "${API_BASE_URL_OVERRIDE}" ]]; then
+        API_BASE_URL="${BACKEND_API_HTTPS_EDGE}"
+      fi
+    else
+      ENABLE_API_PROXY="true"
+      if [[ -z "${API_BASE_URL_OVERRIDE}" ]]; then
+        API_BASE_URL="${FRONTEND_BASE_URL}"
+      fi
+    fi
+  else
+    ENABLE_API_PROXY="false"
+  fi
+fi
 
 NEW_VARS_JSON="$(jq -n \
-  --arg api_base_url "${API_SCHEME}://${ALB_DNS_NAME}" \
+  --arg api_base_url "${API_BASE_URL}" \
   --arg async_upload "${ASYNC_UPLOAD}" \
   --arg cognito_region "${REGION}" \
   --arg cognito_user_pool_id "${COGNITO_USER_POOL_ID}" \
@@ -212,6 +259,12 @@ CLEAN_APP_VARS_JSON="$(jq --argjson keys "${MANAGED_KEYS_JSON}" '
 echo "Amplify app: ${APP_ID}"
 echo "Amplify branch: ${BRANCH}"
 echo "Frontend base URL: ${FRONTEND_BASE_URL}"
+echo "Backend API origin: ${BACKEND_API_ORIGIN}"
+if [[ -n "${BACKEND_API_HTTPS_EDGE}" ]]; then
+  echo "Backend API HTTPS edge: ${BACKEND_API_HTTPS_EDGE}"
+fi
+echo "VITE_API_BASE_URL: ${API_BASE_URL}"
+echo "Amplify API proxy automation: ${ENABLE_API_PROXY}"
 echo "Merged VITE vars to apply:"
 echo "${MERGED_VARS_JSON}" | jq '.'
 if [[ "${KEEP_APP_LEVEL_VITE_VARS}" != "true" ]]; then
@@ -223,9 +276,22 @@ if [[ "${DRY_RUN}" == "true" ]]; then
   exit 0
 fi
 
+if [[ "${ENABLE_API_PROXY}" == "true" && "${BACKEND_API_ORIGIN}" == http://* ]]; then
+  cat <<EOF
+Amplify custom rules do not accept HTTP targets.
+Current API origin is ${BACKEND_API_ORIGIN}.
+
+Options:
+1) Run terraform apply to provision api_cloudfront (HTTPS edge), then rerun this script.
+2) Rerun with --disable-api-proxy and --api-base-url https://<your-https-api-endpoint>.
+EOF
+  exit 1
+fi
+
 TMP_VARS_FILE="$(mktemp)"
 TMP_APP_VARS_FILE="$(mktemp)"
-trap 'rm -f "${TMP_VARS_FILE}" "${TMP_APP_VARS_FILE}"' EXIT
+TMP_CUSTOM_RULES_FILE="$(mktemp)"
+trap 'rm -f "${TMP_VARS_FILE}" "${TMP_APP_VARS_FILE}" "${TMP_CUSTOM_RULES_FILE}"' EXIT
 echo "${MERGED_VARS_JSON}" > "${TMP_VARS_FILE}"
 
 if [[ "${KEEP_APP_LEVEL_VITE_VARS}" != "true" ]]; then
@@ -235,6 +301,53 @@ if [[ "${KEEP_APP_LEVEL_VITE_VARS}" != "true" ]]; then
       --app-id "${APP_ID}" \
       --environment-variables "file://${TMP_APP_VARS_FILE}" >/dev/null
     echo "Amplify app-level managed VITE vars removed."
+  fi
+fi
+
+EXISTING_CUSTOM_RULES_JSON="$(aws amplify get-app \
+  --app-id "${APP_ID}" \
+  --query 'app.customRules' \
+  --output json 2>/dev/null || echo '[]')"
+
+if [[ -z "${EXISTING_CUSTOM_RULES_JSON}" || "${EXISTING_CUSTOM_RULES_JSON}" == "null" ]]; then
+  EXISTING_CUSTOM_RULES_JSON='[]'
+fi
+
+SPA_SOURCE_REGEX='</^[^.]+$|\.(?!(css|gif|ico|jpg|jpeg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>'
+
+if [[ "${ENABLE_API_PROXY}" == "true" ]]; then
+  UPDATED_CUSTOM_RULES_JSON="$(jq \
+    --arg proxy_target "${BACKEND_API_ORIGIN}/api/<*>" \
+    --arg spa_source "${SPA_SOURCE_REGEX}" \
+    '
+    (if type == "array" then . else [] end)
+    | map(
+        select(
+          (.source // "") != "/api/<*>"
+          and ((.target // "") != "/index.html" or (.status // "") != "200")
+        )
+      )
+    | [{ source: "/api/<*>", target: $proxy_target, status: "200" }] + . + [{ source: $spa_source, target: "/index.html", status: "200" }]
+    ' <<< "${EXISTING_CUSTOM_RULES_JSON}")"
+else
+  UPDATED_CUSTOM_RULES_JSON="$(jq \
+    --arg spa_source "${SPA_SOURCE_REGEX}" \
+    '
+    (if type == "array" then . else [] end)
+    | map(select((.target // "") != "/index.html" or (.status // "") != "200"))
+    | . + [{ source: $spa_source, target: "/index.html", status: "200" }]
+    ' <<< "${EXISTING_CUSTOM_RULES_JSON}")"
+fi
+
+if [[ "${UPDATED_CUSTOM_RULES_JSON}" != "${EXISTING_CUSTOM_RULES_JSON}" ]]; then
+  echo "${UPDATED_CUSTOM_RULES_JSON}" > "${TMP_CUSTOM_RULES_FILE}"
+  aws amplify update-app \
+    --app-id "${APP_ID}" \
+    --custom-rules "file://${TMP_CUSTOM_RULES_FILE}" >/dev/null
+  if [[ "${ENABLE_API_PROXY}" == "true" ]]; then
+    echo "Amplify custom rules updated: /api proxy + SPA fallback."
+  else
+    echo "Amplify custom rules updated: SPA fallback."
   fi
 fi
 

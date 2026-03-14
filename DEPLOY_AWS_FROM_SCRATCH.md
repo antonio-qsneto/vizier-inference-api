@@ -233,12 +233,17 @@ cd /home/antonio/medIA/development/vizier-inference-api
 ```
 
 No Amplify (ambiente dev), se você **não** ativar a automação do workflow, preencher:
-- `VITE_API_BASE_URL=http://<DEV_ALB_DNS>`
+- `VITE_API_BASE_URL=https://<API_CLOUDFRONT_DNS>` (preferencial)
 - `VITE_USE_ASYNC_S3_UPLOAD=true`
 - `VITE_COGNITO_*` (region, pool id, client id, domain, redirect/logout)
 
+Importante: frontend no Amplify roda em HTTPS. Se `VITE_API_BASE_URL` apontar direto para `http://<ALB_DNS>`, o navegador bloqueará por mixed content.
+O fluxo atualizado provisiona um CloudFront para API (`api_cloudfront_domain_name`) e usa esse endpoint HTTPS.
+
 Com `AMPLIFY_SYNC_ENABLED=true`, o `deploy-dev.yml` já atualiza esses valores automaticamente.
 O script também remove essas chaves `VITE_*` do nível global do App para evitar duplicidade (App + Branch) no console do Amplify.
+Quando o output `api_cloudfront_domain_name` existir, o script usa automaticamente esse endpoint HTTPS na `VITE_API_BASE_URL`.
+Se não existir, ele ainda pode tentar modo proxy por mesma origem e garante a regra SPA (`/index.html`) para evitar `404` em rotas como `/auth/callback`.
 
 Sincronização manual rápida (sem copy/paste):
 
@@ -279,7 +284,7 @@ gh run watch --repo "$GH_REPO"
 ```
 
 Depois configure no Amplify prod (se não usar automação):
-- `VITE_API_BASE_URL=http://<PROD_ALB_DNS>`
+- `VITE_API_BASE_URL=https://<API_CLOUDFRONT_DNS_PROD>`
 - `VITE_USE_ASYNC_S3_UPLOAD=true`
 - `VITE_COGNITO_*` do ambiente prod
 

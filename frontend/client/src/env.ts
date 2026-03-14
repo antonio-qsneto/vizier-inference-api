@@ -24,9 +24,18 @@ function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
 
-const apiBaseUrl = trimTrailingSlash(
+const configuredApiBaseUrl = trimTrailingSlash(
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000",
 );
+
+const shouldUseSameOriginApiProxy =
+  typeof window !== "undefined" &&
+  window.location.protocol === "https:" &&
+  configuredApiBaseUrl.startsWith("http://");
+
+const apiBaseUrl = shouldUseSameOriginApiProxy
+  ? trimTrailingSlash(window.location.origin)
+  : configuredApiBaseUrl;
 
 const redirectUri =
   import.meta.env.VITE_COGNITO_REDIRECT_URI ||

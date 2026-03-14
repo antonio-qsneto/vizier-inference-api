@@ -163,6 +163,14 @@ module "alb" {
   tags              = local.tags
 }
 
+module "api_cloudfront" {
+  source = "../../modules/api-cloudfront"
+
+  name               = "vizier-${var.environment}-api-edge"
+  origin_domain_name = module.alb.alb_dns_name
+  tags               = local.tags
+}
+
 resource "aws_security_group" "fargate_app" {
   name        = "vizier-${var.environment}-fargate-app-sg"
   description = "Security group for Django API and worker tasks"

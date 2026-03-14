@@ -59,7 +59,7 @@ Os workflows mapeiam secrets GitHub em variáveis Terraform assim:
 
 ## Amplify (frontend)
 No Amplify App, configurar por branch/ambiente:
-1. `VITE_API_BASE_URL` (`http://<alb-dns>` dev/prod)
+1. `VITE_API_BASE_URL` (`https://<api-cloudfront-domain>` preferencial em frontend HTTPS)
 2. `VITE_USE_ASYNC_S3_UPLOAD=true`
 3. Variáveis Cognito:
    - `VITE_COGNITO_REGION`
@@ -73,3 +73,6 @@ Automação opcional:
 - Se `AMPLIFY_SYNC_ENABLED=true`, os workflows `deploy-dev` e `deploy-prod` atualizam essas variáveis automaticamente via `aws amplify update-branch`.
 - Para evitar chaves duplicadas no console do Amplify, o script remove as `VITE_*` gerenciadas do nível global do App e mantém no nível do Branch.
 - Os workflows também montam `cognito_callback/logout` automaticamente usando `AMPLIFY_FRONTEND_BASE_URL`; `TF_VAR_COGNITO_*` só é necessário para override.
+- O fluxo atual usa `api_cloudfront_domain_name` (HTTPS) quando disponível para evitar mixed content.
+- Se frontend estiver em HTTPS e backend no ALB HTTP sem CloudFront, o script tenta modo proxy no Amplify, mas o target HTTP pode ser bloqueado pelo próprio Amplify.
+- O script também mantém a regra SPA de fallback para `/index.html`, evitando `404` em `/auth/callback`.
