@@ -63,6 +63,7 @@ data "aws_iam_policy_document" "terraform_permissions" {
       "kms:*",
       "cognito-idp:*",
       "amplify:*",
+      "cloudfront:*",
       "ssm:*",
       "sts:GetCallerIdentity"
     ]

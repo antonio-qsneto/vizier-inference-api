@@ -1,9 +1,7 @@
 locals {
   origin_id = "${var.name}-origin"
-}
-
-data "aws_cloudfront_cache_policy" "caching_disabled" {
-  name = "Managed-CachingDisabled"
+  # AWS managed CloudFront cache policy: Managed-CachingDisabled
+  caching_disabled_policy_id = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
 }
 
 resource "aws_cloudfront_origin_request_policy" "all_viewer" {
@@ -62,7 +60,7 @@ resource "aws_cloudfront_distribution" "this" {
       "OPTIONS",
     ]
 
-    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
+    cache_policy_id          = local.caching_disabled_policy_id
     origin_request_policy_id = aws_cloudfront_origin_request_policy.all_viewer.id
   }
 

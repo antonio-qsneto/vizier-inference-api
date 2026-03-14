@@ -139,6 +139,17 @@ jobs:
             remove_addr "module.ecr_biomedparse[0].aws_ecr_lifecycle_policy.this"
           fi
 
+      - name: Ensure GitHub Terraform role permissions are up-to-date
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          set -euo pipefail
+          terraform apply \
+            -input=false \
+            -auto-approve \
+            -target=module.iam_github \
+            -var="backend_image_tag=bootstrap" \
+            -var="biomedparse_image_tag=bootstrap"
+
       - name: Restore/import app secret if it already exists
         working-directory: ${{ env.TF_DIR }}
         run: |
