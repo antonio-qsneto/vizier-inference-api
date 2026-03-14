@@ -31,6 +31,7 @@ module "network" {
   enable_vpc_endpoints  = true
   availability_zone     = var.availability_zone
   availability_zone_b   = var.availability_zone_b
+  single_az_mode        = var.single_az_mode
 }
 
 module "s3" {
@@ -124,7 +125,7 @@ module "ecs_gpu" {
   source = "../../modules/ecs-gpu"
 
   cluster_name          = "vizier-${var.environment}-gpu"
-  private_subnet_ids    = module.network.private_subnet_ids
+  private_subnet_ids    = module.network.private_runtime_subnet_ids
   ecs_sg_id             = module.network.ecs_security_group_id
   instance_profile_name = module.iam_runtime.ecs_instance_profile_name
 
@@ -209,7 +210,7 @@ module "ecs_fargate_django" {
   desired_count                     = var.api_desired_count
   cpu                               = var.api_cpu
   memory                            = var.api_memory
-  subnet_ids                        = module.network.private_subnet_ids
+  subnet_ids                        = module.network.private_runtime_subnet_ids
   security_group_ids                = [aws_security_group.fargate_app.id]
   aws_region                        = var.aws_region
   log_group_name                    = "/ecs/vizier-django-api-${var.environment}"
@@ -234,7 +235,7 @@ module "ecs_fargate_django" {
     BIO_ECS_CLUSTER              = module.ecs_gpu.cluster_name
     BIO_ECS_TASK_DEFINITION      = module.ecs_gpu.biomedparse_task_def_arn
     BIO_ECS_CAPACITY_PROVIDER    = module.ecs_gpu.capacity_provider_name
-    BIO_ECS_SUBNETS              = join(",", module.network.private_subnet_ids)
+    BIO_ECS_SUBNETS              = join(",", module.network.private_runtime_subnet_ids)
     BIO_ECS_SECURITY_GROUPS      = module.network.ecs_security_group_id
     BIO_ECS_CONTAINER_NAME       = "biomedparse"
     BIO_ECS_TASK_POLL_SECONDS    = tostring(var.bio_ecs_task_poll_seconds)
@@ -260,7 +261,7 @@ module "ecs_fargate_worker" {
   desired_count      = var.worker_desired_count
   cpu                = var.worker_cpu
   memory             = var.worker_memory
-  subnet_ids         = module.network.private_subnet_ids
+  subnet_ids         = module.network.private_runtime_subnet_ids
   security_group_ids = [aws_security_group.fargate_app.id]
   aws_region         = var.aws_region
   log_group_name     = "/ecs/vizier-inference-worker-${var.environment}"
@@ -274,7 +275,7 @@ module "ecs_fargate_worker" {
     BIO_ECS_CLUSTER              = module.ecs_gpu.cluster_name
     BIO_ECS_TASK_DEFINITION      = module.ecs_gpu.biomedparse_task_def_arn
     BIO_ECS_CAPACITY_PROVIDER    = module.ecs_gpu.capacity_provider_name
-    BIO_ECS_SUBNETS              = join(",", module.network.private_subnet_ids)
+    BIO_ECS_SUBNETS              = join(",", module.network.private_runtime_subnet_ids)
     BIO_ECS_SECURITY_GROUPS      = module.network.ecs_security_group_id
     BIO_ECS_CONTAINER_NAME       = "biomedparse"
     BIO_ECS_TASK_POLL_SECONDS    = tostring(var.bio_ecs_task_poll_seconds)

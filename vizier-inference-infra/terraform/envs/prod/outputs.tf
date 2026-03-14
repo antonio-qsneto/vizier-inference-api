@@ -95,7 +95,7 @@ output "django_app_secret_arn" {
 }
 
 output "private_subnet_ids" {
-  value = module.network.private_subnet_ids
+  value = module.network.private_runtime_subnet_ids
 }
 
 output "fargate_app_security_group_id" {

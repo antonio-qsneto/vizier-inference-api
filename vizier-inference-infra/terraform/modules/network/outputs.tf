@@ -26,6 +26,10 @@ output "private_subnet_ids" {
   value = [aws_subnet.private.id, aws_subnet.private_b.id]
 }
 
+output "private_runtime_subnet_ids" {
+  value = local.private_runtime_subnet_ids
+}
+
 output "ecs_security_group_id" {
   value = aws_security_group.ecs.id
 }

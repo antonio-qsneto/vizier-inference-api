@@ -153,6 +153,10 @@ resource "aws_security_group" "ecs" {
 
 data "aws_region" "current" {}
 
+locals {
+  private_runtime_subnet_ids = var.single_az_mode ? [aws_subnet.private.id] : [aws_subnet.private.id, aws_subnet.private_b.id]
+}
+
 resource "aws_vpc_endpoint" "s3" {
   count             = var.enable_vpc_endpoints ? 1 : 0
   vpc_id            = aws_vpc.this.id
@@ -226,7 +230,7 @@ resource "aws_vpc_endpoint" "interface" {
   vpc_endpoint_type = "Interface"
   service_name      = "com.amazonaws.${data.aws_region.current.name}.${each.key}"
 
-  subnet_ids          = [aws_subnet.private.id, aws_subnet.private_b.id]
+  subnet_ids          = local.private_runtime_subnet_ids
   security_group_ids  = [aws_security_group.endpoints.id]
   private_dns_enabled = true
 

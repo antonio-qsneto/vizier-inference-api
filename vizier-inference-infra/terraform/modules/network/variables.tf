@@ -44,3 +44,9 @@ variable "enable_vpc_endpoints" {
   type        = bool
   default     = true
 }
+
+variable "single_az_mode" {
+  description = "Run runtime compute/endpoints in a single AZ to reduce costs"
+  type        = bool
+  default     = false
+}
