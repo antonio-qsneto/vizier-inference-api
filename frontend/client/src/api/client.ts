@@ -77,12 +77,45 @@ export async function apiRequest<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(url, {
-    method: options.method ?? "GET",
-    body: options.body ?? null,
-    headers,
-    signal: options.signal,
-  });
+  const abortController = new AbortController();
+  const timeoutHandle = window.setTimeout(
+    () => abortController.abort(),
+    env.apiTimeoutMs,
+  );
+  const upstreamSignal = options.signal;
+  const onUpstreamAbort = () => abortController.abort();
+
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      abortController.abort();
+    } else {
+      upstreamSignal.addEventListener("abort", onUpstreamAbort, { once: true });
+    }
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: options.method ?? "GET",
+      body: options.body ?? null,
+      headers,
+      signal: abortController.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError(
+        `Request timed out after ${env.apiTimeoutMs}ms`,
+        0,
+        null,
+      );
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutHandle);
+    if (upstreamSignal) {
+      upstreamSignal.removeEventListener("abort", onUpstreamAbort);
+    }
+  }
 
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json")

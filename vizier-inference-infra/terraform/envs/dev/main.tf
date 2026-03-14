@@ -241,6 +241,7 @@ module "ecs_fargate_django" {
     COGNITO_REGION               = var.aws_region
     COGNITO_USER_POOL_ID         = module.cognito.user_pool_id
     COGNITO_CLIENT_ID            = module.cognito.user_pool_client_id
+    COGNITO_DOMAIN               = "${module.cognito.user_pool_domain}.auth.${var.aws_region}.amazoncognito.com"
     BIO_ECS_CLUSTER              = module.ecs_gpu.cluster_name
     BIO_ECS_TASK_DEFINITION      = module.ecs_gpu.biomedparse_task_def_arn
     BIO_ECS_CAPACITY_PROVIDER    = module.ecs_gpu.capacity_provider_name

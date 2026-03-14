@@ -11,6 +11,15 @@ function parseBoolean(value: string | undefined, defaultValue = false) {
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
+function parseNumber(value: string | undefined, defaultValue: number) {
+  if (value == null || value === "") {
+    return defaultValue;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
@@ -28,6 +37,10 @@ const logoutUri =
 
 export const env = {
   apiBaseUrl,
+  apiTimeoutMs: Math.max(
+    1_000,
+    parseNumber(import.meta.env.VITE_API_TIMEOUT_MS, 15_000),
+  ),
   cognitoRegion: import.meta.env.VITE_COGNITO_REGION || "",
   cognitoUserPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID || "",
   cognitoClientId: import.meta.env.VITE_COGNITO_CLIENT_ID || "",

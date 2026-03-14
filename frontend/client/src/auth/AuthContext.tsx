@@ -58,6 +58,42 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 const SIGNUP_SUCCESS_NOTICE = "Cadastro confirmado. Faça login para continuar.";
 
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs = env.apiTimeoutMs,
+) {
+  const controller = new AbortController();
+  const timeoutHandle = window.setTimeout(() => controller.abort(), timeoutMs);
+  const upstreamSignal = init?.signal;
+  const onUpstreamAbort = () => controller.abort();
+
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      controller.abort();
+    } else {
+      upstreamSignal.addEventListener("abort", onUpstreamAbort, { once: true });
+    }
+  }
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`Timeout na autenticação após ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutHandle);
+    if (upstreamSignal) {
+      upstreamSignal.removeEventListener("abort", onUpstreamAbort);
+    }
+  }
+}
+
 async function exchangeCodeWithBackend(
   code: string,
   state: string,
@@ -70,7 +106,7 @@ async function exchangeCodeWithBackend(
     code_verifier: codeVerifier,
   });
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${env.apiBaseUrl}/api/auth/cognito/callback/?${params.toString()}`,
   );
   const payload = (await response.json().catch(() => null)) as {
@@ -99,7 +135,7 @@ async function exchangeCodeWithCognito(code: string, codeVerifier: string) {
     code_verifier: codeVerifier,
   });
 
-  const response = await fetch(`${env.cognitoDomain}/oauth2/token`, {
+  const response = await fetchWithTimeout(`${env.cognitoDomain}/oauth2/token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
