@@ -108,6 +108,47 @@ jobs:
           fi
           terraform init -input=false -reconfigure "${BACKEND_ARGS[@]}"
 
+      - name: Cleanup legacy ECR resources from Terraform state
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          set -euo pipefail
+          remove_addr() {
+            local addr="$1"
+            terraform state rm "$addr" >/dev/null 2>&1 || true
+          }
+
+          if [[ "${TF_VAR_manage_backend_ecr_repository}" != "true" ]]; then
+            remove_addr "module.ecr_backend.aws_ecr_repository.this"
+            remove_addr "module.ecr_backend.aws_ecr_lifecycle_policy.this"
+            remove_addr "module.ecr_backend[0].aws_ecr_repository.this"
+            remove_addr "module.ecr_backend[0].aws_ecr_lifecycle_policy.this"
+          fi
+
+          if [[ "${TF_VAR_manage_biomedparse_ecr_repository}" != "true" ]]; then
+            remove_addr "module.ecr_biomedparse.aws_ecr_repository.this"
+            remove_addr "module.ecr_biomedparse.aws_ecr_lifecycle_policy.this"
+            remove_addr "module.ecr_biomedparse[0].aws_ecr_repository.this"
+            remove_addr "module.ecr_biomedparse[0].aws_ecr_lifecycle_policy.this"
+          fi
+
+      - name: Restore/import app secret if it already exists
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          set -euo pipefail
+          SECRET_NAME="vizier/prod/django-app"
+          SECRET_JSON="$(mktemp)"
+
+          if aws secretsmanager describe-secret --region "${AWS_REGION}" --secret-id "${SECRET_NAME}" > "${SECRET_JSON}" 2>/dev/null; then
+            DELETED_DATE="$(jq -r '.DeletedDate // empty' "${SECRET_JSON}")"
+            if [[ -n "${DELETED_DATE}" ]]; then
+              aws secretsmanager restore-secret --region "${AWS_REGION}" --secret-id "${SECRET_NAME}"
+            fi
+
+            if ! terraform state list | grep -q '^module\.app_secrets\.aws_secretsmanager_secret\.this$'; then
+              terraform import -input=false module.app_secrets.aws_secretsmanager_secret.this "${SECRET_NAME}"
+            fi
+          fi
+
       - name: Ensure ECR repositories exist
         working-directory: ${{ env.TF_DIR }}
         run: |
