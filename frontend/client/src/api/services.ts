@@ -91,8 +91,37 @@ export interface InferenceJobCreateInput {
   correlationId?: string;
 }
 
-export function getPageResults<T>(payload: PaginatedResponse<T> | T[]) {
-  return isPaginatedResponse<T>(payload) ? payload.results : payload;
+function extractArrayField<T>(payload: unknown): T[] | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  for (const key of ["results", "items", "data"]) {
+    const candidate = record[key];
+    if (Array.isArray(candidate)) {
+      return candidate as T[];
+    }
+  }
+
+  return null;
+}
+
+export function getPageResults<T>(payload: PaginatedResponse<T> | T[] | unknown): T[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (isPaginatedResponse<T>(payload as { results?: T[] })) {
+    return (payload as { results: T[] }).results;
+  }
+
+  const extracted = extractArrayField<T>(payload);
+  if (extracted) {
+    return extracted;
+  }
+
+  return [];
 }
 
 export async function fetchHealth(signal?: AbortSignal) {

@@ -78,20 +78,24 @@ export default function ClinicPage() {
     setLoading(true);
     try {
       const clinicsResponse = await fetchClinics(accessToken);
-      const nextClinic = getPageResults(clinicsResponse)[0] ?? null;
+      const nextClinic = getPageResults<Clinic>(clinicsResponse)[0] ?? null;
 
       const myInvitesPromise = fetchMyInvitations(accessToken);
       const adminOnlyPromises =
         nextClinic && isClinicAdmin
           ? Promise.all([
-              fetchClinicInvitations(accessToken).then((payload) => getPageResults(payload)),
+              fetchClinicInvitations(accessToken).then((payload) =>
+                getPageResults<DoctorInvitation>(payload),
+              ),
               fetchClinicTeamMembers(accessToken),
               fetchClinicBillingPlans(accessToken),
             ])
           : Promise.resolve<[DoctorInvitation[], null, null]>([[], null, null]);
 
-      const [nextMyInvitations, [nextClinicInvitations, teamMembers, billingCatalog]] =
+      const [nextMyInvitationsRaw, [nextClinicInvitations, teamMembers, billingCatalog]] =
         await Promise.all([myInvitesPromise, adminOnlyPromises]);
+      const nextMyInvitations =
+        getPageResults<DoctorInvitation>(nextMyInvitationsRaw);
 
       let mergedClinic = nextClinic;
       if (nextClinic && teamMembers) {

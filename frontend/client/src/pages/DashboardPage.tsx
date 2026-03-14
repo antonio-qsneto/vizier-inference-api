@@ -63,9 +63,9 @@ export default function DashboardPage() {
       ]);
 
       setHealth(healthResponse);
-      setClinic(getPageResults(clinicsResponse)[0] ?? null);
-      setStudies(getPageResults(studiesResponse));
-      setInvitations(invitationsResponse);
+      setClinic(getPageResults<Clinic>(clinicsResponse)[0] ?? null);
+      setStudies(getPageResults<Study>(studiesResponse));
+      setInvitations(getPageResults<DoctorInvitation>(invitationsResponse));
       setError(null);
     } catch (requestError) {
       if (requestError instanceof Error) {

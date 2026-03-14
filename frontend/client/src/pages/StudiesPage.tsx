@@ -31,7 +31,7 @@ export default function StudiesPage() {
     setLoading(true);
     try {
       const payload = await fetchStudies(accessToken);
-      setStudies(getPageResults(payload));
+      setStudies(getPageResults<Study>(payload));
       setError(null);
     } catch (requestError) {
       if (requestError instanceof Error) {

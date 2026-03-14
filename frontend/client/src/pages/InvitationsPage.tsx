@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { acceptInvitation, fetchMyInvitations } from "@/api/services";
+import {
+  acceptInvitation,
+  fetchMyInvitations,
+  getPageResults,
+} from "@/api/services";
 import { useAuth } from "@/auth/AuthContext";
 import {
   EmptyState,
@@ -28,7 +32,7 @@ export default function InvitationsPage() {
     setLoading(true);
     try {
       const nextInvitations = await fetchMyInvitations(accessToken);
-      setInvitations(nextInvitations);
+      setInvitations(getPageResults<DoctorInvitation>(nextInvitations));
       setError(null);
     } catch (requestError) {
       if (requestError instanceof Error) {
