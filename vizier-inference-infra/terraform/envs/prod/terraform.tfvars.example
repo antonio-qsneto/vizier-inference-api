@@ -12,6 +12,8 @@ ecr_force_delete           = false
 
 rds_password      = "change-me"
 django_secret_key = "change-me"
+rds_skip_final_snapshot = false
+# rds_final_snapshot_identifier = "vizier-postgres-prod-final-20260314"
 
 inference_api_bearer_token = ""
 

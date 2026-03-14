@@ -53,6 +53,16 @@ variable "backup_retention_period" {
   default = 7
 }
 
+variable "skip_final_snapshot" {
+  type    = bool
+  default = false
+}
+
+variable "final_snapshot_identifier" {
+  type    = string
+  default = null
+}
+
 variable "deletion_protection" {
   type    = bool
   default = true

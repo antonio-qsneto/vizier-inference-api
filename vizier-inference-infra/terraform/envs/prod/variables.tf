@@ -208,6 +208,16 @@ variable "rds_backup_retention_days" {
   default = 7
 }
 
+variable "rds_skip_final_snapshot" {
+  type    = bool
+  default = false
+}
+
+variable "rds_final_snapshot_identifier" {
+  type    = string
+  default = ""
+}
+
 variable "rds_deletion_protection" {
   type    = bool
   default = true

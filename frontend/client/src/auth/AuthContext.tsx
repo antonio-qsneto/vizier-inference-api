@@ -124,6 +124,18 @@ async function exchangeCodeWithCognito(code: string, codeVerifier: string) {
 }
 
 function resolveAuthErrorMessage(error: unknown) {
+  const isMixedContentScenario =
+    typeof window !== "undefined" &&
+    window.location.protocol === "https:" &&
+    env.apiBaseUrl.startsWith("http://");
+
+  if (isMixedContentScenario) {
+    return (
+      `O frontend está em HTTPS (${window.location.origin}) mas a API está em HTTP (${env.apiBaseUrl}). ` +
+      "O navegador bloqueia essa chamada (mixed content). Exponha a API em HTTPS e atualize VITE_API_BASE_URL."
+    );
+  }
+
   if (
     error instanceof TypeError &&
     /failed to fetch/i.test(error.message)

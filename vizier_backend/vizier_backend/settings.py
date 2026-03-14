@@ -62,7 +62,20 @@ CORS_ALLOWED_ORIGIN_REGEXES = config(
         r'^https?://localhost(:\d+)?$,'
         r'^https?://127\.0\.0\.1(:\d+)?$,'
         r'^https?://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$,'
-        r'^https?://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$'
+        r'^https?://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$,'
+        r'^https://([a-z0-9-]+\.)*amplifyapp\.com$'
+    ),
+    cast=Csv(),
+)
+
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default=(
+        'http://localhost:3000,'
+        'http://127.0.0.1:3000,'
+        'http://localhost:5173,'
+        'http://127.0.0.1:5173,'
+        'https://*.amplifyapp.com'
     ),
     cast=Csv(),
 )

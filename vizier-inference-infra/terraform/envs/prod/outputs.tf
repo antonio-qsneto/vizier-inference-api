@@ -82,6 +82,10 @@ output "rds_instance_id" {
   value = module.rds_postgres.instance_id
 }
 
+output "rds_instance_identifier" {
+  value = module.rds_postgres.instance_identifier
+}
+
 output "rds_security_group_id" {
   value = module.rds_postgres.security_group_id
 }

@@ -70,8 +70,8 @@ resource "aws_db_instance" "this" {
   multi_az                   = var.multi_az
   auto_minor_version_upgrade = true
 
-  skip_final_snapshot       = false
-  final_snapshot_identifier = "${var.name}-final"
+  skip_final_snapshot       = var.skip_final_snapshot
+  final_snapshot_identifier = var.skip_final_snapshot ? null : coalesce(var.final_snapshot_identifier, "${var.name}-final")
 
   apply_immediately = var.apply_immediately
 

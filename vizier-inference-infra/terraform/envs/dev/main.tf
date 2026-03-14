@@ -90,6 +90,8 @@ module "rds_postgres" {
   instance_class             = var.rds_instance_class
   allocated_storage          = var.rds_allocated_storage
   backup_retention_period    = var.rds_backup_retention_days
+  skip_final_snapshot        = var.rds_skip_final_snapshot
+  final_snapshot_identifier  = trimspace(var.rds_final_snapshot_identifier) != "" ? var.rds_final_snapshot_identifier : null
   deletion_protection        = var.rds_deletion_protection
   apply_immediately          = true
   multi_az                   = false

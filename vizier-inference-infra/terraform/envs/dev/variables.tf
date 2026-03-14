@@ -61,6 +61,7 @@ variable "environment" {
 variable "frontend_upload_allowed_origins" {
   type = list(string)
   default = [
+    "https://main.d2fezrl1u8wfmh.amplifyapp.com",
     "http://localhost:3000",
     "http://localhost:5173",
   ]
@@ -206,6 +207,16 @@ variable "rds_allocated_storage" {
 variable "rds_backup_retention_days" {
   type    = number
   default = 7
+}
+
+variable "rds_skip_final_snapshot" {
+  type    = bool
+  default = true
+}
+
+variable "rds_final_snapshot_identifier" {
+  type    = string
+  default = ""
 }
 
 variable "rds_deletion_protection" {
