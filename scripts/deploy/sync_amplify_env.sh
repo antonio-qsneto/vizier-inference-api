@@ -16,6 +16,8 @@ Options:
                                 If omitted, reads branch.webUrl from Amplify.
   --api-scheme <http|https>     Scheme for VITE_API_BASE_URL (default: http)
   --async-upload <true|false>   Value for VITE_USE_ASYNC_S3_UPLOAD (default: true)
+  --keep-app-level-vite-vars    Keep managed VITE_* vars at Amplify app level
+                                (default behavior is to remove them to avoid duplicates)
   --dry-run                     Print merged variables without applying
   --help                        Show this help
 
@@ -32,6 +34,7 @@ FRONTEND_BASE_URL=""
 API_SCHEME="http"
 ASYNC_UPLOAD="true"
 DRY_RUN="false"
+KEEP_APP_LEVEL_VITE_VARS="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -61,6 +64,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dry-run)
       DRY_RUN="true"
+      shift
+      ;;
+    --keep-app-level-vite-vars)
+      KEEP_APP_LEVEL_VITE_VARS="true"
       shift
       ;;
     --help|-h)
@@ -178,11 +185,38 @@ fi
 
 MERGED_VARS_JSON="$(jq -s '.[0] * .[1]' <(echo "${EXISTING_VARS_JSON}") <(echo "${NEW_VARS_JSON}"))"
 
+MANAGED_KEYS_JSON='[
+  "VITE_API_BASE_URL",
+  "VITE_USE_ASYNC_S3_UPLOAD",
+  "VITE_COGNITO_REGION",
+  "VITE_COGNITO_USER_POOL_ID",
+  "VITE_COGNITO_CLIENT_ID",
+  "VITE_COGNITO_DOMAIN",
+  "VITE_COGNITO_REDIRECT_URI",
+  "VITE_COGNITO_LOGOUT_URI"
+]'
+
+APP_VARS_JSON="$(aws amplify get-app \
+  --app-id "${APP_ID}" \
+  --query 'app.environmentVariables' \
+  --output json 2>/dev/null || echo '{}')"
+
+if [[ -z "${APP_VARS_JSON}" || "${APP_VARS_JSON}" == "null" ]]; then
+  APP_VARS_JSON='{}'
+fi
+
+CLEAN_APP_VARS_JSON="$(jq --argjson keys "${MANAGED_KEYS_JSON}" '
+  reduce $keys[] as $k (. ; del(.[$k]))
+' <<< "${APP_VARS_JSON}")"
+
 echo "Amplify app: ${APP_ID}"
 echo "Amplify branch: ${BRANCH}"
 echo "Frontend base URL: ${FRONTEND_BASE_URL}"
 echo "Merged VITE vars to apply:"
 echo "${MERGED_VARS_JSON}" | jq '.'
+if [[ "${KEEP_APP_LEVEL_VITE_VARS}" != "true" ]]; then
+  echo "App-level VITE_* cleanup enabled (prevents duplicated keys in Amplify UI)."
+fi
 
 if [[ "${DRY_RUN}" == "true" ]]; then
   echo "Dry-run mode enabled. No changes applied."
@@ -190,8 +224,19 @@ if [[ "${DRY_RUN}" == "true" ]]; then
 fi
 
 TMP_VARS_FILE="$(mktemp)"
-trap 'rm -f "${TMP_VARS_FILE}"' EXIT
+TMP_APP_VARS_FILE="$(mktemp)"
+trap 'rm -f "${TMP_VARS_FILE}" "${TMP_APP_VARS_FILE}"' EXIT
 echo "${MERGED_VARS_JSON}" > "${TMP_VARS_FILE}"
+
+if [[ "${KEEP_APP_LEVEL_VITE_VARS}" != "true" ]]; then
+  if [[ "${CLEAN_APP_VARS_JSON}" != "${APP_VARS_JSON}" ]]; then
+    echo "${CLEAN_APP_VARS_JSON}" > "${TMP_APP_VARS_FILE}"
+    aws amplify update-app \
+      --app-id "${APP_ID}" \
+      --environment-variables "file://${TMP_APP_VARS_FILE}" >/dev/null
+    echo "Amplify app-level managed VITE vars removed."
+  fi
+fi
 
 aws amplify update-branch \
   --app-id "${APP_ID}" \
