@@ -72,6 +72,11 @@ variable "frontend_upload_allowed_origins" {
   ]
 }
 
+variable "django_allowed_hosts" {
+  type    = string
+  default = "*"
+}
+
 variable "alb_ingress_cidrs" {
   type = list(string)
   default = [

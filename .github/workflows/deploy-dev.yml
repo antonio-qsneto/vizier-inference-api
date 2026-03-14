@@ -160,6 +160,28 @@ jobs:
           echo "BACKEND_ECR_REPOSITORY_URL=${REPO_URL}" >> "$GITHUB_ENV"
           echo "IMAGE_TAG=${SOURCE_SHA}" >> "$GITHUB_ENV"
 
+      - name: Resolve Cognito callback/logout URLs
+        run: |
+          set -euo pipefail
+          CALLBACKS='["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback"]'
+          LOGOUTS='["http://localhost:3000/login","http://localhost:8000/"]'
+
+          if [[ -n "${AMPLIFY_FRONTEND_BASE_URL}" ]]; then
+            BASE="${AMPLIFY_FRONTEND_BASE_URL%/}"
+            CALLBACKS="$(jq -cn --arg base "${BASE}" '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback",($base + "/auth/callback")]')"
+            LOGOUTS="$(jq -cn --arg base "${BASE}" '["http://localhost:3000/login","http://localhost:8000/",($base + "/login")]')"
+          fi
+
+          if [[ -n "${TF_VAR_cognito_callback_urls}" ]]; then
+            CALLBACKS="${TF_VAR_cognito_callback_urls}"
+          fi
+          if [[ -n "${TF_VAR_cognito_logout_urls}" ]]; then
+            LOGOUTS="${TF_VAR_cognito_logout_urls}"
+          fi
+
+          echo "TF_VAR_cognito_callback_urls=${CALLBACKS}" >> "$GITHUB_ENV"
+          echo "TF_VAR_cognito_logout_urls=${LOGOUTS}" >> "$GITHUB_ENV"
+
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 

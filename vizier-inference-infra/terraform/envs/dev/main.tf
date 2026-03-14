@@ -235,7 +235,7 @@ module "ecs_fargate_django" {
     S3_BUCKET                    = module.s3.bucket_name
     INFERENCE_ASYNC_S3_ENABLED   = "true"
     INFERENCE_JOBS_QUEUE_URL     = module.sqs.queue_url
-    ALLOWED_HOSTS                = module.alb.alb_dns_name
+    ALLOWED_HOSTS                = var.django_allowed_hosts
     CORS_ALLOWED_ORIGINS         = join(",", var.frontend_upload_allowed_origins)
     LOG_JSON                     = "true"
     COGNITO_REGION               = var.aws_region

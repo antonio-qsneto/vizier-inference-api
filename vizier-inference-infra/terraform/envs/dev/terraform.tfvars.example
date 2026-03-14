@@ -2,6 +2,7 @@ aws_region                 = "us-east-1"
 project_name               = "vizier-inference"
 environment                = "dev"
 single_az_mode             = true
+django_allowed_hosts       = "*"
 backend_image_tag          = "latest"
 biomedparse_image_tag      = "latest"
 manage_backend_ecr_repository     = false

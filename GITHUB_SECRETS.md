@@ -31,8 +31,8 @@ Criar dois GitHub Environments:
 10. `AMPLIFY_BRANCH` (ex.: `main`)
 11. `AMPLIFY_FRONTEND_BASE_URL` (ex.: `https://main.d2fezrl1u8wfmh.amplifyapp.com`)
 12. `AMPLIFY_API_SCHEME` (`http` ou `https`)
-13. `TF_VAR_COGNITO_CALLBACK_URLS` (JSON array string para Terraform)
-14. `TF_VAR_COGNITO_LOGOUT_URLS` (JSON array string para Terraform)
+13. `TF_VAR_COGNITO_CALLBACK_URLS` (opcional, JSON array string para Terraform)
+14. `TF_VAR_COGNITO_LOGOUT_URLS` (opcional, JSON array string para Terraform)
 
 Valor recomendado no seu cenário:
 - `996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse:latest`
@@ -72,3 +72,4 @@ No Amplify App, configurar por branch/ambiente:
 Automação opcional:
 - Se `AMPLIFY_SYNC_ENABLED=true`, os workflows `deploy-dev` e `deploy-prod` atualizam essas variáveis automaticamente via `aws amplify update-branch`.
 - Para evitar chaves duplicadas no console do Amplify, o script remove as `VITE_*` gerenciadas do nível global do App e mantém no nível do Branch.
+- Os workflows também montam `cognito_callback/logout` automaticamente usando `AMPLIFY_FRONTEND_BASE_URL`; `TF_VAR_COGNITO_*` só é necessário para override.
