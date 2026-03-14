@@ -43,7 +43,13 @@ def _parse_hw_tuple(raw_value, default: tuple[int, int]) -> tuple[int, int]:
 
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-change-me')
 DEBUG = config('DEBUG', default=False, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
+
+# ALB health checks in ECS/Fargate can hit targets using the private task IP in Host header.
+# In non-debug runtime we default to "*" to prevent DisallowedHost flapping.
+_default_allowed_hosts = '*' if not DEBUG else 'localhost,127.0.0.1'
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default=_default_allowed_hosts, cast=Csv())
+if not ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ['*'] if not DEBUG else ['localhost', '127.0.0.1']
 
 # CORS configuration for local frontend development.
 CORS_ALLOWED_ORIGINS = config(
