@@ -235,10 +235,40 @@ jobs:
           ECS_CLUSTER: ${{ env.ECS_CLUSTER }}
           ECS_API_SERVICE_NAME: ${{ env.ECS_API_SERVICE_NAME }}
         run: |
-          aws ecs wait services-stable \
-            --region "${AWS_REGION}" \
-            --cluster "${ECS_CLUSTER}" \
-            --services "${ECS_API_SERVICE_NAME}"
+          set -euo pipefail
+          MAX_ATTEMPTS=36
+          SLEEP_SECONDS=10
+
+          for attempt in $(seq 1 "${MAX_ATTEMPTS}"); do
+            SERVICE_JSON="$(aws ecs describe-services \
+              --region "${AWS_REGION}" \
+              --cluster "${ECS_CLUSTER}" \
+              --services "${ECS_API_SERVICE_NAME}" \
+              --output json)"
+
+            DESIRED="$(jq -r '.services[0].desiredCount // 0' <<< "${SERVICE_JSON}")"
+            RUNNING="$(jq -r '.services[0].runningCount // 0' <<< "${SERVICE_JSON}")"
+            PENDING="$(jq -r '.services[0].pendingCount // 0' <<< "${SERVICE_JSON}")"
+            EVENT_MSG="$(jq -r '.services[0].events[0].message // ""' <<< "${SERVICE_JSON}")"
+
+            echo "ECS status attempt ${attempt}/${MAX_ATTEMPTS}: desired=${DESIRED} running=${RUNNING} pending=${PENDING}"
+
+            if [[ "${RUNNING}" == "${DESIRED}" && "${PENDING}" == "0" ]]; then
+              echo "ECS service is stable."
+              exit 0
+            fi
+
+            if grep -Eiq "unable to start container process|essential container in task exited|CannotPullContainerError|ResourceInitializationError|CannotCreateContainerError|failed to pull image|unable to pull secrets|exec: \"gunicorn\": executable file not found" <<< "${EVENT_MSG}"; then
+              echo "Detected fatal ECS event:"
+              echo "${EVENT_MSG}"
+              exit 1
+            fi
+
+            sleep "${SLEEP_SECONDS}"
+          done
+
+          echo "Timed out waiting ECS service to stabilize."
+          exit 1
 
       - name: API smoke test
         env:
