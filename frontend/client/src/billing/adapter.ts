@@ -101,12 +101,22 @@ export async function startBillingCheckout({
     body: JSON.stringify(requestPayload),
   });
 
-  const payload = (await response.json().catch(() => null)) as {
+  const responseText = await response.text();
+  let payload = null as {
     mode?: string;
     url?: string;
     checkout_url?: string;
     detail?: string;
+    message?: string;
+    error?: string;
   } | null;
+  if (responseText) {
+    try {
+      payload = JSON.parse(responseText) as typeof payload;
+    } catch {
+      payload = null;
+    }
+  }
 
   const checkoutUrl = payload?.url || payload?.checkout_url;
 
@@ -119,9 +129,14 @@ export async function startBillingCheckout({
   }
 
   if (!response.ok || !checkoutUrl) {
-    throw new Error(
+    const backendMessage =
       payload?.detail ||
-        "Billing checkout endpoint did not return a redirect URL",
+      payload?.message ||
+      payload?.error ||
+      (responseText && responseText.length < 400 ? responseText : null);
+    throw new Error(
+      backendMessage ||
+        `Billing checkout endpoint did not return a redirect URL (HTTP ${response.status})`,
     );
   }
 

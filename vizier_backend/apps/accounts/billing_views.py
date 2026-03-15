@@ -444,16 +444,35 @@ class BillingCheckoutView(APIView):
         except (BillingConfigurationError, BillingProviderError) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
+        checkout_url = _payload_get(checkout_session, 'url')
+        checkout_session_id = _payload_get(checkout_session, 'id')
+        if not checkout_url:
+            logger.error(
+                'Stripe checkout session created without URL (user_id=%s, session_id=%s)',
+                request.user.id,
+                checkout_session_id,
+            )
+            return Response(
+                {
+                    'detail': (
+                        'Stripe checkout session was created but no redirect URL was returned. '
+                        'Verify Stripe account configuration and network egress from backend.'
+                    ),
+                    'checkout_session_id': checkout_session_id,
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
         subscription.plan = payload['plan_id']
         subscription.status = UserSubscription.STATUS_INCOMPLETE
-        subscription.stripe_checkout_session_id = _payload_get(checkout_session, 'id')
+        subscription.stripe_checkout_session_id = checkout_session_id
         subscription.stripe_price_id = price_id
         subscription.save()
 
         return Response(
             {
-                'checkout_url': _payload_get(checkout_session, 'url'),
-                'checkout_session_id': _payload_get(checkout_session, 'id'),
+                'checkout_url': checkout_url,
+                'checkout_session_id': checkout_session_id,
             },
             status=status.HTTP_200_OK,
         )
