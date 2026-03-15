@@ -26,10 +26,14 @@ export function createSessionFromTokens(
   tokens: TokenExchangePayload,
   provider: AuthProvider = "cognito",
 ): AuthSession {
+  // Prefer ID token for backend bearer auth because it includes user claims
+  // (email/profile) and avoids extra userInfo calls from private backends.
+  const bearerToken = tokens.id_token || tokens.access_token;
+
   return {
     provider,
     tokens: {
-      accessToken: tokens.access_token,
+      accessToken: bearerToken,
       idToken: tokens.id_token,
       refreshToken: tokens.refresh_token,
       expiresAt: Date.now() + (tokens.expires_in ?? 3600) * 1000,

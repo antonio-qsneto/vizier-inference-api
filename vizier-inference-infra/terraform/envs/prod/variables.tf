@@ -18,6 +18,18 @@ variable "single_az_mode" {
   default = false
 }
 
+variable "enable_nat_gateway" {
+  type        = bool
+  description = "Enable NAT Gateway to allow private ECS tasks outbound internet access (required for Stripe/Cognito hosted endpoints)."
+  default     = true
+}
+
+variable "enable_vpc_endpoints" {
+  type        = bool
+  description = "Enable interface VPC endpoints. Keep false with NAT to reduce hourly PrivateLink costs."
+  default     = false
+}
+
 variable "vpc_cidr" {
   type    = string
   default = "10.0.0.0/16"

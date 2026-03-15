@@ -27,8 +27,8 @@ module "network" {
   public_subnet_cidr_b  = var.public_subnet_cidr_b
   private_subnet_cidr   = var.private_subnet_cidr
   private_subnet_cidr_b = var.private_subnet_cidr_b
-  enable_nat_gateway    = false
-  enable_vpc_endpoints  = true
+  enable_nat_gateway    = var.enable_nat_gateway
+  enable_vpc_endpoints  = var.enable_vpc_endpoints
   availability_zone     = var.availability_zone
   availability_zone_b   = var.availability_zone_b
   single_az_mode        = var.single_az_mode

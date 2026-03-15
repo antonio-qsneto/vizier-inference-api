@@ -7,6 +7,10 @@ Este guia segue a ordem lógica correta para subir o projeto com:
 - RDS PostgreSQL + S3 + SQS + Secrets Manager
 - CI/CD via GitHub Actions com OIDC
 
+Importante de rede para autenticação e billing:
+- Para backend em subnets privadas falar com serviços externos (Cognito Hosted UI/OAuth e Stripe), mantenha `enable_nat_gateway=true`.
+- Para reduzir custo, mantenha `enable_vpc_endpoints=false` quando NAT estiver ativo (evita cobrança horária de vários Interface Endpoints).
+
 ## 0. Pré-requisitos
 
 Você precisa ter instalado:

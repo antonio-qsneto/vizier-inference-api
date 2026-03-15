@@ -33,6 +33,8 @@ Criar dois GitHub Environments:
 12. `AMPLIFY_API_SCHEME` (`http` ou `https`)
 13. `TF_VAR_COGNITO_CALLBACK_URLS` (opcional, JSON array string para Terraform)
 14. `TF_VAR_COGNITO_LOGOUT_URLS` (opcional, JSON array string para Terraform)
+15. `TF_VAR_ENABLE_NAT_GATEWAY` (`true` recomendado para Stripe + Cognito hosted endpoints)
+16. `TF_VAR_ENABLE_VPC_ENDPOINTS` (`false` recomendado quando NAT está ativo para reduzir custo PrivateLink)
 
 Valor recomendado no seu cenário:
 - `996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse:latest`
