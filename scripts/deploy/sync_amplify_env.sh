@@ -213,6 +213,9 @@ else
   API_BASE_URL="${BACKEND_API_ORIGIN}"
 fi
 
+BILLING_CHECKOUT_ENDPOINT="${API_BASE_URL}/api/auth/billing/checkout/"
+BILLING_PORTAL_ENDPOINT="${API_BASE_URL}/api/auth/billing/portal/"
+
 if [[ "${ENABLE_API_PROXY}" == "auto" ]]; then
   if [[ "${FRONTEND_BASE_URL}" == https://* && "${API_SCHEME}" == "http" ]]; then
     if [[ -n "${BACKEND_API_HTTPS_EDGE}" ]]; then
@@ -233,6 +236,8 @@ fi
 
 NEW_VARS_JSON="$(jq -n \
   --arg api_base_url "${API_BASE_URL}" \
+  --arg billing_checkout_endpoint "${BILLING_CHECKOUT_ENDPOINT}" \
+  --arg billing_portal_endpoint "${BILLING_PORTAL_ENDPOINT}" \
   --arg async_upload "${ASYNC_UPLOAD}" \
   --arg cognito_region "${REGION}" \
   --arg cognito_user_pool_id "${COGNITO_USER_POOL_ID}" \
@@ -242,6 +247,8 @@ NEW_VARS_JSON="$(jq -n \
   --arg logout_uri "${LOGOUT_URI}" \
   '{
     VITE_API_BASE_URL: $api_base_url,
+    VITE_BILLING_CHECKOUT_ENDPOINT: $billing_checkout_endpoint,
+    VITE_BILLING_PORTAL_ENDPOINT: $billing_portal_endpoint,
     VITE_USE_ASYNC_S3_UPLOAD: $async_upload,
     VITE_COGNITO_REGION: $cognito_region,
     VITE_COGNITO_USER_POOL_ID: $cognito_user_pool_id,
@@ -265,6 +272,8 @@ MERGED_VARS_JSON="$(jq -s '.[0] * .[1]' <(echo "${EXISTING_VARS_JSON}") <(echo "
 
 MANAGED_KEYS_JSON='[
   "VITE_API_BASE_URL",
+  "VITE_BILLING_CHECKOUT_ENDPOINT",
+  "VITE_BILLING_PORTAL_ENDPOINT",
   "VITE_USE_ASYNC_S3_UPLOAD",
   "VITE_COGNITO_REGION",
   "VITE_COGNITO_USER_POOL_ID",
@@ -295,6 +304,8 @@ if [[ -n "${BACKEND_API_HTTPS_EDGE}" ]]; then
   echo "Backend API HTTPS edge: ${BACKEND_API_HTTPS_EDGE}"
 fi
 echo "VITE_API_BASE_URL: ${API_BASE_URL}"
+echo "VITE_BILLING_CHECKOUT_ENDPOINT: ${BILLING_CHECKOUT_ENDPOINT}"
+echo "VITE_BILLING_PORTAL_ENDPOINT: ${BILLING_PORTAL_ENDPOINT}"
 echo "Amplify API proxy automation: ${ENABLE_API_PROXY}"
 echo "Merged VITE vars to apply:"
 echo "${MERGED_VARS_JSON}" | jq '.'

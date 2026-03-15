@@ -234,6 +234,8 @@ cd /home/antonio/medIA/development/vizier-inference-api
 
 No Amplify (ambiente dev), se você **não** ativar a automação do workflow, preencher:
 - `VITE_API_BASE_URL=https://<API_CLOUDFRONT_DNS>` (preferencial)
+- `VITE_BILLING_CHECKOUT_ENDPOINT=<VITE_API_BASE_URL>/api/auth/billing/checkout/`
+- `VITE_BILLING_PORTAL_ENDPOINT=<VITE_API_BASE_URL>/api/auth/billing/portal/`
 - `VITE_USE_ASYNC_S3_UPLOAD=true`
 - `VITE_COGNITO_*` (region, pool id, client id, domain, redirect/logout)
 
