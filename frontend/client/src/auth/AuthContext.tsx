@@ -108,6 +108,8 @@ async function exchangeCodeWithBackend(
 
   const response = await fetchWithTimeout(
     `${env.apiBaseUrl}/api/auth/cognito/callback/?${params.toString()}`,
+    undefined,
+    4_000,
   );
   const payload = (await response.json().catch(() => null)) as {
     tokens?: TokenExchangePayload;

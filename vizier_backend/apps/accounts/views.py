@@ -223,7 +223,7 @@ class CognitoCallbackView(APIView):
                 token_url,
                 data=payload,
                 headers={'Content-Type': 'application/x-www-form-urlencoded'},
-                timeout=10,
+                timeout=4,
             )
             response.raise_for_status()
             token_response = response.json()

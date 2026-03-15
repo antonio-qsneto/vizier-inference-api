@@ -204,6 +204,7 @@ locals {
   # - logs: CloudWatch Logs
   # - secretsmanager, kms: task secrets injection without NAT
   # - sqs, sts: queue access and IAM auth
+  # - cognito-idp: JWT/JWKS validation against Cognito user pool without NAT
   # - ssm, ec2messages, ssmmessages: ECS Exec (execute-command)
   interface_endpoints = var.enable_vpc_endpoints ? toset([
     "ecs",
@@ -217,6 +218,7 @@ locals {
     "kms",
     "sqs",
     "sts",
+    "cognito-idp",
     "ssm",
     "ec2messages",
     "ssmmessages"
