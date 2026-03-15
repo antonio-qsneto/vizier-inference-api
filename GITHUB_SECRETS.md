@@ -29,7 +29,7 @@ Criar dois GitHub Environments:
 8. `AMPLIFY_SYNC_ENABLED` (`true` para sincronizar variáveis VITE automaticamente no deploy)
 9. `AMPLIFY_APP_ID` (App ID do Amplify)
 10. `AMPLIFY_BRANCH` (ex.: `main`)
-11. `AMPLIFY_FRONTEND_BASE_URL` (ex.: `https://main.d2fezrl1u8wfmh.amplifyapp.com`)
+11. `AMPLIFY_FRONTEND_BASE_URL` (ex.: `https://viziermed.com`)
 12. `AMPLIFY_API_SCHEME` (`http` ou `https`)
 13. `TF_VAR_COGNITO_CALLBACK_URLS` (opcional, JSON array string para Terraform)
 14. `TF_VAR_COGNITO_LOGOUT_URLS` (opcional, JSON array string para Terraform)

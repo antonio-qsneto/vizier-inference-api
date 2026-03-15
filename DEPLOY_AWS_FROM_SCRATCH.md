@@ -168,10 +168,10 @@ gh variable set MANAGE_BIOMEDPARSE_ECR_REPOSITORY --repo "$GH_REPO" --env develo
 gh variable set AMPLIFY_SYNC_ENABLED --repo "$GH_REPO" --env development --body "true"
 gh variable set AMPLIFY_APP_ID --repo "$GH_REPO" --env development --body "<seu-app-id-amplify>"
 gh variable set AMPLIFY_BRANCH --repo "$GH_REPO" --env development --body "main"
-gh variable set AMPLIFY_FRONTEND_BASE_URL --repo "$GH_REPO" --env development --body "https://main.d2fezrl1u8wfmh.amplifyapp.com"
+gh variable set AMPLIFY_FRONTEND_BASE_URL --repo "$GH_REPO" --env development --body "https://viziermed.com"
 gh variable set AMPLIFY_API_SCHEME --repo "$GH_REPO" --env development --body "http"
-gh variable set TF_VAR_COGNITO_CALLBACK_URLS --repo "$GH_REPO" --env development --body '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://main.d2fezrl1u8wfmh.amplifyapp.com/auth/callback"]'
-gh variable set TF_VAR_COGNITO_LOGOUT_URLS --repo "$GH_REPO" --env development --body '["http://localhost:3000/login","http://localhost:8000/","https://main.d2fezrl1u8wfmh.amplifyapp.com/login"]'
+gh variable set TF_VAR_COGNITO_CALLBACK_URLS --repo "$GH_REPO" --env development --body '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]'
+gh variable set TF_VAR_COGNITO_LOGOUT_URLS --repo "$GH_REPO" --env development --body '["http://localhost:3000/login","http://localhost:8000/","https://viziermed.com/login"]'
 # opcional:
 # gh variable set BOOTSTRAP_ADMIN_EMAIL --repo "$GH_REPO" --env development --body "admin@empresa.com"
 ```
@@ -197,10 +197,10 @@ gh variable set MANAGE_BIOMEDPARSE_ECR_REPOSITORY --repo "$GH_REPO" --env produc
 gh variable set AMPLIFY_SYNC_ENABLED --repo "$GH_REPO" --env production --body "true"
 gh variable set AMPLIFY_APP_ID --repo "$GH_REPO" --env production --body "<seu-app-id-amplify>"
 gh variable set AMPLIFY_BRANCH --repo "$GH_REPO" --env production --body "main"
-gh variable set AMPLIFY_FRONTEND_BASE_URL --repo "$GH_REPO" --env production --body "<url-frontend-prod>"
+gh variable set AMPLIFY_FRONTEND_BASE_URL --repo "$GH_REPO" --env production --body "https://viziermed.com"
 gh variable set AMPLIFY_API_SCHEME --repo "$GH_REPO" --env production --body "http"
-gh variable set TF_VAR_COGNITO_CALLBACK_URLS --repo "$GH_REPO" --env production --body '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback"]'
-gh variable set TF_VAR_COGNITO_LOGOUT_URLS --repo "$GH_REPO" --env production --body '["http://localhost:3000/login","http://localhost:8000/"]'
+gh variable set TF_VAR_COGNITO_CALLBACK_URLS --repo "$GH_REPO" --env production --body '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]'
+gh variable set TF_VAR_COGNITO_LOGOUT_URLS --repo "$GH_REPO" --env production --body '["http://localhost:3000/login","http://localhost:8000/","https://viziermed.com/login"]'
 # opcional:
 # gh variable set BOOTSTRAP_ADMIN_EMAIL --repo "$GH_REPO" --env production --body "admin@empresa.com"
 ```
@@ -252,7 +252,7 @@ Sincronização manual rápida (sem copy/paste):
   --env dev \
   --app-id "<seu-app-id-amplify>" \
   --branch main \
-  --frontend-base-url "https://main.d2fezrl1u8wfmh.amplifyapp.com" \
+  --frontend-base-url "https://viziermed.com" \
   --api-scheme http
 ```
 

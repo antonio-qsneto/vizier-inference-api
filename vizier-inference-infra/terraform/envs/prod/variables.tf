@@ -66,6 +66,8 @@ variable "environment" {
 variable "frontend_upload_allowed_origins" {
   type = list(string)
   default = [
+    "https://viziermed.com",
+    "https://www.viziermed.com",
     "http://localhost:3000",
     "http://localhost:5173",
   ]
@@ -315,6 +317,7 @@ variable "cognito_callback_urls" {
     "https://oauth.pstmn.io/v1/callback",
     "http://localhost:3000/auth/callback",
     "http://localhost:8000/auth/callback",
+    "https://viziermed.com/auth/callback",
   ]
 }
 
@@ -323,6 +326,7 @@ variable "cognito_logout_urls" {
   default = [
     "http://localhost:3000/login",
     "http://localhost:8000/",
+    "https://viziermed.com/login",
   ]
 }
 

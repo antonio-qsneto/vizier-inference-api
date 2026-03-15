@@ -69,7 +69,8 @@ CORS_ALLOWED_ORIGIN_REGEXES = config(
         r'^https?://127\.0\.0\.1(:\d+)?$,'
         r'^https?://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$,'
         r'^https?://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$,'
-        r'^https://([a-z0-9-]+\.)*amplifyapp\.com$'
+        r'^https://([a-z0-9-]+\.)*amplifyapp\.com$,'
+        r'^https://([a-z0-9-]+\.)*viziermed\.com$'
     ),
     cast=Csv(),
 )
@@ -81,7 +82,9 @@ CSRF_TRUSTED_ORIGINS = config(
         'http://127.0.0.1:3000,'
         'http://localhost:5173,'
         'http://127.0.0.1:5173,'
-        'https://*.amplifyapp.com'
+        'https://*.amplifyapp.com,'
+        'https://viziermed.com,'
+        'https://*.viziermed.com'
     ),
     cast=Csv(),
 )

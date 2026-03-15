@@ -37,8 +37,8 @@ env:
   TF_VAR_manage_biomedparse_ecr_repository: ${{ vars.MANAGE_BIOMEDPARSE_ECR_REPOSITORY || 'false' }}
   TF_VAR_external_biomedparse_ecr_repository_url: ${{ vars.BIOMEDPARSE_ECR_REPOSITORY_URL || '' }}
   TF_VAR_django_allowed_hosts: ${{ vars.TF_VAR_DJANGO_ALLOWED_HOSTS || '*' }}
-  TF_VAR_cognito_callback_urls: ${{ vars.TF_VAR_COGNITO_CALLBACK_URLS || '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback"]' }}
-  TF_VAR_cognito_logout_urls: ${{ vars.TF_VAR_COGNITO_LOGOUT_URLS || '["http://localhost:3000/login","http://localhost:8000/"]' }}
+  TF_VAR_cognito_callback_urls: ${{ vars.TF_VAR_COGNITO_CALLBACK_URLS || '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]' }}
+  TF_VAR_cognito_logout_urls: ${{ vars.TF_VAR_COGNITO_LOGOUT_URLS || '["http://localhost:3000/login","http://localhost:8000/","https://viziermed.com/login"]' }}
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
   TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
   BACKEND_ECR_REPOSITORY_URL: ${{ vars.BACKEND_ECR_REPOSITORY_URL || '' }}
@@ -218,8 +218,8 @@ jobs:
       - name: Resolve Cognito callback/logout URLs
         run: |
           set -euo pipefail
-          CALLBACKS='["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback"]'
-          LOGOUTS='["http://localhost:3000/login","http://localhost:8000/"]'
+          CALLBACKS='["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]'
+          LOGOUTS='["http://localhost:3000/login","http://localhost:8000/","https://viziermed.com/login"]'
 
           if [[ -n "${AMPLIFY_FRONTEND_BASE_URL}" ]]; then
             BASE="${AMPLIFY_FRONTEND_BASE_URL%/}"

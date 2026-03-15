@@ -13,7 +13,7 @@ Options:
   --app-id <id>                 Amplify App ID (or AMPLIFY_APP_ID env)
   --branch <name>               Amplify branch (default: main)
   --frontend-base-url <url>     Frontend URL used to build redirect/logout URLs.
-                                If omitted, reads branch.webUrl from Amplify.
+                                If omitted, tries custom domain for branch, then branch.webUrl.
   --api-scheme <http|https>     Scheme for VITE_API_BASE_URL (default: http)
   --api-base-url <url>          Explicit VITE_API_BASE_URL override
   --enable-api-proxy            Force Amplify reverse-proxy rule /api/<*> -> ALB
@@ -25,8 +25,8 @@ Options:
   --help                        Show this help
 
 Examples:
-  ./scripts/deploy/sync_amplify_env.sh --env dev --app-id d2fezrl1u8wfmh --branch main
-  ./scripts/deploy/sync_amplify_env.sh --env prod --app-id d2fezrl1u8wfmh --api-scheme https
+  ./scripts/deploy/sync_amplify_env.sh --env dev --app-id d2fezrl1u8wfmh --frontend-base-url https://viziermed.com
+  ./scripts/deploy/sync_amplify_env.sh --env prod --app-id d2fezrl1u8wfmh --api-scheme https --frontend-base-url https://viziermed.com
 EOF
 }
 
@@ -154,11 +154,42 @@ COGNITO_CLIENT_ID="$(terraform -chdir="${TF_ENV_DIR}" output -raw cognito_user_p
 COGNITO_DOMAIN_PREFIX="$(terraform -chdir="${TF_ENV_DIR}" output -raw cognito_user_pool_domain)"
 
 if [[ -z "${FRONTEND_BASE_URL}" ]]; then
-  FRONTEND_BASE_URL="$(aws amplify get-branch \
+  CUSTOM_FRONTEND_URL="$(aws amplify list-domain-associations \
     --app-id "${APP_ID}" \
-    --branch-name "${BRANCH}" \
-    --query 'branch.webUrl' \
-    --output text 2>/dev/null || true)"
+    --query 'domainAssociations' \
+    --output json 2>/dev/null \
+    | jq -r --arg branch "${BRANCH}" '
+      (if type == "array" then . else [] end)
+      | map(
+          . as $domain
+          | (.subDomains // [])[]
+          | select((.subDomainSetting.branchName // "") == $branch)
+          | {
+              domain: ($domain.domainName // ""),
+              prefix: (.subDomainSetting.prefix // "")
+            }
+        )
+      | map(select(.domain != ""))
+      | sort_by(if .prefix == "" then 0 else 1 end)
+      | .[0] as $selected
+      | if $selected == null then
+          empty
+        elif ($selected.prefix | length) == 0 then
+          "https://\($selected.domain)"
+        else
+          "https://\($selected.prefix).\($selected.domain)"
+        end
+    ' || true)"
+
+  if [[ -n "${CUSTOM_FRONTEND_URL}" && "${CUSTOM_FRONTEND_URL}" != "null" && "${CUSTOM_FRONTEND_URL}" != "None" ]]; then
+    FRONTEND_BASE_URL="${CUSTOM_FRONTEND_URL}"
+  else
+    FRONTEND_BASE_URL="$(aws amplify get-branch \
+      --app-id "${APP_ID}" \
+      --branch-name "${BRANCH}" \
+      --query 'branch.webUrl' \
+      --output text 2>/dev/null || true)"
+  fi
 fi
 
 if [[ -z "${FRONTEND_BASE_URL}" || "${FRONTEND_BASE_URL}" == "None" || "${FRONTEND_BASE_URL}" == "null" ]]; then

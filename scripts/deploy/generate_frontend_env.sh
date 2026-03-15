@@ -20,7 +20,7 @@ Options:
 
 Examples:
   ./scripts/deploy/generate_frontend_env.sh
-  ./scripts/deploy/generate_frontend_env.sh --env dev --frontend-base-url https://main.d123.amplifyapp.com
+  ./scripts/deploy/generate_frontend_env.sh --env dev --frontend-base-url https://viziermed.com
 EOF
 }
 
