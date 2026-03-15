@@ -102,6 +102,7 @@ export async function startBillingCheckout({
   });
 
   const responseText = await response.text();
+  const responseContentType = response.headers.get("content-type") || "";
   let payload = null as {
     mode?: string;
     url?: string;
@@ -118,6 +119,10 @@ export async function startBillingCheckout({
     }
   }
 
+  const looksLikeHtmlResponse =
+    responseContentType.includes("text/html") ||
+    /<!doctype html|<html[\s>]/i.test(responseText);
+
   const checkoutUrl = payload?.url || payload?.checkout_url;
 
   if (response.ok && (payload?.mode === "subscription_updated" || payload?.mode === "already_active")) {
@@ -129,6 +134,14 @@ export async function startBillingCheckout({
   }
 
   if (!response.ok || !checkoutUrl) {
+    if (response.ok && looksLikeHtmlResponse) {
+      throw new Error(
+        `Billing endpoint (${env.billingCheckoutEndpoint}) retornou HTML em vez de JSON. ` +
+          "Isso indica fallback/proxy do Amplify para a SPA. " +
+          "Ajuste VITE_BILLING_CHECKOUT_ENDPOINT para a API real ou corrija a regra /api/<*> no Amplify.",
+      );
+    }
+
     const backendMessage =
       payload?.detail ||
       payload?.message ||

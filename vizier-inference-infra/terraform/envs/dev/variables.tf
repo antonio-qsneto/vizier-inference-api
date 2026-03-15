@@ -258,6 +258,62 @@ variable "inference_api_bearer_token" {
   default   = ""
 }
 
+variable "enable_stripe_billing" {
+  type        = bool
+  description = "Enable Stripe billing endpoints in Django."
+  default     = false
+}
+
+variable "stripe_secret_key" {
+  type        = string
+  description = "Stripe secret API key (sk_...)."
+  sensitive   = true
+  default     = ""
+}
+
+variable "stripe_webhook_secret" {
+  type        = string
+  description = "Stripe webhook endpoint signing secret (whsec_...)."
+  sensitive   = true
+  default     = ""
+}
+
+variable "stripe_product_id" {
+  type        = string
+  description = "Stripe product id used as fallback for price resolution."
+  default     = ""
+}
+
+variable "stripe_price_id_individual_monthly" {
+  type        = string
+  description = "Stripe price id for individual monthly plan."
+  default     = ""
+}
+
+variable "stripe_price_id_individual_annual" {
+  type        = string
+  description = "Stripe price id for individual annual plan."
+  default     = ""
+}
+
+variable "stripe_price_lookup_key_individual_monthly" {
+  type        = string
+  description = "Stripe lookup key for individual monthly price."
+  default     = ""
+}
+
+variable "stripe_price_lookup_key_individual_annual" {
+  type        = string
+  description = "Stripe lookup key for individual annual price."
+  default     = ""
+}
+
+variable "stripe_allowed_redirect_origins" {
+  type        = list(string)
+  description = "Allowed frontend origins for Stripe checkout/portal redirect URLs."
+  default     = []
+}
+
 variable "gpu_ami_id" {
   type    = string
   default = "ami-0b2483db0c00858b5"

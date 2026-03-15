@@ -213,9 +213,6 @@ else
   API_BASE_URL="${BACKEND_API_ORIGIN}"
 fi
 
-BILLING_CHECKOUT_ENDPOINT="${API_BASE_URL}/api/auth/billing/checkout/"
-BILLING_PORTAL_ENDPOINT="${API_BASE_URL}/api/auth/billing/portal/"
-
 if [[ "${ENABLE_API_PROXY}" == "auto" ]]; then
   if [[ "${FRONTEND_BASE_URL}" == https://* && "${API_SCHEME}" == "http" ]]; then
     if [[ -n "${BACKEND_API_HTTPS_EDGE}" ]]; then
@@ -233,6 +230,9 @@ if [[ "${ENABLE_API_PROXY}" == "auto" ]]; then
     ENABLE_API_PROXY="false"
   fi
 fi
+
+BILLING_CHECKOUT_ENDPOINT="${API_BASE_URL}/api/auth/billing/checkout/"
+BILLING_PORTAL_ENDPOINT="${API_BASE_URL}/api/auth/billing/portal/"
 
 NEW_VARS_JSON="$(jq -n \
   --arg api_base_url "${API_BASE_URL}" \

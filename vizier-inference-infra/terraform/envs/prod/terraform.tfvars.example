@@ -20,8 +20,21 @@ rds_skip_final_snapshot = false
 # rds_final_snapshot_identifier = "vizier-postgres-prod-final-20260314"
 
 inference_api_bearer_token = ""
+enable_stripe_billing = true
+stripe_secret_key = "sk_live_change_me"
+stripe_webhook_secret = "whsec_change_me"
+# opcional:
+# stripe_product_id = "prod_xxx"
+# stripe_price_id_individual_monthly = "price_xxx"
+# stripe_price_id_individual_annual = "price_xxx"
+# stripe_price_lookup_key_individual_monthly = "individual_monthly"
+# stripe_price_lookup_key_individual_annual = "individual_annual"
 
 frontend_upload_allowed_origins = [
+  "https://app.example.com",
+]
+
+stripe_allowed_redirect_origins = [
   "https://app.example.com",
 ]
 

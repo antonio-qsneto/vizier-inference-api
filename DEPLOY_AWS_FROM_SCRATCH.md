@@ -158,6 +158,8 @@ gh secret set AWS_ROLE_ARN --repo "$GH_REPO" --env development --body "$AWS_ROLE
 gh secret set TF_VAR_RDS_PASSWORD --repo "$GH_REPO" --env development --body "$RDS_PASSWORD_DEV"
 gh secret set TF_VAR_DJANGO_SECRET_KEY --repo "$GH_REPO" --env development --body "$DJANGO_SECRET_KEY_DEV"
 gh secret set TF_VAR_INFERENCE_API_BEARER_TOKEN --repo "$GH_REPO" --env development --body "$API_BEARER_DEV"
+gh secret set TF_VAR_STRIPE_SECRET_KEY --repo "$GH_REPO" --env development --body "<sk_live_ou_sk_test>"
+gh secret set TF_VAR_STRIPE_WEBHOOK_SECRET --repo "$GH_REPO" --env development --body "<whsec_...>"
 # opcional:
 # gh secret set SMOKE_AUTH_TOKEN --repo "$GH_REPO" --env development --body "<jwt-valido>"
 
@@ -176,6 +178,15 @@ gh variable set AMPLIFY_FRONTEND_BASE_URL --repo "$GH_REPO" --env development --
 gh variable set AMPLIFY_API_SCHEME --repo "$GH_REPO" --env development --body "http"
 gh variable set TF_VAR_COGNITO_CALLBACK_URLS --repo "$GH_REPO" --env development --body '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]'
 gh variable set TF_VAR_COGNITO_LOGOUT_URLS --repo "$GH_REPO" --env development --body '["http://localhost:3000/login","http://localhost:8000/","https://viziermed.com/login"]'
+gh variable set TF_VAR_ENABLE_STRIPE_BILLING --repo "$GH_REPO" --env development --body "true"
+# recomendado definir IDs de preço explícitos:
+# gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env development --body "price_xxx"
+# gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL --repo "$GH_REPO" --env development --body "price_yyy"
+# opcional fallback por produto/lookup:
+# gh variable set TF_VAR_STRIPE_PRODUCT_ID --repo "$GH_REPO" --env development --body "prod_xxx"
+# gh variable set TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env development --body "individual_monthly"
+# gh variable set TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL --repo "$GH_REPO" --env development --body "individual_annual"
+# gh variable set TF_VAR_STRIPE_ALLOWED_REDIRECT_ORIGINS --repo "$GH_REPO" --env development --body '["https://viziermed.com"]'
 # opcional:
 # gh variable set BOOTSTRAP_ADMIN_EMAIL --repo "$GH_REPO" --env development --body "admin@empresa.com"
 ```
@@ -187,6 +198,8 @@ gh secret set AWS_ROLE_ARN --repo "$GH_REPO" --env production --body "$AWS_ROLE_
 gh secret set TF_VAR_RDS_PASSWORD --repo "$GH_REPO" --env production --body "$RDS_PASSWORD_PROD"
 gh secret set TF_VAR_DJANGO_SECRET_KEY --repo "$GH_REPO" --env production --body "$DJANGO_SECRET_KEY_PROD"
 gh secret set TF_VAR_INFERENCE_API_BEARER_TOKEN --repo "$GH_REPO" --env production --body "$API_BEARER_PROD"
+gh secret set TF_VAR_STRIPE_SECRET_KEY --repo "$GH_REPO" --env production --body "<sk_live_...>"
+gh secret set TF_VAR_STRIPE_WEBHOOK_SECRET --repo "$GH_REPO" --env production --body "<whsec_...>"
 # opcional:
 # gh secret set SMOKE_AUTH_TOKEN --repo "$GH_REPO" --env production --body "<jwt-valido>"
 
@@ -205,6 +218,15 @@ gh variable set AMPLIFY_FRONTEND_BASE_URL --repo "$GH_REPO" --env production --b
 gh variable set AMPLIFY_API_SCHEME --repo "$GH_REPO" --env production --body "http"
 gh variable set TF_VAR_COGNITO_CALLBACK_URLS --repo "$GH_REPO" --env production --body '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]'
 gh variable set TF_VAR_COGNITO_LOGOUT_URLS --repo "$GH_REPO" --env production --body '["http://localhost:3000/login","http://localhost:8000/","https://viziermed.com/login"]'
+gh variable set TF_VAR_ENABLE_STRIPE_BILLING --repo "$GH_REPO" --env production --body "true"
+# recomendado definir IDs de preço explícitos:
+# gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env production --body "price_xxx"
+# gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL --repo "$GH_REPO" --env production --body "price_yyy"
+# opcional fallback por produto/lookup:
+# gh variable set TF_VAR_STRIPE_PRODUCT_ID --repo "$GH_REPO" --env production --body "prod_xxx"
+# gh variable set TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env production --body "individual_monthly"
+# gh variable set TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL --repo "$GH_REPO" --env production --body "individual_annual"
+# gh variable set TF_VAR_STRIPE_ALLOWED_REDIRECT_ORIGINS --repo "$GH_REPO" --env production --body '["https://viziermed.com"]'
 # opcional:
 # gh variable set BOOTSTRAP_ADMIN_EMAIL --repo "$GH_REPO" --env production --body "admin@empresa.com"
 ```

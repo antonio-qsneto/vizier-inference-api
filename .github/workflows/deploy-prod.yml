@@ -31,6 +31,8 @@ env:
   TF_VAR_rds_password: ${{ secrets.TF_VAR_RDS_PASSWORD }}
   TF_VAR_django_secret_key: ${{ secrets.TF_VAR_DJANGO_SECRET_KEY }}
   TF_VAR_inference_api_bearer_token: ${{ secrets.TF_VAR_INFERENCE_API_BEARER_TOKEN }}
+  TF_VAR_stripe_secret_key: ${{ secrets.TF_VAR_STRIPE_SECRET_KEY }}
+  TF_VAR_stripe_webhook_secret: ${{ secrets.TF_VAR_STRIPE_WEBHOOK_SECRET }}
   TF_VAR_biomedparse_image_override: ${{ vars.BIOMEDPARSE_IMAGE_OVERRIDE || '996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse:latest' }}
   TF_VAR_manage_backend_ecr_repository: ${{ vars.MANAGE_BACKEND_ECR_REPOSITORY || 'false' }}
   TF_VAR_external_backend_ecr_repository_url: ${{ vars.BACKEND_ECR_REPOSITORY_URL || '' }}
@@ -38,6 +40,13 @@ env:
   TF_VAR_external_biomedparse_ecr_repository_url: ${{ vars.BIOMEDPARSE_ECR_REPOSITORY_URL || '' }}
   TF_VAR_enable_nat_gateway: ${{ vars.TF_VAR_ENABLE_NAT_GATEWAY || 'true' }}
   TF_VAR_enable_vpc_endpoints: ${{ vars.TF_VAR_ENABLE_VPC_ENDPOINTS || 'false' }}
+  TF_VAR_enable_stripe_billing: ${{ vars.TF_VAR_ENABLE_STRIPE_BILLING || 'false' }}
+  TF_VAR_stripe_product_id: ${{ vars.TF_VAR_STRIPE_PRODUCT_ID || '' }}
+  TF_VAR_stripe_price_id_individual_monthly: ${{ vars.TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY || '' }}
+  TF_VAR_stripe_price_id_individual_annual: ${{ vars.TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL || '' }}
+  TF_VAR_stripe_price_lookup_key_individual_monthly: ${{ vars.TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY || '' }}
+  TF_VAR_stripe_price_lookup_key_individual_annual: ${{ vars.TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL || '' }}
+  TF_VAR_stripe_allowed_redirect_origins: ${{ vars.TF_VAR_STRIPE_ALLOWED_REDIRECT_ORIGINS || '[]' }}
   TF_VAR_django_allowed_hosts: ${{ vars.TF_VAR_DJANGO_ALLOWED_HOSTS || '*' }}
   TF_VAR_cognito_callback_urls: ${{ vars.TF_VAR_COGNITO_CALLBACK_URLS || '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]' }}
   TF_VAR_cognito_logout_urls: ${{ vars.TF_VAR_COGNITO_LOGOUT_URLS || '["http://localhost:3000/login","http://localhost:8000/","https://viziermed.com/login"]' }}

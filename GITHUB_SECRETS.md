@@ -13,6 +13,8 @@ Criar dois GitHub Environments:
 ## Secrets opcionais (por environment)
 1. `TF_VAR_INFERENCE_API_BEARER_TOKEN`
 2. `SMOKE_AUTH_TOKEN`
+3. `TF_VAR_STRIPE_SECRET_KEY`
+4. `TF_VAR_STRIPE_WEBHOOK_SECRET`
 
 ## Variables obrigatórias (por environment)
 1. `AWS_REGION` (ex.: `us-east-1`)
@@ -35,6 +37,13 @@ Criar dois GitHub Environments:
 14. `TF_VAR_COGNITO_LOGOUT_URLS` (opcional, JSON array string para Terraform)
 15. `TF_VAR_ENABLE_NAT_GATEWAY` (`true` recomendado para Stripe + Cognito hosted endpoints)
 16. `TF_VAR_ENABLE_VPC_ENDPOINTS` (`false` recomendado quando NAT está ativo para reduzir custo PrivateLink)
+17. `TF_VAR_ENABLE_STRIPE_BILLING` (`true` para liberar endpoints de billing)
+18. `TF_VAR_STRIPE_PRODUCT_ID` (opcional)
+19. `TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY` (opcional)
+20. `TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL` (opcional)
+21. `TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY` (opcional)
+22. `TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL` (opcional)
+23. `TF_VAR_STRIPE_ALLOWED_REDIRECT_ORIGINS` (JSON array string opcional; ex.: `["https://viziermed.com"]`)
 
 Valor recomendado no seu cenário:
 - `996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse:latest`

@@ -96,6 +96,12 @@ locals {
   biomedparse_ecr_repository_url = var.manage_biomedparse_ecr_repository ? module.ecr_biomedparse[0].repository_url : coalesce(trimspace(var.external_biomedparse_ecr_repository_url) != "" ? trimspace(var.external_biomedparse_ecr_repository_url) : null, "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${local.biomedparse_ecr_name}")
   backend_image                  = "${local.backend_ecr_repository_url}:${var.backend_image_tag}"
   biomedparse_image              = var.biomedparse_image_override != "" ? var.biomedparse_image_override : "${local.biomedparse_ecr_repository_url}:${var.biomedparse_image_tag}"
+  stripe_allowed_redirect_origins_csv = join(
+    ",",
+    length(var.stripe_allowed_redirect_origins) > 0
+    ? var.stripe_allowed_redirect_origins
+    : var.frontend_upload_allowed_origins
+  )
 }
 
 module "app_secrets" {
@@ -107,6 +113,8 @@ module "app_secrets" {
     DATABASE_URL               = local.django_database_url
     DJANGO_SECRET_KEY          = var.django_secret_key
     INFERENCE_API_BEARER_TOKEN = var.inference_api_bearer_token
+    STRIPE_SECRET_KEY          = var.stripe_secret_key
+    STRIPE_WEBHOOK_SECRET      = var.stripe_webhook_secret
   })
   tags = local.tags
 }
@@ -224,36 +232,47 @@ module "ecs_fargate_django" {
   log_group_name                    = "/ecs/vizier-django-api-${var.environment}"
   target_group_arn                  = module.alb.api_target_group_arn
   health_check_grace_period_seconds = 120
-  environment = {
-    DEBUG                        = "False"
-    SECURE_SSL_REDIRECT          = "false"
-    SESSION_COOKIE_SECURE        = "false"
-    CSRF_COOKIE_SECURE           = "false"
-    USE_X_FORWARDED_HOST         = "true"
-    AWS_REGION                   = var.aws_region
-    S3_BUCKET                    = module.s3.bucket_name
-    INFERENCE_ASYNC_S3_ENABLED   = "true"
-    INFERENCE_JOBS_QUEUE_URL     = module.sqs.queue_url
-    ALLOWED_HOSTS                = var.django_allowed_hosts
-    CORS_ALLOWED_ORIGINS         = join(",", var.frontend_upload_allowed_origins)
-    LOG_JSON                     = "true"
-    COGNITO_REGION               = var.aws_region
-    COGNITO_USER_POOL_ID         = module.cognito.user_pool_id
-    COGNITO_CLIENT_ID            = module.cognito.user_pool_client_id
-    COGNITO_DOMAIN               = "${module.cognito.user_pool_domain}.auth.${var.aws_region}.amazoncognito.com"
-    BIO_ECS_CLUSTER              = module.ecs_gpu.cluster_name
-    BIO_ECS_TASK_DEFINITION      = module.ecs_gpu.biomedparse_task_def_arn
-    BIO_ECS_CAPACITY_PROVIDER    = module.ecs_gpu.capacity_provider_name
-    BIO_ECS_SUBNETS              = join(",", module.network.private_runtime_subnet_ids)
-    BIO_ECS_SECURITY_GROUPS      = module.network.ecs_security_group_id
-    BIO_ECS_CONTAINER_NAME       = "biomedparse"
-    BIO_ECS_TASK_POLL_SECONDS    = tostring(var.bio_ecs_task_poll_seconds)
-    BIO_ECS_TASK_TIMEOUT_SECONDS = tostring(var.bio_ecs_task_timeout_seconds)
-  }
+  environment = merge(
+    {
+      DEBUG                           = "False"
+      SECURE_SSL_REDIRECT             = "false"
+      SESSION_COOKIE_SECURE           = "false"
+      CSRF_COOKIE_SECURE              = "false"
+      USE_X_FORWARDED_HOST            = "true"
+      AWS_REGION                      = var.aws_region
+      S3_BUCKET                       = module.s3.bucket_name
+      INFERENCE_ASYNC_S3_ENABLED      = "true"
+      INFERENCE_JOBS_QUEUE_URL        = module.sqs.queue_url
+      ALLOWED_HOSTS                   = var.django_allowed_hosts
+      CORS_ALLOWED_ORIGINS            = join(",", var.frontend_upload_allowed_origins)
+      LOG_JSON                        = "true"
+      ENABLE_STRIPE_BILLING           = tostring(var.enable_stripe_billing)
+      STRIPE_ALLOWED_REDIRECT_ORIGINS = local.stripe_allowed_redirect_origins_csv
+      COGNITO_REGION                  = var.aws_region
+      COGNITO_USER_POOL_ID            = module.cognito.user_pool_id
+      COGNITO_CLIENT_ID               = module.cognito.user_pool_client_id
+      COGNITO_DOMAIN                  = "${module.cognito.user_pool_domain}.auth.${var.aws_region}.amazoncognito.com"
+      BIO_ECS_CLUSTER                 = module.ecs_gpu.cluster_name
+      BIO_ECS_TASK_DEFINITION         = module.ecs_gpu.biomedparse_task_def_arn
+      BIO_ECS_CAPACITY_PROVIDER       = module.ecs_gpu.capacity_provider_name
+      BIO_ECS_SUBNETS                 = join(",", module.network.private_runtime_subnet_ids)
+      BIO_ECS_SECURITY_GROUPS         = module.network.ecs_security_group_id
+      BIO_ECS_CONTAINER_NAME          = "biomedparse"
+      BIO_ECS_TASK_POLL_SECONDS       = tostring(var.bio_ecs_task_poll_seconds)
+      BIO_ECS_TASK_TIMEOUT_SECONDS    = tostring(var.bio_ecs_task_timeout_seconds)
+    },
+    var.stripe_product_id != "" ? { STRIPE_PRODUCT_ID = var.stripe_product_id } : {},
+    var.stripe_price_id_individual_monthly != "" ? { STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY = var.stripe_price_id_individual_monthly } : {},
+    var.stripe_price_id_individual_annual != "" ? { STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL = var.stripe_price_id_individual_annual } : {},
+    var.stripe_price_lookup_key_individual_monthly != "" ? { STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY = var.stripe_price_lookup_key_individual_monthly } : {},
+    var.stripe_price_lookup_key_individual_annual != "" ? { STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL = var.stripe_price_lookup_key_individual_annual } : {}
+  )
   secrets = [
     { name = "DATABASE_URL", valueFrom = "${module.app_secrets.secret_arn}:DATABASE_URL::" },
     { name = "DJANGO_SECRET_KEY", valueFrom = "${module.app_secrets.secret_arn}:DJANGO_SECRET_KEY::" },
     { name = "INFERENCE_API_BEARER_TOKEN", valueFrom = "${module.app_secrets.secret_arn}:INFERENCE_API_BEARER_TOKEN::" },
+    { name = "STRIPE_SECRET_KEY", valueFrom = "${module.app_secrets.secret_arn}:STRIPE_SECRET_KEY::" },
+    { name = "STRIPE_WEBHOOK_SECRET", valueFrom = "${module.app_secrets.secret_arn}:STRIPE_WEBHOOK_SECRET::" },
   ]
   tags = local.tags
 }
