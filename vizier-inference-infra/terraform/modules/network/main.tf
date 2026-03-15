@@ -223,16 +223,54 @@ locals {
     "ec2messages",
     "ssmmessages"
   ]) : toset([])
+
+  # Keep runtime in single AZ for workload cost, but allow endpoints to select
+  # any private subnet that is compatible with each endpoint service.
+  private_endpoint_candidate_subnet_ids = [
+    aws_subnet.private.id,
+    aws_subnet.private_b.id,
+  ]
+
+  subnet_az_by_id = {
+    (aws_subnet.private.id)   = aws_subnet.private.availability_zone
+    (aws_subnet.private_b.id) = aws_subnet.private_b.availability_zone
+  }
 }
 
+data "aws_vpc_endpoint_service" "interface" {
+  for_each = local.interface_endpoints
+
+  service_name = "com.amazonaws.${data.aws_region.current.name}.${each.key}"
+  service_type = "Interface"
+}
+
+locals {
+  endpoint_supported_subnet_ids = {
+    for endpoint_name in local.interface_endpoints :
+    endpoint_name => [
+      for subnet_id in local.private_endpoint_candidate_subnet_ids :
+      subnet_id
+      if contains(
+        try(data.aws_vpc_endpoint_service.interface[endpoint_name].availability_zones, []),
+        local.subnet_az_by_id[subnet_id]
+      )
+    ]
+  }
+
+  endpoint_selected_subnet_ids = {
+    for endpoint_name, subnet_ids in local.endpoint_supported_subnet_ids :
+    endpoint_name => (var.single_az_mode ? [subnet_ids[0]] : subnet_ids)
+    if length(subnet_ids) > 0
+  }
+}
 
 resource "aws_vpc_endpoint" "interface" {
-  for_each          = local.interface_endpoints
+  for_each          = local.endpoint_selected_subnet_ids
   vpc_id            = aws_vpc.this.id
   vpc_endpoint_type = "Interface"
   service_name      = "com.amazonaws.${data.aws_region.current.name}.${each.key}"
 
-  subnet_ids          = local.private_runtime_subnet_ids
+  subnet_ids          = each.value
   security_group_ids  = [aws_security_group.endpoints.id]
   private_dns_enabled = true
 

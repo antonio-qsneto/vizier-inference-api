@@ -330,17 +330,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const tokens = await exchangeCodeWithBackend(
+        const tokens = await exchangeCodeWithCognito(
           code,
-          returnedState,
           pendingState.codeVerifier,
         );
         clearPendingPkce();
         await applySession(createSessionFromTokens(tokens));
         return "authenticated";
       } catch {
-        const tokens = await exchangeCodeWithCognito(
+        const tokens = await exchangeCodeWithBackend(
           code,
+          returnedState,
           pendingState.codeVerifier,
         );
         clearPendingPkce();
