@@ -40,7 +40,7 @@ variable "asg_desired" {
 
 variable "asg_max" {
   type    = number
-  default = 2
+  default = 1
 }
 
 variable "enable_business_hours_schedule" {

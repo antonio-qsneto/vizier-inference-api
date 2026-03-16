@@ -336,7 +336,7 @@ variable "gpu_asg_desired" {
 
 variable "gpu_asg_max" {
   type    = number
-  default = 2
+  default = 1
 }
 
 variable "gpu_enable_business_hours_schedule" {
