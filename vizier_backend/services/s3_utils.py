@@ -106,16 +106,26 @@ class S3Utils:
             logger.exception("Failed to download file", extra={"s3_key": s3_key, "file_path": file_path})
             return False
 
-    def generate_presigned_url(self, s3_key: str, expires_in: int = 3600, method: str = "get_object") -> str:
+    def generate_presigned_url(
+        self,
+        s3_key: str,
+        expires_in: int = 3600,
+        method: str = "get_object",
+        extra_params: dict[str, Any] | None = None,
+    ) -> str:
         if self.is_dev_mode:
             path = self._local_path(s3_key)
             if not path.exists():
                 raise FileNotFoundError(str(path))
             return f"file://{path}"
 
+        params: dict[str, Any] = {"Bucket": self.bucket, "Key": s3_key}
+        if extra_params:
+            params.update(extra_params)
+
         return self.s3_client.generate_presigned_url(
             method,
-            Params={"Bucket": self.bucket, "Key": s3_key},
+            Params=params,
             ExpiresIn=expires_in,
         )
 

@@ -55,6 +55,9 @@ def _container_command() -> str:
         import json
         import os
         import pathlib
+        import time
+        import urllib.error
+        import urllib.parse
         import urllib.request
 
         workdir = pathlib.Path(os.environ["JOB_WORKDIR"])
@@ -68,14 +71,34 @@ def _container_command() -> str:
             }))
 
         def upload(path: pathlib.Path, url: str, content_type: str):
-            req = urllib.request.Request(
-                url,
-                data=path.read_bytes(),
-                method="PUT",
-                headers={"Content-Type": content_type},
-            )
-            with urllib.request.urlopen(req) as response:
-                response.read()
+            payload = path.read_bytes()
+            for attempt in range(1, 4):
+                try:
+                    req = urllib.request.Request(
+                        url,
+                        data=payload,
+                        method="PUT",
+                        headers={"Content-Type": content_type},
+                    )
+                    with urllib.request.urlopen(req) as response:
+                        response.read()
+                    return
+                except urllib.error.HTTPError as exc:
+                    error_body = exc.read().decode("utf-8", errors="ignore")
+                    print(json.dumps({
+                        "event": "s3_upload_http_error",
+                        "job_id": os.environ["JOB_ID"],
+                        "attempt": attempt,
+                        "status": exc.code,
+                        "reason": exc.reason,
+                        "path": str(path),
+                        "content_type": content_type,
+                        "url_host": urllib.parse.urlsplit(url).netloc,
+                        "response_body": error_body[:2000],
+                    }))
+                    if attempt >= 3:
+                        raise
+                    time.sleep(min(2 ** attempt, 10))
 
         upload(output_path, os.environ["OUTPUT_UPLOAD_URL"], "application/octet-stream")
         upload(summary_path, os.environ["SUMMARY_UPLOAD_URL"], "application/json")
@@ -114,6 +137,12 @@ class BiomedParseECSExecutor:
         self.container_name = str(getattr(settings, "BIO_ECS_CONTAINER_NAME", "biomedparse") or "biomedparse")
         self.poll_seconds = int(getattr(settings, "BIO_ECS_TASK_POLL_SECONDS", 15))
         self.timeout_seconds = int(getattr(settings, "BIO_ECS_TASK_TIMEOUT_SECONDS", 3600))
+        configured_presign_seconds = int(getattr(settings, "BIO_ECS_PRESIGNED_URL_EXPIRES_SECONDS", 0) or 0)
+        fallback_presign_seconds = max(self.timeout_seconds + 1800, 7200)
+        self.presign_expires_seconds = max(
+            900,
+            min(604800, configured_presign_seconds if configured_presign_seconds > 0 else fallback_presign_seconds),
+        )
 
     def _validate_config(self) -> None:
         missing = []
@@ -147,18 +176,20 @@ class BiomedParseECSExecutor:
         summary_key = output_summary_key(tenant_id, job_id)
         input_download_url = self.s3.generate_presigned_url(
             normalized_input_key,
-            expires_in=self.timeout_seconds,
+            expires_in=self.presign_expires_seconds,
             method="get_object",
         )
         output_upload_url = self.s3.generate_presigned_url(
             mask_npz_key,
-            expires_in=self.timeout_seconds,
+            expires_in=self.presign_expires_seconds,
             method="put_object",
+            extra_params={"ContentType": "application/octet-stream"},
         )
         summary_upload_url = self.s3.generate_presigned_url(
             summary_key,
-            expires_in=self.timeout_seconds,
+            expires_in=self.presign_expires_seconds,
             method="put_object",
+            extra_params={"ContentType": "application/json"},
         )
 
         environment = [

@@ -359,6 +359,7 @@ BIO_ECS_SECURITY_GROUPS = config('BIO_ECS_SECURITY_GROUPS', default='')
 BIO_ECS_CONTAINER_NAME = config('BIO_ECS_CONTAINER_NAME', default='biomedparse')
 BIO_ECS_TASK_POLL_SECONDS = config('BIO_ECS_TASK_POLL_SECONDS', default=15, cast=int)
 BIO_ECS_TASK_TIMEOUT_SECONDS = config('BIO_ECS_TASK_TIMEOUT_SECONDS', default=3600, cast=int)
+BIO_ECS_PRESIGNED_URL_EXPIRES_SECONDS = config('BIO_ECS_PRESIGNED_URL_EXPIRES_SECONDS', default=0, cast=int)
 
 # ============================================================================
 # DICOM PROCESSING
