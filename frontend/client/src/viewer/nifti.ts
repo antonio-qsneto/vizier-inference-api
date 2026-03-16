@@ -304,6 +304,60 @@ export async function loadNiftiVolume(assetUrl: string) {
   } satisfies VolumeData;
 }
 
+export function resampleMaskVolumeToDims(
+  maskVolume: VolumeData,
+  targetDims: [number, number, number],
+): VolumeData {
+  const [srcX, srcY, srcZ] = maskVolume.dims;
+  const [dstX, dstY, dstZ] = targetDims;
+
+  if (srcX === dstX && srcY === dstY && srcZ === dstZ) {
+    return maskVolume;
+  }
+
+  const dstVoxelCount = dstX * dstY * dstZ;
+  const nextData = new Float32Array(dstVoxelCount);
+
+  const mapIndex = (targetIndex: number, targetSize: number, sourceSize: number) => {
+    if (targetSize <= 1 || sourceSize <= 1) {
+      return 0;
+    }
+    return Math.round((targetIndex * (sourceSize - 1)) / (targetSize - 1));
+  };
+
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+
+  for (let z = 0; z < dstZ; z += 1) {
+    const srcZi = mapIndex(z, dstZ, srcZ);
+    for (let y = 0; y < dstY; y += 1) {
+      const srcYi = mapIndex(y, dstY, srcY);
+      for (let x = 0; x < dstX; x += 1) {
+        const srcXi = mapIndex(x, dstX, srcX);
+        const srcIndex = getVoxelIndex(maskVolume.dims, srcXi, srcYi, srcZi);
+        const dstIndex = x + y * dstX + z * dstX * dstY;
+        const value = maskVolume.data[srcIndex];
+        nextData[dstIndex] = value;
+        if (value < min) {
+          min = value;
+        }
+        if (value > max) {
+          max = value;
+        }
+      }
+    }
+  }
+
+  return {
+    sourceUrl: `${maskVolume.sourceUrl}#resampled`,
+    dims: [dstX, dstY, dstZ],
+    spacing: maskVolume.spacing,
+    data: nextData,
+    min,
+    max,
+  };
+}
+
 export function buildWindowPresets(
   volume: VolumeData,
   modality: string | null | undefined,

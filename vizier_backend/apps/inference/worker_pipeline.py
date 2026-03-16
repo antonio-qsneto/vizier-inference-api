@@ -201,6 +201,12 @@ class InferenceWorkerPipeline:
             mask_nifti_local = os.path.join(str(scratch_root), "mask.nii.gz")
             if not NiftiConverter.segs_npz_to_nifti(mask_npz_local, mask_nifti_local):
                 raise RuntimeError("Failed to convert mask NPZ to NIfTI")
+            if not NiftiConverter.align_mask_to_reference(
+                mask_nifti_path=mask_nifti_local,
+                reference_nifti_path=original_nifti_local,
+                output_path=mask_nifti_local,
+            ):
+                raise RuntimeError("Failed to align mask NIfTI to original image dimensions")
 
             output_specs = [
                 (

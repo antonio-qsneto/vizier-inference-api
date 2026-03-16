@@ -154,6 +154,83 @@ class NiftiConverter:
         except Exception as e:
             logger.error("Failed to convert segs NPZ to NIfTI: %s", e, exc_info=True)
             return False
+
+    @staticmethod
+    def _resize_nearest_3d(volume: np.ndarray, target_shape: tuple[int, int, int]) -> np.ndarray:
+        if volume.ndim != 3:
+            raise ValueError(f"Expected 3D volume for nearest resize, got shape {tuple(volume.shape)}")
+
+        src_z, src_y, src_x = volume.shape
+        dst_z, dst_y, dst_x = target_shape
+
+        if src_z <= 0 or src_y <= 0 or src_x <= 0:
+            raise ValueError(f"Invalid source volume shape: {tuple(volume.shape)}")
+        if dst_z <= 0 or dst_y <= 0 or dst_x <= 0:
+            raise ValueError(f"Invalid target shape: {target_shape}")
+
+        z_idx = np.clip(np.round(np.linspace(0, src_z - 1, dst_z)).astype(np.int64), 0, src_z - 1)
+        y_idx = np.clip(np.round(np.linspace(0, src_y - 1, dst_y)).astype(np.int64), 0, src_y - 1)
+        x_idx = np.clip(np.round(np.linspace(0, src_x - 1, dst_x)).astype(np.int64), 0, src_x - 1)
+
+        return volume[np.ix_(z_idx, y_idx, x_idx)]
+
+    @staticmethod
+    def align_mask_to_reference(
+        mask_nifti_path: str,
+        reference_nifti_path: str,
+        output_path: str | None = None,
+    ) -> bool:
+        """
+        Ensure mask and reference NIfTI share identical voxel dimensions.
+
+        If shapes differ, applies nearest-neighbor resize of the mask onto the
+        reference grid and writes the aligned mask using the reference affine.
+        """
+        try:
+            target_path = output_path or mask_nifti_path
+
+            mask_img = nib.load(mask_nifti_path)
+            ref_img = nib.load(reference_nifti_path)
+
+            mask_data = np.asarray(mask_img.get_fdata())
+            ref_data = np.asarray(ref_img.get_fdata())
+
+            if mask_data.ndim == 4 and mask_data.shape[0] == 1:
+                mask_data = mask_data[0]
+            if mask_data.ndim == 4 and mask_data.shape[-1] == 1:
+                mask_data = mask_data[..., 0]
+
+            if mask_data.ndim != 3 or ref_data.ndim != 3:
+                raise ValueError(
+                    f"Expected 3D mask/reference volumes, got mask={mask_data.shape}, ref={ref_data.shape}"
+                )
+
+            mask_shape = tuple(int(v) for v in mask_data.shape)
+            ref_shape = tuple(int(v) for v in ref_data.shape)
+            if mask_shape == ref_shape:
+                if target_path != mask_nifti_path:
+                    nib.save(mask_img, target_path)
+                return True
+
+            logger.warning(
+                "Mask/reference shape mismatch detected. Resizing mask from %s to %s.",
+                mask_shape,
+                ref_shape,
+            )
+            aligned = NiftiConverter._resize_nearest_3d(mask_data, ref_shape).astype(np.uint8, copy=False)
+
+            aligned_img = nib.Nifti1Image(aligned, ref_img.affine, header=ref_img.header.copy())
+            try:
+                aligned_img.set_data_dtype(np.uint8)
+            except Exception:
+                logger.warning("Failed to enforce uint8 dtype in aligned mask header", exc_info=True)
+
+            nib.save(aligned_img, target_path)
+            logger.info("Aligned mask saved: %s", target_path)
+            return True
+        except Exception as e:
+            logger.error("Failed to align mask to reference NIfTI: %s", e, exc_info=True)
+            return False
     
     @staticmethod
     def npz_to_nifti(npz_path: str, output_path: str, spacing=None, mask_npz_path=None) -> bool:

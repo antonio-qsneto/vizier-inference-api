@@ -32,6 +32,7 @@ import {
   getSliceCount,
   loadNiftiVolume,
   pointerToVoxel,
+  resampleMaskVolumeToDims,
   renderSliceToCanvas,
   type VolumeData,
 } from "@/viewer/nifti";
@@ -164,14 +165,18 @@ export function OrthogonalViewer({
         loadNiftiVolume(maskUrl),
       ]);
 
+      const alignedMaskVolume =
+        nextImageVolume.dims.join("x") === nextMaskVolume.dims.join("x")
+          ? nextMaskVolume
+          : resampleMaskVolumeToDims(nextMaskVolume, nextImageVolume.dims);
       if (nextImageVolume.dims.join("x") !== nextMaskVolume.dims.join("x")) {
-        throw new Error(
-          "Image and mask volumes do not share the same dimensions",
+        toast.warning(
+          "Mask dimensions did not match the image. Viewer applied nearest-neighbor alignment.",
         );
       }
 
       setImageVolume(nextImageVolume);
-      setMaskVolume(nextMaskVolume);
+      setMaskVolume(alignedMaskVolume);
       setSlices({
         x: Math.floor(nextImageVolume.dims[0] / 2),
         y: Math.floor(nextImageVolume.dims[1] / 2),
