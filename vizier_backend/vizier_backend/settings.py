@@ -8,6 +8,7 @@ import os
 import logging
 from pathlib import Path
 from decouple import config, Csv
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -74,6 +75,12 @@ CORS_ALLOWED_ORIGIN_REGEXES = config(
     ),
     cast=Csv(),
 )
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'idempotency-key',
+    'x-correlation-id',
+    'x-request-id',
+]
 
 CSRF_TRUSTED_ORIGINS = config(
     'CSRF_TRUSTED_ORIGINS',
