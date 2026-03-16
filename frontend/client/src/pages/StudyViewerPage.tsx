@@ -26,6 +26,7 @@ import { OrthogonalViewer } from "@/viewer/OrthogonalViewer";
 import type {
   InferenceJobStatus,
   InferenceOutputArtifact,
+  SegmentLegendItem,
   Study,
   StudyResult,
   StudyStatus,
@@ -35,6 +36,8 @@ interface AsyncViewerAssets {
   imageUrl: string | null;
   maskUrl: string | null;
   summaryUrl: string | null;
+  segmentsLegend: SegmentLegendItem[];
+  descriptiveAnalysis: string | null;
   availableOutputKinds: string[];
 }
 
@@ -57,6 +60,134 @@ function findOutputByKind(
     const lowerKey = output.key.toLowerCase();
     return normalizedSuffixes.some((suffix) => lowerKey.endsWith(suffix));
   });
+}
+
+const asyncLegendPalette = [
+  "#0a84ff",
+  "#f97316",
+  "#22c55e",
+  "#ec4899",
+  "#eab308",
+  "#8b5cf6",
+  "#06b6d4",
+  "#ef4444",
+];
+
+function buildLegendItem(
+  raw: Record<string, unknown>,
+  fallbackId: number,
+): SegmentLegendItem {
+  const normalizedId = Number(raw.id ?? raw.segment_id ?? raw.label_id ?? fallbackId);
+  const id = Number.isFinite(normalizedId) && normalizedId > 0 ? normalizedId : fallbackId;
+  const label =
+    String(raw.label ?? raw.name ?? raw.title ?? "").trim() || `Label ${id}`;
+  const prompt = String(raw.prompt ?? raw.text_prompt ?? raw.query ?? "").trim();
+
+  const voxelsRaw = Number(raw.voxels ?? raw.count ?? raw.pixels ?? 0);
+  const voxels = Number.isFinite(voxelsRaw) && voxelsRaw >= 0 ? Math.round(voxelsRaw) : 0;
+
+  const fractionRaw = Number(raw.fraction ?? 0);
+  const fraction =
+    Number.isFinite(fractionRaw) && fractionRaw >= 0 ? fractionRaw : 0;
+
+  const percentageRaw = Number(raw.percentage ?? (fraction > 0 ? fraction * 100 : 0));
+  const percentage =
+    Number.isFinite(percentageRaw) && percentageRaw >= 0
+      ? Number(percentageRaw.toFixed(2))
+      : 0;
+
+  const colorValue = String(raw.color ?? "").trim();
+  const color =
+    colorValue && colorValue.startsWith("#")
+      ? colorValue
+      : asyncLegendPalette[id % asyncLegendPalette.length];
+
+  return {
+    id,
+    label,
+    prompt,
+    voxels,
+    fraction,
+    percentage,
+    color,
+  };
+}
+
+function parseAsyncSummaryLegend(summary: unknown): SegmentLegendItem[] {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    return [];
+  }
+
+  const payload = summary as Record<string, unknown>;
+
+  if (Array.isArray(payload.segments_legend)) {
+    return payload.segments_legend
+      .map((item, index) =>
+        buildLegendItem(
+          (item && typeof item === "object" && !Array.isArray(item)
+            ? (item as Record<string, unknown>)
+            : {}) as Record<string, unknown>,
+          index + 1,
+        ),
+      )
+      .sort((left, right) => left.id - right.id);
+  }
+
+  if (Array.isArray(payload.segments)) {
+    return payload.segments
+      .map((item, index) =>
+        buildLegendItem(
+          (item && typeof item === "object" && !Array.isArray(item)
+            ? (item as Record<string, unknown>)
+            : {}) as Record<string, unknown>,
+          index + 1,
+        ),
+      )
+      .sort((left, right) => left.id - right.id);
+  }
+
+  const mapLike = (payload.id_to_label || payload.labels) as
+    | Record<string, unknown>
+    | undefined;
+  if (mapLike && typeof mapLike === "object" && !Array.isArray(mapLike)) {
+    return Object.entries(mapLike)
+      .map(([key, value], index) =>
+        buildLegendItem(
+          {
+            id: Number(key),
+            label: String(value ?? "").trim(),
+          },
+          index + 1,
+        ),
+      )
+      .filter((item) => item.id > 0)
+      .sort((left, right) => left.id - right.id);
+  }
+
+  return [];
+}
+
+function parseAsyncSummaryAnalysis(summary: unknown): string | null {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    return null;
+  }
+
+  const payload = summary as Record<string, unknown>;
+  const candidates = [
+    payload.descriptive_analysis,
+    payload.analysis,
+    payload.summary_text,
+    payload.report,
+  ];
+
+  for (const candidate of candidates) {
+    const text = String(candidate ?? "").trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  return null;
 }
 
 export default function StudyViewerPage({ studyId }: { studyId: string }) {
@@ -103,6 +234,8 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
         imageUrl: null,
         maskUrl: null,
         summaryUrl: null,
+        segmentsLegend: [],
+        descriptiveAnalysis: null,
         availableOutputKinds: outputs.map((output) => output.kind),
       });
       return;
@@ -116,10 +249,28 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
         : Promise.resolve(null),
     ]);
 
+    let segmentsLegend: SegmentLegendItem[] = [];
+    let descriptiveAnalysis: string | null = null;
+
+    if (summarySigned?.url) {
+      try {
+        const response = await fetch(summarySigned.url);
+        if (response.ok) {
+          const summaryPayload = await response.json();
+          segmentsLegend = parseAsyncSummaryLegend(summaryPayload);
+          descriptiveAnalysis = parseAsyncSummaryAnalysis(summaryPayload);
+        }
+      } catch {
+        // Summary parsing is best-effort; viewer still works with fallback labels.
+      }
+    }
+
     setAsyncAssets({
       imageUrl: imageSigned.url,
       maskUrl: maskSigned.url,
       summaryUrl: summarySigned?.url || null,
+      segmentsLegend,
+      descriptiveAnalysis,
       availableOutputKinds: outputs.map((output) => output.kind),
     });
   }, [accessToken, studyId]);
@@ -314,8 +465,8 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
               imageUrl={asyncAssets.imageUrl}
               maskUrl={asyncAssets.maskUrl}
               modality={null}
-              segmentsLegend={[]}
-              descriptiveAnalysis={null}
+              segmentsLegend={asyncAssets.segmentsLegend}
+              descriptiveAnalysis={asyncAssets.descriptiveAnalysis}
             />
           </div>
         ) : (

@@ -24,6 +24,7 @@ from .object_layout import raw_input_key
 from .serializers import (
     InferenceJobCreateRequestSerializer,
     InferenceJobCreateResponseSerializer,
+    InferenceJobListResponseSerializer,
     InferenceJobOutputsResponseSerializer,
     InferenceJobStatusSerializer,
     InputArtifactUploadCompleteSerializer,
@@ -121,6 +122,39 @@ def _emit_audit_event(*, job: InferenceJob, action: str, user=None, payload: dic
 
 class InferenceJobCreateView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not getattr(settings, "INFERENCE_ASYNC_S3_ENABLED", False):
+            return Response(
+                {"detail": "Async inference API is disabled"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        jobs_qs = InferenceJob.objects.select_related("tenant", "owner").order_by("-created_at")
+        if not (getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)):
+            if getattr(request.user, "clinic_id", None):
+                jobs_qs = jobs_qs.filter(tenant__clinic_id=request.user.clinic_id)
+            else:
+                jobs_qs = jobs_qs.filter(owner=request.user)
+
+        requested_status = str(request.query_params.get("status") or "").strip().upper()
+        if requested_status:
+            jobs_qs = jobs_qs.filter(status=requested_status)
+
+        try:
+            limit = int(request.query_params.get("limit", 200))
+        except (TypeError, ValueError):
+            limit = 200
+        limit = max(1, min(limit, 500))
+
+        jobs = list(jobs_qs[:limit])
+        serializer = InferenceJobListResponseSerializer(
+            {
+                "count": len(jobs),
+                "results": jobs,
+            }
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
         if not getattr(settings, "INFERENCE_ASYNC_S3_ENABLED", False):

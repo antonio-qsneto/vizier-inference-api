@@ -872,7 +872,7 @@ export function OrthogonalViewer({
                     <p className="mt-0.5 text-[11px] text-slate-500">
                       {segment.voxels
                         ? `${segment.voxels.toLocaleString()} voxels · ${segment.percentage}%`
-                        : `Label ${segment.id}`}
+                        : `Segment ID ${segment.id}`}
                     </p>
                   </div>
                   <span

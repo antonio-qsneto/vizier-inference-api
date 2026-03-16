@@ -17,6 +17,7 @@ import type {
   DoctorInvitation,
   HealthStatus,
   InferenceJobCreateResponse,
+  InferenceJobListResponse,
   InferenceJobOutputsResponse,
   InferenceJobStatus,
   InferenceOutputPresignResponse,
@@ -450,6 +451,16 @@ export async function createInferenceJob(
       slice_batch_size: input.sliceBatchSize,
       correlation_id: input.correlationId,
     }),
+  });
+}
+
+export async function fetchInferenceJobs(
+  token: string,
+  signal?: AbortSignal,
+) {
+  return apiRequest<InferenceJobListResponse>("/api/inference/jobs/", {
+    token,
+    signal,
   });
 }
 

@@ -128,6 +128,28 @@ class InferenceJobCreateResponseSerializer(serializers.Serializer):
     upload = serializers.DictField()
 
 
+class InferenceJobListItemSerializer(serializers.ModelSerializer):
+    owner_email = serializers.EmailField(source="owner.email", read_only=True)
+    request_payload = serializers.JSONField()
+
+    class Meta:
+        model = InferenceJob
+        fields = [
+            "id",
+            "status",
+            "progress_percent",
+            "error_type",
+            "error_message",
+            "created_at",
+            "updated_at",
+            "completed_at",
+            "correlation_id",
+            "request_payload",
+            "owner_email",
+        ]
+        read_only_fields = fields
+
+
 class OutputPresignDownloadResponseSerializer(serializers.Serializer):
     output_id = serializers.UUIDField()
     kind = serializers.CharField()
@@ -139,3 +161,8 @@ class InferenceJobOutputsResponseSerializer(serializers.Serializer):
     job_id = serializers.UUIDField()
     status = serializers.CharField()
     outputs = OutputArtifactSerializer(many=True)
+
+
+class InferenceJobListResponseSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    results = InferenceJobListItemSerializer(many=True)

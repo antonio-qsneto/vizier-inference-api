@@ -230,6 +230,25 @@ export interface InferenceJobStatus {
   input_artifacts: InferenceInputArtifact[];
 }
 
+export interface InferenceJobListItem {
+  id: string;
+  status: InferenceJobStatusValue;
+  progress_percent: number;
+  error_type: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  correlation_id: string;
+  request_payload: Record<string, unknown> | null;
+  owner_email: string;
+}
+
+export interface InferenceJobListResponse {
+  count: number;
+  results: InferenceJobListItem[];
+}
+
 export interface InferenceOutputArtifact {
   id: string;
   job: string;

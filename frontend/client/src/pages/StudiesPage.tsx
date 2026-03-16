@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { ArrowUpFromLine, Eye, Search, SlidersHorizontal } from "lucide-react";
-import { fetchStudies, getPageResults } from "@/api/services";
+import { fetchInferenceJobs, fetchStudies, getPageResults } from "@/api/services";
 import { useAuth } from "@/auth/AuthContext";
 import {
   EmptyState,
@@ -12,14 +12,43 @@ import {
   Panel,
   StatusPill,
 } from "@/components/primitives";
+import { env } from "@/env";
 import { formatDateTime } from "@/lib/format";
-import type { Study } from "@/types/api";
+import type { InferenceJobListItem, Study } from "@/types/api";
+
+interface ClinicalCaseRow {
+  id: string;
+  caseIdentification: string;
+  patientName: string;
+  category: string;
+  examModality: string;
+  ownerEmail: string;
+  status: string;
+  createdAt: string;
+  detailHref: string;
+  isAsync: boolean;
+}
+
+function mapAsyncStatusToCaseStatus(status: string) {
+  const normalized = (status || "").toUpperCase();
+  if (normalized === "COMPLETED") {
+    return "COMPLETED";
+  }
+  if (normalized === "FAILED") {
+    return "FAILED";
+  }
+  if (normalized === "CREATED" || normalized === "UPLOAD_PENDING" || normalized === "UPLOADED") {
+    return "SUBMITTED";
+  }
+  return "PROCESSING";
+}
 
 export default function StudiesPage() {
   const { accessToken } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [studies, setStudies] = useState<Study[]>([]);
+  const [inferenceJobs, setInferenceJobs] = useState<InferenceJobListItem[]>([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [search, setSearch] = useState("");
 
@@ -30,8 +59,22 @@ export default function StudiesPage() {
 
     setLoading(true);
     try {
-      const payload = await fetchStudies(accessToken);
-      setStudies(getPageResults<Study>(payload));
+      const requests: [Promise<unknown>, Promise<unknown> | null] = [
+        fetchStudies(accessToken),
+        env.useAsyncS3Upload ? fetchInferenceJobs(accessToken) : null,
+      ];
+
+      const [studiesPayload, inferencePayload] = await Promise.all([
+        requests[0],
+        requests[1] ?? Promise.resolve(null),
+      ]);
+
+      setStudies(getPageResults<Study>(studiesPayload));
+      setInferenceJobs(
+        inferencePayload && typeof inferencePayload === "object" && Array.isArray((inferencePayload as { results?: unknown }).results)
+          ? ((inferencePayload as { results: InferenceJobListItem[] }).results || [])
+          : [],
+      );
       setError(null);
     } catch (requestError) {
       if (requestError instanceof Error) {
@@ -46,24 +89,65 @@ export default function StudiesPage() {
     void loadStudies();
   }, [loadStudies]);
 
+  const caseRows = useMemo<ClinicalCaseRow[]>(() => {
+    const legacyRows = studies.map<ClinicalCaseRow>((study) => ({
+      id: study.id,
+      caseIdentification: study.case_identification || study.id,
+      patientName: study.patient_name || "Unnamed patient",
+      category: study.category || "--",
+      examModality: study.exam_modality || "Unknown",
+      ownerEmail: study.owner_email || "--",
+      status: study.status || "SUBMITTED",
+      createdAt: study.created_at,
+      detailHref: `/studies/${study.id}`,
+      isAsync: false,
+    }));
+
+    const asyncRows = inferenceJobs.map<ClinicalCaseRow>((job) => {
+      const payload = (job.request_payload || {}) as Record<string, unknown>;
+      const caseIdentification =
+        String(payload.case_identification || "").trim() || `Job ${job.id}`;
+      const patientName = String(payload.patient_name || "").trim() || "Unnamed patient";
+      const category = String(payload.category_id || "").trim() || "Async inference";
+      const examModality = String(payload.exam_modality || "").trim() || "Unknown";
+
+      return {
+        id: job.id,
+        caseIdentification,
+        patientName,
+        category,
+        examModality,
+        ownerEmail: job.owner_email || "--",
+        status: mapAsyncStatusToCaseStatus(job.status),
+        createdAt: job.created_at,
+        detailHref: `/studies/${job.id}?async=1`,
+        isAsync: true,
+      };
+    });
+
+    return [...asyncRows, ...legacyRows].sort((left, right) =>
+      (right.createdAt || "").localeCompare(left.createdAt || ""),
+    );
+  }, [inferenceJobs, studies]);
+
   const visibleStudies = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return studies.filter((study) => {
+    return caseRows.filter((study) => {
       const matchesStatus =
         statusFilter === "ALL" ? true : study.status === statusFilter;
       const haystack = [
-        study.case_identification,
-        study.patient_name,
+        study.caseIdentification,
+        study.patientName,
         study.category,
-        study.exam_modality,
-        study.owner_email,
+        study.examModality,
+        study.ownerEmail,
       ]
         .join(" ")
         .toLowerCase();
       const matchesQuery = query ? haystack.includes(query) : true;
       return matchesStatus && matchesQuery;
     });
-  }, [search, statusFilter, studies]);
+  }, [caseRows, search, statusFilter]);
 
   if (loading) {
     return <LoadingState label="Carregando estudos..." />;
@@ -145,26 +229,31 @@ export default function StudiesPage() {
                   >
                     <div className="space-y-1">
                       <p className="font-medium text-white">
-                        {study.case_identification || study.id}
+                        {study.caseIdentification}
+                        {study.isAsync ? (
+                          <span className="ml-2 rounded-full border border-sky-300/30 bg-sky-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-sky-200">
+                            Async
+                          </span>
+                        ) : null}
                       </p>
                       <p className="text-sm text-slate-500">
-                        {formatDateTime(study.created_at)}
+                        {formatDateTime(study.createdAt)}
                       </p>
                     </div>
 
                     <div className="space-y-1">
                       <p className="font-medium text-slate-100">
-                        {study.patient_name || "Unnamed patient"}
+                        {study.patientName}
                       </p>
                       <p className="text-sm text-slate-500">{study.category}</p>
                     </div>
 
                     <div className="flex items-center text-slate-300">
-                      {study.exam_modality || "Unknown"}
+                      {study.examModality || "Unknown"}
                     </div>
 
                     <div className="flex items-center text-sm text-slate-400">
-                      {study.owner_email || "--"}
+                      {study.ownerEmail || "--"}
                     </div>
 
                     <div className="flex items-center">
@@ -172,7 +261,7 @@ export default function StudiesPage() {
                     </div>
 
                     <div className="flex items-center">
-                      <Link href={`/studies/${study.id}`}>
+                      <Link href={study.detailHref}>
                         <a className="inline-flex items-center gap-2 text-sm font-semibold text-sky-400 transition hover:text-sky-300">
                           <Eye className="h-4 w-4" />
                           View
