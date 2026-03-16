@@ -212,6 +212,20 @@ async function gunzipBuffer(buffer: ArrayBuffer) {
   return new Response(stream).arrayBuffer();
 }
 
+function hasGzipExtension(targetUrl: string) {
+  try {
+    const parsed = new URL(targetUrl, window.location.origin);
+    return parsed.pathname.toLowerCase().endsWith(".gz");
+  } catch {
+    return targetUrl.split("?")[0].toLowerCase().endsWith(".gz");
+  }
+}
+
+function isGzipPayload(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
 async function fetchBuffer(url: string) {
   const resolvedUrl = normalizeViewerAssetUrl(url);
   const response = await fetch(resolvedUrl);
@@ -223,7 +237,11 @@ async function fetchBuffer(url: string) {
   }
 
   const rawBuffer = await response.arrayBuffer();
-  if (url.endsWith(".gz")) {
+  const shouldGunzip =
+    hasGzipExtension(url) ||
+    hasGzipExtension(resolvedUrl) ||
+    isGzipPayload(rawBuffer);
+  if (shouldGunzip) {
     return gunzipBuffer(rawBuffer);
   }
   return rawBuffer;
