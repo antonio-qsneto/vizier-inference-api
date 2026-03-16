@@ -229,13 +229,22 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
           title={`Job ${asyncStatus.id}`}
           description="Fluxo assíncrono S3-first: upload direto no S3, processamento por fila e outputs com presigned download."
           actions={
-            <button
-              type="button"
-              onClick={() => void loadData()}
-              className="rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
-            >
-              Refresh
-            </button>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => void loadData()}
+                className="rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+              >
+                Refresh
+              </button>
+              {asyncStatus.status === "COMPLETED" ? (
+                <Link href={`/studies/${asyncStatus.id}/viewer?async=1`}>
+                  <a className="rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-400">
+                    Open viewer
+                  </a>
+                </Link>
+              ) : null}
+            </div>
           }
         />
 

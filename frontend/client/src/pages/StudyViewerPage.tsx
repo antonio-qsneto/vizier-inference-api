@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { FolderOpen, RotateCcw } from "lucide-react";
-import { fetchStudy, fetchStudyResult, fetchStudyStatus } from "@/api/services";
+import {
+  fetchInferenceJobOutputs,
+  fetchInferenceJobStatus,
+  fetchStudy,
+  fetchStudyResult,
+  fetchStudyStatus,
+  presignInferenceOutputDownload,
+} from "@/api/services";
 import { useAuth } from "@/auth/AuthContext";
 import {
   InlineNotice,
@@ -14,11 +21,53 @@ import {
   isTerminalStudyStatus,
   useStudyStatusPolling,
 } from "@/hooks/useStudyStatusPolling";
+import { env } from "@/env";
 import { OrthogonalViewer } from "@/viewer/OrthogonalViewer";
-import type { Study, StudyResult, StudyStatus } from "@/types/api";
+import type {
+  InferenceJobStatus,
+  InferenceOutputArtifact,
+  Study,
+  StudyResult,
+  StudyStatus,
+} from "@/types/api";
+
+interface AsyncViewerAssets {
+  imageUrl: string | null;
+  maskUrl: string | null;
+  summaryUrl: string | null;
+  availableOutputKinds: string[];
+}
+
+function isAsyncTerminalStatus(status?: string | null) {
+  return status === "COMPLETED" || status === "FAILED";
+}
+
+function findOutputByKind(
+  outputs: InferenceOutputArtifact[],
+  kind: string,
+  suffixes: string[] = [],
+) {
+  const kindMatch = outputs.find((output) => output.kind === kind);
+  if (kindMatch) {
+    return kindMatch;
+  }
+
+  const normalizedSuffixes = suffixes.map((suffix) => suffix.toLowerCase());
+  return outputs.find((output) => {
+    const lowerKey = output.key.toLowerCase();
+    return normalizedSuffixes.some((suffix) => lowerKey.endsWith(suffix));
+  });
+}
 
 export default function StudyViewerPage({ studyId }: { studyId: string }) {
   const { accessToken } = useAuth();
+  const isAsyncFlow = useMemo(() => {
+    if (!env.useAsyncS3Upload || typeof window === "undefined") {
+      return false;
+    }
+    return new URLSearchParams(window.location.search).get("async") === "1";
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [study, setStudy] = useState<Study | null>(null);
@@ -26,6 +75,54 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     null,
   );
   const [result, setResult] = useState<StudyResult | null>(null);
+  const [asyncStatus, setAsyncStatus] = useState<InferenceJobStatus | null>(
+    null,
+  );
+  const [asyncAssets, setAsyncAssets] = useState<AsyncViewerAssets | null>(
+    null,
+  );
+
+  const loadAsyncAssets = useCallback(async () => {
+    if (!accessToken) {
+      return;
+    }
+
+    const outputsPayload = await fetchInferenceJobOutputs(accessToken, studyId);
+    const outputs = outputsPayload.outputs || [];
+    const imageOutput = findOutputByKind(outputs, "ORIGINAL_NIFTI", [
+      "original_image.nii.gz",
+      "image.nii.gz",
+    ]);
+    const maskOutput = findOutputByKind(outputs, "MASK_NIFTI", ["mask.nii.gz"]);
+    const summaryOutput = findOutputByKind(outputs, "SUMMARY_JSON", [
+      "summary.json",
+    ]);
+
+    if (!imageOutput || !maskOutput) {
+      setAsyncAssets({
+        imageUrl: null,
+        maskUrl: null,
+        summaryUrl: null,
+        availableOutputKinds: outputs.map((output) => output.kind),
+      });
+      return;
+    }
+
+    const [imageSigned, maskSigned, summarySigned] = await Promise.all([
+      presignInferenceOutputDownload(accessToken, studyId, imageOutput.id),
+      presignInferenceOutputDownload(accessToken, studyId, maskOutput.id),
+      summaryOutput
+        ? presignInferenceOutputDownload(accessToken, studyId, summaryOutput.id)
+        : Promise.resolve(null),
+    ]);
+
+    setAsyncAssets({
+      imageUrl: imageSigned.url,
+      maskUrl: maskSigned.url,
+      summaryUrl: summarySigned?.url || null,
+      availableOutputKinds: outputs.map((output) => output.kind),
+    });
+  }, [accessToken, studyId]);
 
   const loadViewerData = useCallback(async () => {
     if (!accessToken) {
@@ -34,12 +131,22 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
 
     setLoading(true);
     try {
-      const studyPayload = await fetchStudy(accessToken, studyId);
-      const statusPayload = isTerminalStudyStatus(studyPayload.status)
-        ? null
-        : await fetchStudyStatus(accessToken, studyId);
-      setStudy(studyPayload);
-      setStatusSnapshot(statusPayload);
+      if (isAsyncFlow) {
+        const payload = await fetchInferenceJobStatus(accessToken, studyId);
+        setAsyncStatus(payload);
+        if (payload.status === "COMPLETED") {
+          await loadAsyncAssets();
+        } else {
+          setAsyncAssets(null);
+        }
+      } else {
+        const studyPayload = await fetchStudy(accessToken, studyId);
+        const statusPayload = isTerminalStudyStatus(studyPayload.status)
+          ? null
+          : await fetchStudyStatus(accessToken, studyId);
+        setStudy(studyPayload);
+        setStatusSnapshot(statusPayload);
+      }
       setError(null);
     } catch (requestError) {
       if (requestError instanceof Error) {
@@ -48,7 +155,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, studyId]);
+  }, [accessToken, isAsyncFlow, loadAsyncAssets, studyId]);
 
   useEffect(() => {
     void loadViewerData();
@@ -59,7 +166,9 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     token: accessToken,
     initialValue: statusSnapshot,
     enabled: Boolean(
-      statusSnapshot && !isTerminalStudyStatus(statusSnapshot.status),
+      !isAsyncFlow &&
+        statusSnapshot &&
+        !isTerminalStudyStatus(statusSnapshot.status),
     ),
   });
 
@@ -81,8 +190,33 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     );
   }, [polling.value]);
 
+  useEffect(() => {
+    if (!isAsyncFlow || !accessToken || !asyncStatus) {
+      return;
+    }
+    if (isAsyncTerminalStatus(asyncStatus.status)) {
+      return;
+    }
+
+    const timer = window.setInterval(async () => {
+      try {
+        const next = await fetchInferenceJobStatus(accessToken, studyId);
+        setAsyncStatus(next);
+        if (next.status === "COMPLETED") {
+          await loadAsyncAssets();
+        }
+      } catch (requestError) {
+        if (requestError instanceof Error) {
+          setError(requestError.message);
+        }
+      }
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [accessToken, asyncStatus, isAsyncFlow, loadAsyncAssets, studyId]);
+
   const loadResult = useCallback(async () => {
-    if (!accessToken || !studyId) {
+    if (!accessToken || !studyId || isAsyncFlow) {
       return;
     }
 
@@ -95,16 +229,114 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
         setError(requestError.message);
       }
     }
-  }, [accessToken, studyId]);
+  }, [accessToken, isAsyncFlow, studyId]);
 
   useEffect(() => {
-    if ((statusSnapshot?.status || study?.status) === "COMPLETED") {
+    if (!isAsyncFlow && (statusSnapshot?.status || study?.status) === "COMPLETED") {
       void loadResult();
     }
-  }, [loadResult, statusSnapshot?.status, study?.status]);
+  }, [isAsyncFlow, loadResult, statusSnapshot?.status, study?.status]);
 
   if (loading) {
-    return <LoadingState label="Preparing viewer..." />;
+    return <LoadingState label={isAsyncFlow ? "Preparing async viewer..." : "Preparing viewer..."} />;
+  }
+
+  if (isAsyncFlow) {
+    if (!asyncStatus) {
+      return (
+        <InlineNotice title="Inference job unavailable" tone="danger">
+          {error || "The inference job could not be loaded from the backend."}
+        </InlineNotice>
+      );
+    }
+
+    const currentAsyncStatus = asyncStatus.status;
+
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+        className="space-y-4"
+      >
+        <div className="flex flex-col gap-3 rounded-[10px] border border-white/8 bg-[#23252d] px-4 py-3 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <FolderOpen className="h-3.5 w-3.5 text-sky-300/80" />
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-300/80">
+                Async Viewer
+              </p>
+            </div>
+            <h1 className="mt-1 truncate text-xl font-semibold tracking-tight text-white">
+              Inference job {asyncStatus.id}
+            </h1>
+            <p className="mt-1 text-sm text-slate-300">
+              Opened from async S3-first pipeline outputs.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill status={currentAsyncStatus} />
+            <Link href={`/studies/${asyncStatus.id}?async=1`}>
+              <a className="inline-flex items-center gap-2 rounded-[8px] border border-white/10 bg-[#2a2c34] px-3 py-2 text-sm font-semibold text-slate-100 transition hover:bg-[#31343d]">
+                <FolderOpen className="h-4 w-4" />
+                Back to detail
+              </a>
+            </Link>
+            <button
+              type="button"
+              onClick={() => void loadAsyncAssets()}
+              className="inline-flex items-center gap-2 rounded-[8px] border border-sky-300/30 bg-sky-500/15 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-400/20"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reload assets
+            </button>
+          </div>
+        </div>
+
+        {error ? (
+          <InlineNotice title="Viewer request failed">{error}</InlineNotice>
+        ) : null}
+
+        {currentAsyncStatus !== "COMPLETED" ? (
+          <Panel className="space-y-4">
+            <p className="text-lg font-semibold text-white">
+              Viewer will unlock when processing completes
+            </p>
+            <p className="text-sm leading-7 text-slate-300">
+              Este job ainda não finalizou. Assim que chegar em `COMPLETED`, o
+              viewer passa a carregar `ORIGINAL_NIFTI` e `MASK_NIFTI`.
+            </p>
+          </Panel>
+        ) : asyncAssets?.imageUrl && asyncAssets?.maskUrl ? (
+          <div className="-mx-4 md:-mx-6 lg:-mx-8">
+            <OrthogonalViewer
+              imageUrl={asyncAssets.imageUrl}
+              maskUrl={asyncAssets.maskUrl}
+              modality={null}
+              segmentsLegend={[]}
+              descriptiveAnalysis={null}
+            />
+          </div>
+        ) : (
+          <Panel className="space-y-4">
+            <p className="text-lg font-semibold text-white">
+              Result assets not ready
+            </p>
+            <p className="text-sm leading-7 text-slate-300">
+              O job está `COMPLETED`, mas o frontend não encontrou os dois
+              artefatos necessários para o viewer (`ORIGINAL_NIFTI` e
+              `MASK_NIFTI`).
+            </p>
+            {asyncAssets?.availableOutputKinds?.length ? (
+              <p className="text-sm text-slate-300">
+                Available kinds: {asyncAssets.availableOutputKinds.join(", ")}
+              </p>
+            ) : null}
+          </Panel>
+        )}
+      </motion.section>
+    );
   }
 
   if (!study) {
