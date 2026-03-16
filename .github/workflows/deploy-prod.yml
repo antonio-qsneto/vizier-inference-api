@@ -26,6 +26,7 @@ permissions:
 
 env:
   TF_IN_AUTOMATION: "true"
+  TF_LOCK_TIMEOUT: ${{ vars.TF_LOCK_TIMEOUT || '10m' }}
   TF_DIR: vizier-inference-infra/terraform/envs/prod
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
   TF_VAR_rds_password: ${{ secrets.TF_VAR_RDS_PASSWORD }}
@@ -156,6 +157,7 @@ jobs:
           set -euo pipefail
           terraform apply \
             -input=false \
+            -lock-timeout="${TF_LOCK_TIMEOUT}" \
             -auto-approve \
             -target=module.iam_github \
             -var="backend_image_tag=bootstrap" \
@@ -208,6 +210,7 @@ jobs:
 
           terraform apply \
             -input=false \
+            -lock-timeout="${TF_LOCK_TIMEOUT}" \
             -auto-approve \
             "${TARGET_ARGS[@]}" \
             -var="backend_image_tag=bootstrap" \
@@ -275,6 +278,7 @@ jobs:
         run: |
           terraform apply \
             -input=false \
+            -lock-timeout="${TF_LOCK_TIMEOUT}" \
             -auto-approve \
             -var="backend_image_tag=${{ inputs.image_tag }}"
 
