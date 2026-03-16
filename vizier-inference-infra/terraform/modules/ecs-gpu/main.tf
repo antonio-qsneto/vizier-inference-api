@@ -110,8 +110,8 @@ resource "aws_autoscaling_schedule" "business_hours_scale_down" {
 
   scheduled_action_name  = "${var.cluster_name}-gpu-business-hours-down"
   autoscaling_group_name = aws_autoscaling_group.gpu.name
-  min_size               = 0
-  desired_capacity       = 0
+  min_size               = var.asg_min
+  desired_capacity       = var.asg_desired
   max_size               = var.asg_max
   recurrence             = var.business_hours_scale_down_cron
   time_zone              = var.business_hours_time_zone

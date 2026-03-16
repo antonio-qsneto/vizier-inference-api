@@ -5,12 +5,12 @@ variable "aws_region" {
 
 variable "availability_zone" {
   type    = string
-  default = "us-east-1a"
+  default = "us-east-1b"
 }
 
 variable "availability_zone_b" {
   type    = string
-  default = "us-east-1b"
+  default = "us-east-1c"
 }
 
 variable "single_az_mode" {
@@ -326,12 +326,12 @@ variable "gpu_instance_type" {
 
 variable "gpu_asg_min" {
   type    = number
-  default = 0
+  default = 1
 }
 
 variable "gpu_asg_desired" {
   type    = number
-  default = 0
+  default = 1
 }
 
 variable "gpu_asg_max" {

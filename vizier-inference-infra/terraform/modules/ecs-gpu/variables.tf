@@ -30,12 +30,12 @@ variable "root_volume_size_gb" {
 
 variable "asg_min" {
   type    = number
-  default = 0
+  default = 1
 }
 
 variable "asg_desired" {
   type    = number
-  default = 0
+  default = 1
 }
 
 variable "asg_max" {
