@@ -164,7 +164,7 @@ variable "biomedparse_image_tag" {
 
 variable "biomedparse_image_override" {
   type    = string
-  default = ""
+  default = "996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse@sha256:b61afa1fb0a1abb04ce41d575848e35763ad62d9471244bb349be1d8a3952ae0"
 }
 
 variable "api_desired_count" {
@@ -315,8 +315,9 @@ variable "stripe_allowed_redirect_origins" {
 }
 
 variable "gpu_ami_id" {
-  type    = string
-  default = "ami-0b2483db0c00858b5"
+  type        = string
+  description = "Optional override for GPU EC2 AMI. Leave empty to use AWS ECS GPU-optimized AMI from SSM."
+  default     = ""
 }
 
 variable "gpu_instance_type" {

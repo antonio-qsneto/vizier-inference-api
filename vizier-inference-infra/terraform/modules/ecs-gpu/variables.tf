@@ -15,7 +15,15 @@ variable "instance_profile_name" {
 }
 
 variable "gpu_ami_id" {
-  type = string
+  type        = string
+  description = "Optional custom AMI ID for GPU nodes. Leave empty/null to use AWS ECS GPU-optimized AMI from SSM."
+  default     = null
+}
+
+variable "gpu_ami_ssm_parameter" {
+  type        = string
+  description = "SSM parameter that publishes the recommended AWS ECS GPU-optimized AMI."
+  default     = "/aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended/image_id"
 }
 
 variable "instance_type" {

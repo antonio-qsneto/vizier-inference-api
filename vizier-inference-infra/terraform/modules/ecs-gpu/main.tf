@@ -3,7 +3,15 @@ resource "aws_ecs_cluster" "this" {
   tags = var.tags
 }
 
+data "aws_ssm_parameter" "ecs_gpu_ami" {
+  count = local.use_custom_gpu_ami ? 0 : 1
+  name  = var.gpu_ami_ssm_parameter
+}
+
 locals {
+  use_custom_gpu_ami  = var.gpu_ami_id != null && trimspace(var.gpu_ami_id) != ""
+  resolved_gpu_ami_id = local.use_custom_gpu_ami ? trimspace(var.gpu_ami_id) : data.aws_ssm_parameter.ecs_gpu_ami[0].value
+
   gpu_user_data = <<-EOF
               #!/bin/bash
               echo "ECS_CLUSTER=${var.cluster_name}" >> /etc/ecs/ecs.config
@@ -14,7 +22,7 @@ locals {
 
 resource "aws_launch_template" "gpu" {
   name_prefix   = "${var.cluster_name}-gpu-"
-  image_id      = var.gpu_ami_id
+  image_id      = local.resolved_gpu_ami_id
   instance_type = var.instance_type
 
   iam_instance_profile {
