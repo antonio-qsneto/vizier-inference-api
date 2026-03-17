@@ -175,6 +175,39 @@ class NiftiConverter:
         return volume[np.ix_(z_idx, y_idx, x_idx)]
 
     @staticmethod
+    def _infer_axis_permutation(
+        source_shape: tuple[int, int, int],
+        target_shape: tuple[int, int, int],
+    ) -> tuple[int, int, int] | None:
+        """
+        Infer a source->target transpose permutation when shapes are axis permutations.
+
+        Example:
+          source=(35, 256, 256), target=(256, 256, 35) -> permutation=(1, 2, 0)
+        """
+        if len(source_shape) != 3 or len(target_shape) != 3:
+            return None
+
+        used_axes: set[int] = set()
+        permutation: list[int] = []
+        for target_dim in target_shape:
+            candidates = [
+                axis
+                for axis, size in enumerate(source_shape)
+                if axis not in used_axes and int(size) == int(target_dim)
+            ]
+            if not candidates:
+                return None
+            selected_axis = candidates[0]
+            used_axes.add(selected_axis)
+            permutation.append(selected_axis)
+
+        perm_tuple = tuple(permutation)
+        if tuple(source_shape[idx] for idx in perm_tuple) != tuple(target_shape):
+            return None
+        return perm_tuple  # type: ignore[return-value]
+
+    @staticmethod
     def align_mask_to_reference(
         mask_nifti_path: str,
         reference_nifti_path: str,
@@ -208,8 +241,41 @@ class NiftiConverter:
             mask_shape = tuple(int(v) for v in mask_data.shape)
             ref_shape = tuple(int(v) for v in ref_data.shape)
             if mask_shape == ref_shape:
-                if target_path != mask_nifti_path:
-                    nib.save(mask_img, target_path)
+                aligned = np.rint(np.nan_to_num(mask_data, nan=0.0, posinf=0.0, neginf=0.0)).astype(np.uint8, copy=False)
+                aligned_img = nib.Nifti1Image(aligned, ref_img.affine, header=ref_img.header.copy())
+                try:
+                    aligned_img.set_data_dtype(np.uint8)
+                except Exception:
+                    logger.warning("Failed to enforce uint8 dtype in aligned mask header", exc_info=True)
+                nib.save(aligned_img, target_path)
+                return True
+
+            # Common case for NIfTI uploads: preprocessing converts image XYZ->ZYX,
+            # so model output mask comes back in ZYX while reference original NIfTI
+            # remains XYZ. In this case we must transpose axes, not resize.
+            permutation = NiftiConverter._infer_axis_permutation(mask_shape, ref_shape)
+            if permutation is not None and permutation != (0, 1, 2):
+                logger.warning(
+                    "Mask/reference axis permutation detected. Transposing mask from %s to %s using permutation %s.",
+                    mask_shape,
+                    ref_shape,
+                    permutation,
+                )
+                transposed = np.transpose(mask_data, permutation)
+                if tuple(transposed.shape) != ref_shape:
+                    raise ValueError(
+                        f"Transposed mask shape {tuple(transposed.shape)} does not match reference {ref_shape}"
+                    )
+                aligned = np.rint(np.nan_to_num(transposed, nan=0.0, posinf=0.0, neginf=0.0)).astype(
+                    np.uint8, copy=False
+                )
+                aligned_img = nib.Nifti1Image(aligned, ref_img.affine, header=ref_img.header.copy())
+                try:
+                    aligned_img.set_data_dtype(np.uint8)
+                except Exception:
+                    logger.warning("Failed to enforce uint8 dtype in transposed mask header", exc_info=True)
+                nib.save(aligned_img, target_path)
+                logger.info("Aligned mask saved using axis transpose: %s", target_path)
                 return True
 
             logger.warning(

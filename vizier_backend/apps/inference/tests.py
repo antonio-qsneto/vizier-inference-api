@@ -10,6 +10,7 @@ from apps.accounts.models import User
 from apps.inference.executors.preprocessing_executor import InferencePreprocessor
 from apps.inference.models import InferenceJob, ModelVersion, Tenant
 from apps.inference.state_machine import transition_job
+from services.nifti_converter import NiftiConverter
 
 
 class InferenceDomainTest(TestCase):
@@ -79,3 +80,38 @@ class InferencePreprocessorTest(TestCase):
 
             restored_nifti = nib.load(prepared["original_nifti"])
             self.assertEqual(tuple(restored_nifti.shape), tuple(input_volume_xyz.shape))
+
+
+class NiftiConverterAlignmentTest(TestCase):
+    def test_align_mask_transposes_axes_when_shapes_are_permuted(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Reference image in XYZ layout (typical original NIfTI upload).
+            reference_shape = (8, 7, 5)
+            reference_data = np.zeros(reference_shape, dtype=np.float32)
+            reference_path = os.path.join(tmpdir, "original_image.nii.gz")
+            nib.save(nib.Nifti1Image(reference_data, np.eye(4)), reference_path)
+
+            # Mask in ZYX layout (typical model output after XYZ->ZYX preprocessing).
+            mask_zyx = np.zeros((5, 7, 8), dtype=np.uint8)
+            mask_zyx[2, 3, 4] = 1
+            mask_zyx[1, 2, 6] = 1
+            mask_path = os.path.join(tmpdir, "mask_raw.nii.gz")
+            nib.save(nib.Nifti1Image(mask_zyx, np.eye(4)), mask_path)
+
+            aligned_path = os.path.join(tmpdir, "mask_aligned.nii.gz")
+            ok = NiftiConverter.align_mask_to_reference(
+                mask_nifti_path=mask_path,
+                reference_nifti_path=reference_path,
+                output_path=aligned_path,
+            )
+            self.assertTrue(ok)
+
+            aligned = np.asarray(nib.load(aligned_path).get_fdata(), dtype=np.uint8)
+            self.assertEqual(tuple(aligned.shape), reference_shape)
+
+            # Expected voxel locations after transpose (2,1,0): (x,y,z) from (z,y,x).
+            self.assertEqual(int(aligned[4, 3, 2]), 1)
+            self.assertEqual(int(aligned[6, 2, 1]), 1)
+
+            # Axis transpose must preserve voxel count (resize would usually change this).
+            self.assertEqual(int(aligned.sum()), int(mask_zyx.sum()))
