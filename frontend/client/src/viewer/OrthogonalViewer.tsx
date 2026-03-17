@@ -29,6 +29,7 @@ import {
   clamp,
   deriveMaskLabels,
   getPlaneDimensions,
+  getLabelColor,
   getSliceCount,
   loadNiftiVolume,
   pointerToVoxel,
@@ -96,17 +97,39 @@ function axisKeyForPlane(plane: Plane) {
   return axis === "x" ? "x" : axis === "y" ? "y" : "z";
 }
 
+function normalizeLegendLabel(rawLabel: string | null | undefined, segmentId: number) {
+  const compact = String(rawLabel || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!compact || /^label\s*\d+$/i.test(compact)) {
+    return `Segment ${segmentId}`;
+  }
+  return compact;
+}
+
+function fallbackLabelFromCatalog(
+  segmentId: number,
+  fallbackSegmentNames: string[],
+) {
+  if (segmentId <= 0) {
+    return "";
+  }
+  return String(fallbackSegmentNames[segmentId - 1] || "").trim();
+}
+
 export function OrthogonalViewer({
   imageUrl,
   maskUrl,
   modality,
   segmentsLegend,
+  fallbackSegmentNames = [],
   descriptiveAnalysis,
 }: {
   imageUrl: string;
   maskUrl: string;
   modality: string | null;
   segmentsLegend: SegmentLegendItem[];
+  fallbackSegmentNames?: string[];
   descriptiveAnalysis?: string | null;
 }) {
   const [imageVolume, setImageVolume] = useState<VolumeData | null>(null);
@@ -248,21 +271,39 @@ export function OrthogonalViewer({
 
   const legendItems = useMemo(() => {
     if (segmentsLegend.length) {
-      return segmentsLegend;
+      const byId = new Map<number, SegmentLegendItem>();
+      for (const segment of segmentsLegend) {
+        const id = Math.max(1, Math.round(Number(segment.id) || 0));
+        const fallbackFromCatalog = fallbackLabelFromCatalog(id, fallbackSegmentNames);
+        const label = normalizeLegendLabel(
+          segment.label || segment.prompt || fallbackFromCatalog,
+          id,
+        );
+        byId.set(id, {
+          ...segment,
+          id,
+          label,
+          color: getLabelColor(id, "legend", legendMap),
+        });
+      }
+      return Array.from(byId.values()).sort((left, right) => left.id - right.id);
     }
     if (!maskVolume) {
       return [];
     }
     return deriveMaskLabels(maskVolume).map((label) => ({
       id: label,
-      label: `Label ${label}`,
+      label: normalizeLegendLabel(
+        fallbackLabelFromCatalog(label, fallbackSegmentNames),
+        label,
+      ),
       prompt: "",
       voxels: 0,
       fraction: 0,
       percentage: 0,
-      color: legendMap.get(label) || "#0a84ff",
+      color: getLabelColor(label, "legend", legendMap),
     }));
-  }, [legendMap, maskVolume, segmentsLegend]);
+  }, [fallbackSegmentNames, legendMap, maskVolume, segmentsLegend]);
 
   const legendItemIdsKey = useMemo(
     () => legendItems.map((segment) => segment.id).join(","),
@@ -853,6 +894,7 @@ export function OrthogonalViewer({
           <div className="flex flex-wrap gap-2">
             {legendItems.map((segment) => {
               const isVisible = visibleSegmentIds.has(segment.id);
+              const segmentColor = getLabelColor(segment.id, paletteId, legendMap);
 
               return (
                 <button
@@ -867,8 +909,8 @@ export function OrthogonalViewer({
                   )}
                 >
                   <span
-                    className="mt-1 inline-flex h-2.5 w-2.5 shrink-0"
-                    style={{ backgroundColor: segment.color }}
+                    className="mt-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white/20"
+                    style={{ backgroundColor: segmentColor }}
                   />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-slate-100">

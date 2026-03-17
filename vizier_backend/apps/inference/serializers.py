@@ -100,6 +100,7 @@ class InferenceJobStatusSerializer(serializers.ModelSerializer):
             "tenant",
             "owner",
             "study",
+            "request_payload",
             "status",
             "progress_percent",
             "requested_device",

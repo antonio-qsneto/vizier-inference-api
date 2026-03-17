@@ -66,6 +66,7 @@ const paletteMap: Record<Exclude<PaletteId, "legend">, string[]> = {
   warm: ["#f97316", "#fb7185", "#f59e0b", "#ef4444", "#f43f5e", "#eab308"],
   contrast: ["#60a5fa", "#f472b6", "#facc15", "#4ade80", "#fb7185", "#c084fc"],
 };
+const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 const planeConfig = {
   axial: {
@@ -197,6 +198,18 @@ function getReader(datatype: number) {
     throw new Error(`Unsupported NIfTI datatype: ${datatype}`);
   }
   return reader;
+}
+
+function isHexColor(value: string) {
+  return HEX_COLOR_PATTERN.test(value.trim());
+}
+
+function paletteIndexForLabel(label: number, paletteSize: number) {
+  if (paletteSize <= 0) {
+    return 0;
+  }
+  const normalized = Math.max(1, Math.round(label));
+  return (normalized - 1) % paletteSize;
 }
 
 async function gunzipBuffer(buffer: ArrayBuffer) {
@@ -524,17 +537,28 @@ export function getLabelColor(
   legendMap: Map<number, string>,
 ) {
   if (paletteId === "legend") {
+    const fallbackPalette = paletteMap.contrast;
     return (
       legendMap.get(label) ||
-      paletteMap.contrast[label % paletteMap.contrast.length]
+      fallbackPalette[paletteIndexForLabel(label, fallbackPalette.length)]
     );
   }
 
-  return paletteMap[paletteId][label % paletteMap[paletteId].length];
+  const palette = paletteMap[paletteId];
+  return palette[paletteIndexForLabel(label, palette.length)];
 }
 
 export function buildLegendColorMap(legend: SegmentLegendItem[]) {
-  return new Map(legend.map((segment) => [segment.id, segment.color]));
+  const normalized = new Map<number, string>();
+  for (const segment of legend) {
+    const id = Number(segment.id);
+    const color = String(segment.color || "").trim();
+    if (!Number.isFinite(id) || id <= 0 || !isHexColor(color)) {
+      continue;
+    }
+    normalized.set(Math.round(id), color);
+  }
+  return normalized;
 }
 
 export function deriveMaskLabels(maskVolume: VolumeData, limit = 18) {
@@ -652,11 +676,22 @@ export function renderSliceToCanvas(options: {
           column,
           label,
         );
+        const isBoundary = isBoundaryPixel(
+          labelData,
+          width,
+          height,
+          row,
+          column,
+          label,
+        );
         const smoothFactor = matchingNeighbors / 8;
+        const alphaScale = isBoundary
+          ? 0.32 + smoothFactor * 0.52
+          : 0.6 + smoothFactor * 0.34;
         const softAlpha = clamp(
-          Math.round(overlayOpacity * 255 * (0.48 + smoothFactor * 0.52)),
-          24,
-          245,
+          Math.round(overlayOpacity * 255 * alphaScale),
+          22,
+          238,
         );
 
         const pixelIndex = bufferIndex * 4;
@@ -665,14 +700,17 @@ export function renderSliceToCanvas(options: {
         overlayData.data[pixelIndex + 2] = vividColor.b;
         overlayData.data[pixelIndex + 3] = softAlpha;
 
-        if (
-          isBoundaryPixel(labelData, width, height, row, column, label)
-        ) {
-          const contourColor = mixColor(vividColor, white, 0.42);
+        if (isBoundary) {
+          const contourColor = mixColor(vividColor, white, 0.35);
+          const contourAlpha = clamp(
+            Math.round(168 + smoothFactor * 72),
+            140,
+            236,
+          );
           contourData.data[pixelIndex] = contourColor.r;
           contourData.data[pixelIndex + 1] = contourColor.g;
           contourData.data[pixelIndex + 2] = contourColor.b;
-          contourData.data[pixelIndex + 3] = 228;
+          contourData.data[pixelIndex + 3] = contourAlpha;
         }
       }
     }
@@ -705,7 +743,14 @@ export function renderSliceToCanvas(options: {
       context.save();
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
-      context.filter = "blur(0.7px)";
+      context.filter = "blur(1.15px) saturate(1.08)";
+      context.drawImage(overlayCanvas, originX, originY, drawWidth, drawHeight);
+      context.restore();
+
+      context.save();
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.globalAlpha = 0.56;
       context.drawImage(overlayCanvas, originX, originY, drawWidth, drawHeight);
       context.restore();
     }
@@ -719,6 +764,15 @@ export function renderSliceToCanvas(options: {
       context.save();
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
+      context.filter = "blur(0.9px)";
+      context.globalAlpha = 0.84;
+      context.drawImage(contourCanvas, originX, originY, drawWidth, drawHeight);
+      context.restore();
+
+      context.save();
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.globalAlpha = 0.72;
       context.drawImage(contourCanvas, originX, originY, drawWidth, drawHeight);
       context.restore();
     }

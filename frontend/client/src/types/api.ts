@@ -212,6 +212,7 @@ export interface InferenceJobStatus {
   id: string;
   tenant: string;
   owner: number;
+  request_payload?: Record<string, unknown> | null;
   status: InferenceJobStatusValue;
   progress_percent: number;
   requested_device: "cuda" | "cpu" | string;

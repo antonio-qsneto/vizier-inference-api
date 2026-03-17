@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { FolderOpen, RotateCcw } from "lucide-react";
 import {
+  fetchCategories,
   fetchInferenceJobOutputs,
   fetchInferenceJobStatus,
   fetchStudy,
@@ -37,6 +38,7 @@ interface AsyncViewerAssets {
   maskUrl: string | null;
   summaryUrl: string | null;
   segmentsLegend: SegmentLegendItem[];
+  fallbackSegmentNames: string[];
   descriptiveAnalysis: string | null;
   availableOutputKinds: string[];
 }
@@ -79,9 +81,20 @@ function buildLegendItem(
 ): SegmentLegendItem {
   const normalizedId = Number(raw.id ?? raw.segment_id ?? raw.label_id ?? fallbackId);
   const id = Number.isFinite(normalizedId) && normalizedId > 0 ? normalizedId : fallbackId;
-  const label =
-    String(raw.label ?? raw.name ?? raw.title ?? "").trim() || `Label ${id}`;
   const prompt = String(raw.prompt ?? raw.text_prompt ?? raw.query ?? "").trim();
+  const labelSource = String(
+    raw.label ??
+      raw.name ??
+      raw.title ??
+      raw.class_name ??
+      raw.class_label ??
+      prompt ??
+      "",
+  ).trim();
+  const label =
+    labelSource && !/^label\s*\d+$/i.test(labelSource)
+      ? labelSource
+      : `Segment ${id}`;
 
   const voxelsRaw = Number(raw.voxels ?? raw.count ?? raw.pixels ?? 0);
   const voxels = Number.isFinite(voxelsRaw) && voxelsRaw >= 0 ? Math.round(voxelsRaw) : 0;
@@ -98,9 +111,9 @@ function buildLegendItem(
 
   const colorValue = String(raw.color ?? "").trim();
   const color =
-    colorValue && colorValue.startsWith("#")
+    colorValue && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(colorValue)
       ? colorValue
-      : asyncLegendPalette[id % asyncLegendPalette.length];
+      : asyncLegendPalette[(id - 1) % asyncLegendPalette.length];
 
   return {
     id,
@@ -111,6 +124,33 @@ function buildLegendItem(
     percentage,
     color,
   };
+}
+
+function getCategoryPromptsFromCatalog(
+  catalog: Record<string, Record<string, string[]>>,
+  examModality: string,
+  categoryId: string,
+) {
+  const normalizedModality = examModality.trim().toLowerCase();
+  const normalizedCategory = categoryId.trim().toLowerCase();
+  if (!normalizedModality || !normalizedCategory) {
+    return [];
+  }
+
+  const modalityKey = Object.keys(catalog).find(
+    (key) => key.toLowerCase() === normalizedModality,
+  );
+  if (!modalityKey) {
+    return [];
+  }
+  const categoryMap = catalog[modalityKey] || {};
+  const categoryKey = Object.keys(categoryMap).find(
+    (key) => key.toLowerCase() === normalizedCategory,
+  );
+  if (!categoryKey) {
+    return [];
+  }
+  return (categoryMap[categoryKey] || []).map((item) => String(item || "").trim());
 }
 
 function parseAsyncSummaryLegend(summary: unknown): SegmentLegendItem[] {
@@ -213,7 +253,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     null,
   );
 
-  const loadAsyncAssets = useCallback(async () => {
+  const loadAsyncAssets = useCallback(async (statusPayload?: InferenceJobStatus | null) => {
     if (!accessToken) {
       return;
     }
@@ -235,6 +275,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
         maskUrl: null,
         summaryUrl: null,
         segmentsLegend: [],
+        fallbackSegmentNames: [],
         descriptiveAnalysis: null,
         availableOutputKinds: outputs.map((output) => output.kind),
       });
@@ -251,6 +292,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
 
     let segmentsLegend: SegmentLegendItem[] = [];
     let descriptiveAnalysis: string | null = null;
+    let fallbackSegmentNames: string[] = [];
 
     if (summarySigned?.url) {
       try {
@@ -265,11 +307,30 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
       }
     }
 
+    if (!segmentsLegend.length && statusPayload?.request_payload) {
+      const requestPayload = statusPayload.request_payload as Record<string, unknown>;
+      const examModality = String(requestPayload.exam_modality || "").trim();
+      const categoryId = String(requestPayload.category_id || "").trim();
+      if (examModality && categoryId) {
+        try {
+          const catalog = await fetchCategories(accessToken);
+          fallbackSegmentNames = getCategoryPromptsFromCatalog(
+            catalog,
+            examModality,
+            categoryId,
+          );
+        } catch {
+          fallbackSegmentNames = [];
+        }
+      }
+    }
+
     setAsyncAssets({
       imageUrl: imageSigned.url,
       maskUrl: maskSigned.url,
       summaryUrl: summarySigned?.url || null,
       segmentsLegend,
+      fallbackSegmentNames,
       descriptiveAnalysis,
       availableOutputKinds: outputs.map((output) => output.kind),
     });
@@ -286,7 +347,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
         const payload = await fetchInferenceJobStatus(accessToken, studyId);
         setAsyncStatus(payload);
         if (payload.status === "COMPLETED") {
-          await loadAsyncAssets();
+          await loadAsyncAssets(payload);
         } else {
           setAsyncAssets(null);
         }
@@ -354,7 +415,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
         const next = await fetchInferenceJobStatus(accessToken, studyId);
         setAsyncStatus(next);
         if (next.status === "COMPLETED") {
-          await loadAsyncAssets();
+          await loadAsyncAssets(next);
         }
       } catch (requestError) {
         if (requestError instanceof Error) {
@@ -466,6 +527,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
               maskUrl={asyncAssets.maskUrl}
               modality={null}
               segmentsLegend={asyncAssets.segmentsLegend}
+              fallbackSegmentNames={asyncAssets.fallbackSegmentNames}
               descriptiveAnalysis={asyncAssets.descriptiveAnalysis}
             />
           </div>
