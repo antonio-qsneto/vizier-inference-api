@@ -1,6 +1,6 @@
 """
-DICOM to NPZ conversion pipeline.
-Handles ZIP extraction, DICOM loading, preprocessing, and NPZ creation.
+Medical volume to NPZ conversion pipeline.
+Handles ZIP extraction, DICOM loading, NIfTI/NPZ fallbacks, preprocessing, and NPZ creation.
 """
 
 import os
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class DicomZipToNpzService:
-    """Service for converting DICOM ZIP to a BiomedParse v2-compatible NPZ."""
+    """Service for converting ZIP/NIfTI/NPZ inputs to a BiomedParse v2-compatible NPZ."""
     
     def __init__(self):
         # Legacy spatial knobs are kept for backwards compatibility in settings,
@@ -47,14 +47,14 @@ class DicomZipToNpzService:
         category_hint: str | None = None,
     ) -> str:
         """
-        Convert a DICOM ZIP file into a single NPZ file.
+        Convert a ZIP file into a single NPZ file.
 
         This method is intentionally side-effect light: it extracts into a
         subfolder next to the ZIP path so the caller can cleanup the parent
         temp directory (common in DRF upload flows).
 
         Args:
-            zip_path: Path to the input DICOM ZIP file.
+            zip_path: Path to the input ZIP file (DICOM folder layout, NIfTI, or NPZ).
             text_prompts: Dict with prompts for inference (stored into NPZ).
             output_npz_path: Optional explicit output path for the generated NPZ.
 
@@ -71,7 +71,7 @@ class DicomZipToNpzService:
         extract_path = os.path.join(work_dir, 'extracted')
 
         try:
-            logger.info(f"Processing DICOM ZIP: {zip_path}")
+            logger.info("Processing ZIP input: %s", zip_path)
 
             # Ensure a clean extraction directory (caller usually controls work_dir)
             if os.path.exists(extract_path):
@@ -81,47 +81,89 @@ class DicomZipToNpzService:
             # Unzip
             self._unzip(zip_path, extract_path)
 
-            # Get study folder
-            study_path = self._get_study_folder(extract_path)
+            # First try DICOM canonical layout (legacy behavior).
+            try:
+                study_path = self._get_study_folder(extract_path)
+                series_folders = self._get_series_folders(study_path)
+                if not series_folders:
+                    raise ValueError("No series folders found")
 
-            # Get series folders
-            series_folders = self._get_series_folders(study_path)
-            if not series_folders:
-                raise ValueError("No series folders found")
+                series_path = series_folders[0]
+                logger.info("Using DICOM series folder: %s", os.path.basename(series_path))
 
-            # Use first series
-            series_path = series_folders[0]
-            logger.info(f"Using series: {os.path.basename(series_path)}")
+                volume, spacing = self._load_series(series_path)
+                logger.info("Loaded DICOM volume shape: %s", volume.shape)
 
-            # Load series
-            volume, spacing = self._load_series(series_path)
-            logger.info(f"Loaded volume shape: {volume.shape}")
+                if output_original_nifti_path:
+                    self._save_volume_as_nifti(
+                        volume=volume,
+                        output_nifti_path=output_original_nifti_path,
+                        spacing_zyx=spacing,
+                    )
 
-            if output_original_nifti_path:
-                self._save_volume_as_nifti(
+                volume = self._preprocess(
                     volume=volume,
-                    output_nifti_path=output_original_nifti_path,
-                    spacing_zyx=spacing,
+                    exam_modality=exam_modality,
+                    category_hint=category_hint,
+                )
+                logger.info("Preprocessed DICOM volume shape: %s", volume.shape)
+
+                npz_path = output_npz_path or os.path.join(work_dir, 'file.npz')
+                self._save_npz(npz_path, volume, spacing, text_prompts)
+                logger.info("Saved NPZ from DICOM ZIP: %s", npz_path)
+                return npz_path
+            except Exception as dicom_layout_error:
+                # Some clients upload zipped NIfTI/NPZ (e.g. *.nii.zip). Fallback here.
+                logger.info(
+                    "ZIP does not match canonical DICOM layout (%s). Attempting NIfTI/NPZ fallback.",
+                    dicom_layout_error,
                 )
 
-            # Preprocess
-            volume = self._preprocess(
-                volume=volume,
-                exam_modality=exam_modality,
-                category_hint=category_hint,
+            nifti_inside_zip = self._find_first_file(
+                extract_path,
+                [".nii.gz", ".nii"],
             )
-            logger.info(f"Preprocessed volume shape: {volume.shape}")
+            if nifti_inside_zip:
+                logger.info("Detected NIfTI in ZIP: %s", nifti_inside_zip)
+                if output_original_nifti_path:
+                    self._normalize_nifti_to_gzip_file(
+                        input_nifti_path=nifti_inside_zip,
+                        output_nifti_path=output_original_nifti_path,
+                    )
+                npz_path = output_npz_path or os.path.join(work_dir, 'file.npz')
+                return self.convert_nifti_to_npz(
+                    nifti_path=nifti_inside_zip,
+                    text_prompts=text_prompts,
+                    output_npz_path=npz_path,
+                    exam_modality=exam_modality,
+                    category_hint=category_hint,
+                )
 
-            # Create NPZ
-            npz_path = output_npz_path or os.path.join(work_dir, 'file.npz')
-            self._save_npz(npz_path, volume, spacing, text_prompts)
-            logger.info(f"Saved NPZ: {npz_path}")
+            npz_inside_zip = self._find_first_file(extract_path, [".npz"])
+            if npz_inside_zip:
+                logger.info("Detected NPZ in ZIP: %s", npz_inside_zip)
+                npz_path = output_npz_path or os.path.join(work_dir, 'file.npz')
+                self.preprocess_existing_npz(
+                    npz_path=npz_inside_zip,
+                    output_npz_path=npz_path,
+                    exam_modality=exam_modality,
+                    category_hint=category_hint,
+                )
+                if output_original_nifti_path:
+                    self.convert_npz_to_nifti(
+                        npz_path=npz_path,
+                        output_nifti_path=output_original_nifti_path,
+                    )
+                return npz_path
 
-            return npz_path
+            raise ValueError(
+                "Unsupported ZIP content. Expected canonical DICOM folder layout (DICOM/<study>/<series>/...), "
+                "or a .nii/.nii.gz/.npz file inside the ZIP."
+            )
 
         except Exception as e:
-            logger.error(f"DICOM processing failed: {e}", exc_info=True)
-            raise ValueError(f"DICOM processing failed: {e}")
+            logger.error("ZIP input processing failed: %s", e, exc_info=True)
+            raise ValueError(f"ZIP input processing failed: {e}")
         finally:
             # Best-effort cleanup of extracted DICOMs. The caller should still
             # cleanup the parent temp directory, but this helps avoid leaving
@@ -282,6 +324,30 @@ class DicomZipToNpzService:
         with zipfile.ZipFile(zip_path, 'r') as zf:
             zf.extractall(extract_to)
         return extract_to
+
+    @staticmethod
+    def _find_first_file(base_dir: str, extensions: list[str]) -> str | None:
+        """
+        Find first file recursively by extension preference order.
+        """
+        for extension in extensions:
+            lower_extension = extension.lower()
+            for root, _dirs, files in os.walk(base_dir):
+                for file_name in sorted(files):
+                    if file_name.lower().endswith(lower_extension):
+                        return os.path.join(root, file_name)
+        return None
+
+    @staticmethod
+    def _normalize_nifti_to_gzip_file(
+        input_nifti_path: str,
+        output_nifti_path: str,
+    ) -> None:
+        """
+        Save input NIfTI as a gzipped NIfTI destination, preserving affine/header.
+        """
+        image = nib.load(input_nifti_path)
+        nib.save(image, output_nifti_path)
     
     @staticmethod
     def _get_study_folder(base_dir: str) -> str:
