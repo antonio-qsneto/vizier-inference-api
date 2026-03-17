@@ -137,7 +137,7 @@ export API_BEARER_PROD="$(openssl rand -hex 32)"
 Como o BiomedParse já existe no seu ECR, informe a URI completa:
 
 ```bash
-export BIOMEDPARSE_IMAGE_OVERRIDE="996561439065.dkr.ecr.${AWS_REGION}.amazonaws.com/biomedparse@sha256:b61afa1fb0a1abb04ce41d575848e35763ad62d9471244bb349be1d8a3952ae0"
+export BIOMEDPARSE_IMAGE_OVERRIDE="996561439065.dkr.ecr.${AWS_REGION}.amazonaws.com/biomedparse@sha256:4651856870d28c6770d3c7fc8114db2f50501e3ca58e336a711d053a446ba35d"
 ```
 
 Observação: os workflows já têm fallback para essa imagem caso a variável não seja definida.

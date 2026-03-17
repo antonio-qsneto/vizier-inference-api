@@ -34,7 +34,7 @@ env:
   TF_VAR_inference_api_bearer_token: ${{ secrets.TF_VAR_INFERENCE_API_BEARER_TOKEN }}
   TF_VAR_stripe_secret_key: ${{ secrets.TF_VAR_STRIPE_SECRET_KEY }}
   TF_VAR_stripe_webhook_secret: ${{ secrets.TF_VAR_STRIPE_WEBHOOK_SECRET }}
-  TF_VAR_biomedparse_image_override: ${{ vars.BIOMEDPARSE_IMAGE_OVERRIDE || '996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse@sha256:b61afa1fb0a1abb04ce41d575848e35763ad62d9471244bb349be1d8a3952ae0' }}
+  TF_VAR_biomedparse_image_override: ${{ vars.BIOMEDPARSE_IMAGE_OVERRIDE || '996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse@sha256:4651856870d28c6770d3c7fc8114db2f50501e3ca58e336a711d053a446ba35d' }}
   TF_VAR_manage_backend_ecr_repository: ${{ vars.MANAGE_BACKEND_ECR_REPOSITORY || 'false' }}
   TF_VAR_external_backend_ecr_repository_url: ${{ vars.BACKEND_ECR_REPOSITORY_URL || '' }}
   TF_VAR_manage_biomedparse_ecr_repository: ${{ vars.MANAGE_BIOMEDPARSE_ECR_REPOSITORY || 'false' }}

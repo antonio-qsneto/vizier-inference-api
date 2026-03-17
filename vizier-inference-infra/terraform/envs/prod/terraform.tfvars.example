@@ -6,12 +6,12 @@ enable_nat_gateway         = true
 enable_vpc_endpoints       = false
 django_allowed_hosts       = "*"
 backend_image_tag          = "latest"
-biomedparse_image_tag      = "v2-20260317-131652-e02096c"
+biomedparse_image_tag      = "v2-20260317-164247-03338460"
 manage_backend_ecr_repository       = false
 external_backend_ecr_repository_url = "123456789012.dkr.ecr.us-east-1.amazonaws.com/vizier-backend-prod"
 manage_biomedparse_ecr_repository   = false
 external_biomedparse_ecr_repository_url = "123456789012.dkr.ecr.us-east-1.amazonaws.com/biomedparse"
-biomedparse_image_override = "123456789012.dkr.ecr.us-east-1.amazonaws.com/biomedparse:v2-20260317-131652-e02096c"
+biomedparse_image_override = "123456789012.dkr.ecr.us-east-1.amazonaws.com/biomedparse:v2-20260317-164247-03338460"
 ecr_force_delete           = false
 
 rds_password      = "change-me"

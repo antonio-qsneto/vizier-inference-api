@@ -159,12 +159,12 @@ variable "backend_image_tag" {
 
 variable "biomedparse_image_tag" {
   type    = string
-  default = "v2-20260317-131652-e02096c"
+  default = "v2-20260317-164247-03338460"
 }
 
 variable "biomedparse_image_override" {
   type    = string
-  default = "996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse@sha256:b61afa1fb0a1abb04ce41d575848e35763ad62d9471244bb349be1d8a3952ae0"
+  default = "996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse@sha256:4651856870d28c6770d3c7fc8114db2f50501e3ca58e336a711d053a446ba35d"
 }
 
 variable "api_desired_count" {
@@ -357,7 +357,7 @@ variable "gpu_business_hours_scale_up_cron" {
 
 variable "gpu_business_hours_scale_down_cron" {
   type    = string
-  default = "0 18 * * *"
+  default = "0 19 * * *"
 }
 
 variable "gpu_business_hours_min_size" {
