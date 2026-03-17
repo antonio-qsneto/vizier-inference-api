@@ -22,12 +22,14 @@
     ]
   },
   "MRI": {
-    "head": [
-      "multiple sclerosis lesion",
+    "head_tumor_cerebral": [
       "Visualization of non-enhancing tumor core in head post-contrast T1-weighted MR",
       "Segmentation of surrounding non-enhancing FLAIR hyperintensity in head post-contrast T1-weighted MR",
       "Segmentation of enhancing tissue in head post-contrast T1-weighted MR",
       "Segmentation of resection cavity in head post-contrast T1-weighted MR"
+    ],
+    "head_esclerose_multipla": [
+      "multiple sclerosis lesion"
     ],
     "GU": [
       "prostate lesion"

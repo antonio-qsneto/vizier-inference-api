@@ -148,7 +148,7 @@ class InferencePromptCatalogTest(TestCase):
     def test_build_text_prompts_from_category_catalog(self):
         prompts = build_text_prompts_for_job(
             exam_modality="MRI",
-            category_id="head",
+            category_id="head_tumor_cerebral",
         )
         self.assertIn("instance_label", prompts)
         self.assertEqual(prompts["instance_label"], 0)

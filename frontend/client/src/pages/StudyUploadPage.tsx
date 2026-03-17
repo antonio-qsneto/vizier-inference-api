@@ -40,6 +40,25 @@ const defaultFormState: UploadFormState = {
   file: null,
 };
 
+function toTitleCase(value: string) {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatTargetGroupLabel(modality: string, groupId: string) {
+  if (modality === "MRI" && groupId === "head_tumor_cerebral") {
+    return "Head - Tumor cerebral";
+  }
+  if (modality === "MRI" && groupId === "head_esclerose_multipla") {
+    return "Head - Esclerose multipla";
+  }
+
+  return toTitleCase(groupId.replace(/[_-]+/g, " "));
+}
+
 export default function StudyUploadPage() {
   const [, navigate] = useLocation();
   const { accessToken, user } = useAuth();
@@ -326,7 +345,7 @@ export default function StudyUploadPage() {
                 </option>
                 {targetGroups.map((group) => (
                   <option key={group} value={group} className="bg-slate-900">
-                    {group}
+                    {formatTargetGroupLabel(formState.examModality, group)}
                   </option>
                 ))}
               </select>
