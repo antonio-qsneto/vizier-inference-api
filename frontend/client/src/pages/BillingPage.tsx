@@ -60,6 +60,7 @@ export default function BillingPage() {
   const isIndividualUser = effectiveRole === "individual" && !user?.clinic_id;
   const currentPlanId = normalizePlanId(user?.subscription_plan);
   const isIndividualFreeUser = isIndividualUser && currentPlanId === "free";
+  const isIndividualSubscriber = isIndividualUser && isPaidPlan(currentPlanId);
 
   useEffect(() => {
     void refreshProfile();
@@ -199,18 +200,20 @@ export default function BillingPage() {
 
       {isIndividualUser ? (
         <>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => void handleOpenPortal()}
-              disabled={openingPortal}
-              className="rounded-2xl border border-white/10 bg-white/6 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {openingPortal
-                ? "Abrindo portal..."
-                : "Gerenciar/cancelar assinatura no Stripe"}
-            </button>
-          </div>
+          {isIndividualSubscriber ? (
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void handleOpenPortal()}
+                disabled={openingPortal}
+                className="rounded-2xl border border-white/10 bg-white/6 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {openingPortal
+                  ? "Abrindo portal..."
+                  : "Gerenciar/cancelar assinatura no Stripe"}
+              </button>
+            </div>
+          ) : null}
 
           <div className="grid gap-5 xl:grid-cols-3">
             {billingPlans.map((plan) => {

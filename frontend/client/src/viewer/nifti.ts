@@ -430,6 +430,94 @@ function hexToRgb(hex: string) {
   };
 }
 
+function boostOverlayColor(color: { r: number; g: number; b: number }) {
+  // Keep colors vivid and readable over grayscale background.
+  return {
+    r: clamp(Math.round(color.r * 1.18 + 16), 0, 255),
+    g: clamp(Math.round(color.g * 1.18 + 16), 0, 255),
+    b: clamp(Math.round(color.b * 1.18 + 16), 0, 255),
+  };
+}
+
+function mixColor(
+  source: { r: number; g: number; b: number },
+  target: { r: number; g: number; b: number },
+  targetWeight: number,
+) {
+  const clampedWeight = clamp(targetWeight, 0, 1);
+  const sourceWeight = 1 - clampedWeight;
+  return {
+    r: Math.round(source.r * sourceWeight + target.r * clampedWeight),
+    g: Math.round(source.g * sourceWeight + target.g * clampedWeight),
+    b: Math.round(source.b * sourceWeight + target.b * clampedWeight),
+  };
+}
+
+function countMatchingNeighbors(
+  labels: Int32Array,
+  width: number,
+  height: number,
+  row: number,
+  column: number,
+  label: number,
+) {
+  let matches = 0;
+  for (let deltaY = -1; deltaY <= 1; deltaY += 1) {
+    for (let deltaX = -1; deltaX <= 1; deltaX += 1) {
+      if (deltaX === 0 && deltaY === 0) {
+        continue;
+      }
+      const nextRow = row + deltaY;
+      const nextColumn = column + deltaX;
+      if (
+        nextRow < 0 ||
+        nextRow >= height ||
+        nextColumn < 0 ||
+        nextColumn >= width
+      ) {
+        continue;
+      }
+      const nextIndex = nextRow * width + nextColumn;
+      if (labels[nextIndex] === label) {
+        matches += 1;
+      }
+    }
+  }
+  return matches;
+}
+
+function isBoundaryPixel(
+  labels: Int32Array,
+  width: number,
+  height: number,
+  row: number,
+  column: number,
+  label: number,
+) {
+  for (let deltaY = -1; deltaY <= 1; deltaY += 1) {
+    for (let deltaX = -1; deltaX <= 1; deltaX += 1) {
+      if (deltaX === 0 && deltaY === 0) {
+        continue;
+      }
+      const nextRow = row + deltaY;
+      const nextColumn = column + deltaX;
+      if (
+        nextRow < 0 ||
+        nextRow >= height ||
+        nextColumn < 0 ||
+        nextColumn >= width
+      ) {
+        return true;
+      }
+      const nextIndex = nextRow * width + nextColumn;
+      if (labels[nextIndex] !== label) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function getLabelColor(
   label: number,
   paletteId: PaletteId,
@@ -503,6 +591,9 @@ export function renderSliceToCanvas(options: {
   }
 
   const imageData = offscreenContext.createImageData(width, height);
+  const overlayData = offscreenContext.createImageData(width, height);
+  const contourData = offscreenContext.createImageData(width, height);
+  const labelData = new Int32Array(width * height);
   const range = Math.max(windowRange.max - windowRange.min, 1e-6);
 
   for (let row = 0; row < height; row += 1) {
@@ -527,16 +618,7 @@ export function renderSliceToCanvas(options: {
       if (maskVolume) {
         const label = Math.round(maskVolume.data[voxelIndex]);
         if (label > 0 && visibleSegmentIds.has(label)) {
-          const color = hexToRgb(getLabelColor(label, paletteId, legendMap));
-          red = Math.round(
-            gray * (1 - overlayOpacity) + color.r * overlayOpacity,
-          );
-          green = Math.round(
-            gray * (1 - overlayOpacity) + color.g * overlayOpacity,
-          );
-          blue = Math.round(
-            gray * (1 - overlayOpacity) + color.b * overlayOpacity,
-          );
+          labelData[row * width + column] = label;
         }
       }
 
@@ -549,6 +631,52 @@ export function renderSliceToCanvas(options: {
   }
 
   offscreenContext.putImageData(imageData, 0, 0);
+
+  if (maskVolume) {
+    const white = { r: 255, g: 255, b: 255 };
+    for (let row = 0; row < height; row += 1) {
+      for (let column = 0; column < width; column += 1) {
+        const bufferIndex = row * width + column;
+        const label = labelData[bufferIndex];
+        if (label <= 0) {
+          continue;
+        }
+
+        const baseColor = hexToRgb(getLabelColor(label, paletteId, legendMap));
+        const vividColor = boostOverlayColor(baseColor);
+        const matchingNeighbors = countMatchingNeighbors(
+          labelData,
+          width,
+          height,
+          row,
+          column,
+          label,
+        );
+        const smoothFactor = matchingNeighbors / 8;
+        const softAlpha = clamp(
+          Math.round(overlayOpacity * 255 * (0.48 + smoothFactor * 0.52)),
+          24,
+          245,
+        );
+
+        const pixelIndex = bufferIndex * 4;
+        overlayData.data[pixelIndex] = vividColor.r;
+        overlayData.data[pixelIndex + 1] = vividColor.g;
+        overlayData.data[pixelIndex + 2] = vividColor.b;
+        overlayData.data[pixelIndex + 3] = softAlpha;
+
+        if (
+          isBoundaryPixel(labelData, width, height, row, column, label)
+        ) {
+          const contourColor = mixColor(vividColor, white, 0.42);
+          contourData.data[pixelIndex] = contourColor.r;
+          contourData.data[pixelIndex + 1] = contourColor.g;
+          contourData.data[pixelIndex + 2] = contourColor.b;
+          contourData.data[pixelIndex + 3] = 228;
+        }
+      }
+    }
+  }
 
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = "#000000";
@@ -563,8 +691,38 @@ export function renderSliceToCanvas(options: {
   const originX = (canvas.width - drawWidth) / 2 + viewport.panX;
   const originY = (canvas.height - drawHeight) / 2 + viewport.panY;
 
-  context.imageSmoothingEnabled = false;
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
   context.drawImage(offscreen, originX, originY, drawWidth, drawHeight);
+
+  if (maskVolume) {
+    const overlayCanvas = document.createElement("canvas");
+    overlayCanvas.width = width;
+    overlayCanvas.height = height;
+    const overlayContext = overlayCanvas.getContext("2d");
+    if (overlayContext) {
+      overlayContext.putImageData(overlayData, 0, 0);
+      context.save();
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.filter = "blur(0.7px)";
+      context.drawImage(overlayCanvas, originX, originY, drawWidth, drawHeight);
+      context.restore();
+    }
+
+    const contourCanvas = document.createElement("canvas");
+    contourCanvas.width = width;
+    contourCanvas.height = height;
+    const contourContext = contourCanvas.getContext("2d");
+    if (contourContext) {
+      contourContext.putImageData(contourData, 0, 0);
+      context.save();
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(contourCanvas, originX, originY, drawWidth, drawHeight);
+      context.restore();
+    }
+  }
 
   const crosshair = mapCrosshairToPlane(plane, slices);
   const drawCrosshairX = config.flipX ? width - 1 - crosshair.x : crosshair.x;

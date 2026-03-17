@@ -23,6 +23,7 @@
   },
   "MRI": {
     "head": [
+      "multiple sclerosis lesion",
       "Visualization of non-enhancing tumor core in head post-contrast T1-weighted MR",
       "Segmentation of surrounding non-enhancing FLAIR hyperintensity in head post-contrast T1-weighted MR",
       "Segmentation of enhancing tissue in head post-contrast T1-weighted MR",
