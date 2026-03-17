@@ -148,6 +148,7 @@ class DicomZipToNpzService:
                     output_npz_path=npz_path,
                     exam_modality=exam_modality,
                     category_hint=category_hint,
+                    text_prompts=text_prompts,
                 )
                 if output_original_nifti_path:
                     self.convert_npz_to_nifti(
@@ -203,8 +204,11 @@ class DicomZipToNpzService:
         Convert NIfTI (.nii/.nii.gz) to a BiomedParse v2-compatible NPZ.
 
         The resulting NPZ matches the inference contract (`imgs`, `spacing`,
-        `text_prompts`) while preserving the original volume shape. BiomedParse
-        v2 performs its own internal resize to 512 during inference.
+        `text_prompts`) with depth-first layout (D,H,W) aligned to the
+        reference BiomedParse inference examples.
+
+        BiomedParse examples transpose NIfTI arrays from (X,Y,Z) to
+        `np.transpose(..., (2, 0, 1))` before `process_input(...)`.
         """
         if text_prompts is None:
             text_prompts = {}
@@ -215,12 +219,12 @@ class DicomZipToNpzService:
             volume_xyz = np.asanyarray(nifti_img.dataobj)
             volume_xyz = self._coerce_3d_volume(volume_xyz)
 
-            # NIfTI is typically (X, Y, Z). Normalize to (Z, Y, X).
-            volume = np.transpose(volume_xyz, (2, 1, 0))
+            # Align with BiomedParse reference examples: (X,Y,Z) -> (Z,X,Y).
+            volume = np.transpose(volume_xyz, (2, 0, 1))
             original_shape = tuple(volume.shape)
 
             spacing_xyz = tuple(float(v) for v in nifti_img.header.get_zooms()[:3])
-            spacing_zyx = (spacing_xyz[2], spacing_xyz[1], spacing_xyz[0])
+            spacing_zxy = (spacing_xyz[2], spacing_xyz[0], spacing_xyz[1])
 
             volume = volume.astype(np.float32, copy=False)
             volume = self._normalize_intensity(
@@ -230,7 +234,7 @@ class DicomZipToNpzService:
             )
 
             npz_path = output_npz_path or os.path.join(os.path.dirname(nifti_path), 'file.npz')
-            self._save_npz(npz_path, volume, spacing_zyx, text_prompts)
+            self._save_npz(npz_path, volume, spacing_zxy, text_prompts)
 
             logger.info("Converted NIfTI to NPZ shape %s -> %s", original_shape, tuple(volume.shape))
             return npz_path
@@ -244,6 +248,7 @@ class DicomZipToNpzService:
         output_npz_path: str | None = None,
         exam_modality: str | None = None,
         category_hint: str | None = None,
+        text_prompts: dict | None = None,
     ) -> str:
         """
         Normalize an uploaded NPZ to the inference-friendly contract.
@@ -252,7 +257,7 @@ class DicomZipToNpzService:
         Output is rewritten as:
         - imgs: 3D float32 volume with original shape preserved
         - spacing: preserved if present
-        - text_prompts: preserved if present
+        - text_prompts: preserved if present, otherwise injected from argument
         """
         with np.load(npz_path, allow_pickle=True) as data:
             image_key = next(
@@ -266,7 +271,7 @@ class DicomZipToNpzService:
 
             volume = np.asarray(data[image_key])
             spacing = data['spacing'] if 'spacing' in data.files else None
-            text_prompts = data['text_prompts'] if 'text_prompts' in data.files else None
+            existing_text_prompts = data['text_prompts'] if 'text_prompts' in data.files else None
 
         volume = self._coerce_3d_volume(volume)
         original_shape = tuple(volume.shape)
@@ -281,8 +286,10 @@ class DicomZipToNpzService:
         payload = {'imgs': volume}
         if spacing is not None:
             payload['spacing'] = spacing
-        if text_prompts is not None:
-            payload['text_prompts'] = text_prompts
+        normalized_existing_prompts = self._normalize_text_prompts(existing_text_prompts)
+        effective_prompts = normalized_existing_prompts or (text_prompts or None)
+        if effective_prompts is not None:
+            payload['text_prompts'] = np.array(effective_prompts, dtype=object)
 
         out_path = output_npz_path or npz_path
         self._save_npz_payload(out_path, payload)
@@ -642,6 +649,31 @@ class DicomZipToNpzService:
         if spacing is not None:
             payload['spacing'] = np.asarray(spacing)
         DicomZipToNpzService._save_npz_payload(npz_path, payload)
+
+    @staticmethod
+    def _normalize_text_prompts(raw_value):
+        """
+        Normalize NPZ-loaded text_prompts payload to a dict when possible.
+        """
+        if raw_value is None:
+            return None
+
+        value = raw_value
+        if isinstance(value, np.ndarray) and value.dtype == object:
+            if value.shape == ():
+                try:
+                    value = value.item()
+                except Exception:
+                    return None
+            elif value.size == 1:
+                try:
+                    value = value.reshape(()).item()
+                except Exception:
+                    return None
+
+        if isinstance(value, dict):
+            return value
+        return None
 
 
 def cleanup_temp_files(temp_dir: str):

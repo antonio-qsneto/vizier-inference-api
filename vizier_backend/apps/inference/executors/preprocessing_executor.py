@@ -58,6 +58,7 @@ class InferencePreprocessor:
                 output_npz_path=normalized_npz_path,
                 exam_modality=exam_modality,
                 category_hint=category_hint,
+                text_prompts=text_prompts,
             )
             self.converter.convert_npz_to_nifti(
                 npz_path=normalized_npz_path,

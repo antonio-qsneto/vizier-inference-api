@@ -9,7 +9,9 @@ from django.test import TestCase
 from apps.accounts.models import User
 from apps.inference.executors.preprocessing_executor import InferencePreprocessor
 from apps.inference.models import InferenceJob, ModelVersion, Tenant
+from apps.inference.prompt_catalog import build_text_prompts_for_job
 from apps.inference.state_machine import transition_job
+from services.dicom_pipeline import DicomZipToNpzService
 from services.nifti_converter import NiftiConverter
 
 
@@ -77,9 +79,34 @@ class InferencePreprocessorTest(TestCase):
             with np.load(prepared["normalized_input_npz"], allow_pickle=True) as npz_data:
                 self.assertIn("imgs", npz_data.files)
                 self.assertEqual(npz_data["imgs"].ndim, 3)
+                self.assertEqual(
+                    tuple(npz_data["imgs"].shape),
+                    tuple(np.transpose(input_volume_xyz, (2, 0, 1)).shape),
+                )
 
             restored_nifti = nib.load(prepared["original_nifti"])
             self.assertEqual(tuple(restored_nifti.shape), tuple(input_volume_xyz.shape))
+
+    def test_preprocess_existing_npz_injects_text_prompts_when_missing(self):
+        service = DicomZipToNpzService()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            npz_path = os.path.join(tmpdir, "input.npz")
+            out_path = os.path.join(tmpdir, "output.npz")
+            np.savez_compressed(npz_path, imgs=np.zeros((8, 7, 5), dtype=np.float32))
+
+            service.preprocess_existing_npz(
+                npz_path=npz_path,
+                output_npz_path=out_path,
+                exam_modality="MRI",
+                category_hint="head",
+                text_prompts={"1": "multiple sclerosis lesion", "instance_label": 0},
+            )
+
+            with np.load(out_path, allow_pickle=True) as npz_data:
+                prompts = npz_data["text_prompts"].item()
+                self.assertEqual(prompts.get("1"), "multiple sclerosis lesion")
+                self.assertEqual(prompts.get("instance_label"), 0)
 
 
 class NiftiConverterAlignmentTest(TestCase):
@@ -115,3 +142,31 @@ class NiftiConverterAlignmentTest(TestCase):
 
             # Axis transpose must preserve voxel count (resize would usually change this).
             self.assertEqual(int(aligned.sum()), int(mask_zyx.sum()))
+
+
+class InferencePromptCatalogTest(TestCase):
+    def test_build_text_prompts_from_category_catalog(self):
+        prompts = build_text_prompts_for_job(
+            exam_modality="MRI",
+            category_id="head",
+        )
+        self.assertIn("instance_label", prompts)
+        self.assertEqual(prompts["instance_label"], 0)
+        self.assertIn("1", prompts)
+        self.assertTrue(str(prompts["1"]).strip())
+
+    def test_build_text_prompts_has_safe_fallback(self):
+        prompts = build_text_prompts_for_job(
+            exam_modality="MRI",
+            category_id="unknown-category",
+        )
+        self.assertEqual(prompts.get("instance_label"), 0)
+        self.assertIn("1", prompts)
+
+    def test_build_text_prompts_has_global_fallback_when_metadata_missing(self):
+        prompts = build_text_prompts_for_job(
+            exam_modality="",
+            category_id="",
+        )
+        self.assertEqual(prompts.get("instance_label"), 0)
+        self.assertIn("1", prompts)

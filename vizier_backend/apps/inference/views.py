@@ -21,6 +21,7 @@ from services.s3_utils import S3Utils
 
 from .models import AuditEvent, InferenceJob, InputArtifact, JobStatusHistory, ModelVersion, OutputArtifact, Tenant
 from .object_layout import raw_input_key
+from .prompt_catalog import build_text_prompts_for_job
 from .serializers import (
     InferenceJobCreateRequestSerializer,
     InferenceJobCreateResponseSerializer,
@@ -212,6 +213,12 @@ class InferenceJobCreateView(APIView):
 
         file_name = serializer.validated_data["file_name"]
         content_type = serializer.validated_data.get("content_type") or "application/octet-stream"
+        exam_modality = serializer.validated_data.get("exam_modality")
+        category_id = serializer.validated_data.get("category_id")
+        text_prompts = build_text_prompts_for_job(
+            exam_modality=exam_modality,
+            category_id=category_id,
+        )
 
         with transaction.atomic():
             job = InferenceJob.objects.create(
@@ -231,10 +238,11 @@ class InferenceJobCreateView(APIView):
                     "patient_name": serializer.validated_data.get("patient_name"),
                     "age": serializer.validated_data.get("age"),
                     "exam_source": serializer.validated_data.get("exam_source"),
-                    "exam_modality": serializer.validated_data.get("exam_modality"),
-                    "category_id": serializer.validated_data.get("category_id"),
+                    "exam_modality": exam_modality,
+                    "category_id": category_id,
                     "requested_device": serializer.validated_data.get("requested_device") or "cuda",
                     "slice_batch_size": serializer.validated_data.get("slice_batch_size"),
+                    "text_prompts": text_prompts,
                 },
             )
             JobStatusHistory.objects.create(

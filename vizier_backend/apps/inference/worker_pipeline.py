@@ -26,6 +26,7 @@ from .object_layout import (
     output_original_nifti_key,
     output_summary_key,
 )
+from .prompt_catalog import build_text_prompts_for_job
 from .state_machine import mark_job_failed, transition_job
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,17 @@ class InferenceWorkerPipeline:
             raise RuntimeError(f"Failed to download input artifact s3://{input_artifact.bucket}/{input_artifact.key}")
 
         try:
+            request_payload = job.request_payload or {}
+            text_prompts = request_payload.get("text_prompts")
+            prompt_ids = []
+            if isinstance(text_prompts, dict):
+                prompt_ids = [key for key in text_prompts.keys() if str(key) != "instance_label"]
+            if not isinstance(text_prompts, dict) or not prompt_ids:
+                text_prompts = build_text_prompts_for_job(
+                    exam_modality=request_payload.get("exam_modality"),
+                    category_id=request_payload.get("category_id"),
+                )
+
             transition_job(
                 job=job,
                 to_status=InferenceJob.STATUS_VALIDATING,
@@ -151,9 +163,9 @@ class InferenceWorkerPipeline:
             prepared = self.preprocessor.prepare_input(
                 input_file_path=str(local_input_path),
                 work_dir=str(scratch_root),
-                text_prompts={},
-                exam_modality=(job.request_payload or {}).get("exam_modality"),
-                category_hint=(job.request_payload or {}).get("category_id"),
+                text_prompts=text_prompts,
+                exam_modality=request_payload.get("exam_modality"),
+                category_hint=request_payload.get("category_id"),
             )
             normalized_npz_local = prepared["normalized_input_npz"]
             original_nifti_local = prepared["original_nifti"]
