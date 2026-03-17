@@ -110,6 +110,16 @@ jobs:
         with:
           terraform_version: "1.9.8"
 
+      - name: Validate pinned BiomedParse image reference
+        run: |
+          set -euo pipefail
+          if [[ "${TF_VAR_biomedparse_image_override}" == *":latest" ]]; then
+            echo "Refusing deploy: BIOMEDPARSE image cannot use :latest."
+            echo "Set BIOMEDPARSE_IMAGE_OVERRIDE to a pinned tag/digest in GitHub Environment."
+            exit 1
+          fi
+          echo "BiomedParse image ref: ${TF_VAR_biomedparse_image_override}"
+
       - name: Terraform init (prod)
         working-directory: ${{ env.TF_DIR }}
         run: |

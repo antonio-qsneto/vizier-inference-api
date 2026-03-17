@@ -159,7 +159,7 @@ variable "backend_image_tag" {
 
 variable "biomedparse_image_tag" {
   type    = string
-  default = "latest"
+  default = "v2-20260317-131652-e02096c"
 }
 
 variable "biomedparse_image_override" {
