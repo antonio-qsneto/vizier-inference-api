@@ -239,7 +239,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <>
               <div className="flex items-center justify-between gap-3 border-b border-white/6 px-4 py-4">
                 <div className="flex items-center gap-3">
-                  <div className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-[12px] bg-sky-500/20">
+                  <div className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-[12px] bg-white">
                     <img src="/favcon.png" alt="Vizier icon" className="h-5 w-5 object-contain" />
                   </div>
                   <div className="min-w-0">
