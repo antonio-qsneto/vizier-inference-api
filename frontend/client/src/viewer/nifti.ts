@@ -1306,8 +1306,8 @@ export function renderSliceToCanvas(options: {
       const scaleX = drawWidth / width;
       const scaleY = drawHeight / height;
       const avgScale = Math.max((Math.abs(scaleX) + Math.abs(scaleY)) / 2, 1e-6);
-      const white = { r: 255, g: 255, b: 255 };
-      const msContourColor = { r: 166, g: 102, b: 255 };
+      const black = { r: 0, g: 0, b: 0 };
+      const msContourColor = { r: 92, g: 52, b: 146 };
 
       context.save();
       context.translate(originX, originY);
@@ -1326,19 +1326,19 @@ export function renderSliceToCanvas(options: {
         const contourColor =
           overlayStylePreset === "head_esclerose_multipla"
             ? msContourColor
-            : mixColor(vividColor, white, 0.18);
+            : mixColor(vividColor, black, 0.42);
         const crispLineWidth =
           overlayStylePreset === "head_esclerose_multipla"
-            ? clamp(2.4 / avgScale, 0.95, 3.2)
-            : clamp(1.9 / avgScale, 0.7, 2.4);
+            ? clamp(1.45 / avgScale, 0.55, 1.8)
+            : clamp(1.2 / avgScale, 0.45, 1.5);
         const glowLineWidth =
           overlayStylePreset === "head_esclerose_multipla"
-            ? clamp(4.1 / avgScale, 1.4, 5.2)
-            : clamp(3.1 / avgScale, 1.1, 3.8);
+            ? clamp(2.35 / avgScale, 0.9, 2.9)
+            : clamp(1.95 / avgScale, 0.75, 2.45);
         const glowAlpha =
-          overlayStylePreset === "head_esclerose_multipla" ? 0.38 : 0.3;
+          overlayStylePreset === "head_esclerose_multipla" ? 0.34 : 0.28;
         const crispAlpha =
-          overlayStylePreset === "head_esclerose_multipla" ? 0.99 : 0.97;
+          overlayStylePreset === "head_esclerose_multipla" ? 1 : 0.98;
 
         context.beginPath();
         for (let index = 0; index < segments.length; index += 4) {
