@@ -176,9 +176,9 @@ gh variable set AMPLIFY_SYNC_ENABLED --repo "$GH_REPO" --env development --body 
 gh variable set AMPLIFY_APP_ID --repo "$GH_REPO" --env development --body "<seu-app-id-amplify>"
 gh variable set AMPLIFY_BRANCH --repo "$GH_REPO" --env development --body "main"
 gh variable set AMPLIFY_FRONTEND_BASE_URL --repo "$GH_REPO" --env development --body "https://viziermed.com"
-gh variable set AMPLIFY_API_SCHEME --repo "$GH_REPO" --env development --body "http"
+gh variable set AMPLIFY_API_SCHEME --repo "$GH_REPO" --env development --body "https"
 gh variable set TF_VAR_COGNITO_CALLBACK_URLS --repo "$GH_REPO" --env development --body '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]'
-gh variable set TF_VAR_COGNITO_LOGOUT_URLS --repo "$GH_REPO" --env development --body '["http://localhost:3000/login","http://localhost:8000/","https://viziermed.com/login"]'
+gh variable set TF_VAR_COGNITO_LOGOUT_URLS --repo "$GH_REPO" --env development --body '["http://localhost:3000/","http://localhost:8000/","https://viziermed.com/"]'
 gh variable set TF_VAR_ENABLE_STRIPE_BILLING --repo "$GH_REPO" --env development --body "true"
 # recomendado definir IDs de preço explícitos:
 # gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env development --body "price_xxx"
@@ -188,6 +188,11 @@ gh variable set TF_VAR_ENABLE_STRIPE_BILLING --repo "$GH_REPO" --env development
 # gh variable set TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env development --body "individual_monthly"
 # gh variable set TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL --repo "$GH_REPO" --env development --body "individual_annual"
 # gh variable set TF_VAR_STRIPE_ALLOWED_REDIRECT_ORIGINS --repo "$GH_REPO" --env development --body '["https://viziermed.com"]'
+# opcional para endpoint fixo da API (recomendado):
+# gh variable set TF_VAR_API_CUSTOM_DOMAIN_NAME --repo "$GH_REPO" --env development --body "api.viziermed.com"
+# gh variable set TF_VAR_API_ROUTE53_ZONE_ID --repo "$GH_REPO" --env development --body "Z123EXAMPLE"
+# se já existir certificado ACM em us-east-1:
+# gh variable set TF_VAR_API_CLOUDFRONT_CERTIFICATE_ARN --repo "$GH_REPO" --env development --body "arn:aws:acm:us-east-1:123456789012:certificate/xxxx"
 # opcional:
 # gh variable set BOOTSTRAP_ADMIN_EMAIL --repo "$GH_REPO" --env development --body "admin@empresa.com"
 ```
@@ -217,9 +222,9 @@ gh variable set AMPLIFY_SYNC_ENABLED --repo "$GH_REPO" --env production --body "
 gh variable set AMPLIFY_APP_ID --repo "$GH_REPO" --env production --body "<seu-app-id-amplify>"
 gh variable set AMPLIFY_BRANCH --repo "$GH_REPO" --env production --body "main"
 gh variable set AMPLIFY_FRONTEND_BASE_URL --repo "$GH_REPO" --env production --body "https://viziermed.com"
-gh variable set AMPLIFY_API_SCHEME --repo "$GH_REPO" --env production --body "http"
+gh variable set AMPLIFY_API_SCHEME --repo "$GH_REPO" --env production --body "https"
 gh variable set TF_VAR_COGNITO_CALLBACK_URLS --repo "$GH_REPO" --env production --body '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]'
-gh variable set TF_VAR_COGNITO_LOGOUT_URLS --repo "$GH_REPO" --env production --body '["http://localhost:3000/login","http://localhost:8000/","https://viziermed.com/login"]'
+gh variable set TF_VAR_COGNITO_LOGOUT_URLS --repo "$GH_REPO" --env production --body '["http://localhost:3000/","http://localhost:8000/","https://viziermed.com/"]'
 gh variable set TF_VAR_ENABLE_STRIPE_BILLING --repo "$GH_REPO" --env production --body "true"
 # recomendado definir IDs de preço explícitos:
 # gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env production --body "price_xxx"
@@ -229,6 +234,11 @@ gh variable set TF_VAR_ENABLE_STRIPE_BILLING --repo "$GH_REPO" --env production 
 # gh variable set TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env production --body "individual_monthly"
 # gh variable set TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL --repo "$GH_REPO" --env production --body "individual_annual"
 # gh variable set TF_VAR_STRIPE_ALLOWED_REDIRECT_ORIGINS --repo "$GH_REPO" --env production --body '["https://viziermed.com"]'
+# opcional para endpoint fixo da API (recomendado):
+# gh variable set TF_VAR_API_CUSTOM_DOMAIN_NAME --repo "$GH_REPO" --env production --body "api.viziermed.com"
+# gh variable set TF_VAR_API_ROUTE53_ZONE_ID --repo "$GH_REPO" --env production --body "Z123EXAMPLE"
+# se já existir certificado ACM em us-east-1:
+# gh variable set TF_VAR_API_CLOUDFRONT_CERTIFICATE_ARN --repo "$GH_REPO" --env production --body "arn:aws:acm:us-east-1:123456789012:certificate/xxxx"
 # opcional:
 # gh variable set BOOTSTRAP_ADMIN_EMAIL --repo "$GH_REPO" --env production --body "admin@empresa.com"
 ```

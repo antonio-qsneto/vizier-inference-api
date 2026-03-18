@@ -149,6 +149,7 @@ fi
 REGION="$(terraform -chdir="${TF_ENV_DIR}" output -raw region)"
 ALB_DNS_NAME="$(terraform -chdir="${TF_ENV_DIR}" output -raw alb_dns_name)"
 API_CLOUDFRONT_DOMAIN="$(terraform -chdir="${TF_ENV_DIR}" output -raw api_cloudfront_domain_name 2>/dev/null || true)"
+API_BASE_URL_FROM_TERRAFORM="$(terraform -chdir="${TF_ENV_DIR}" output -raw api_base_url 2>/dev/null || true)"
 COGNITO_USER_POOL_ID="$(terraform -chdir="${TF_ENV_DIR}" output -raw cognito_user_pool_id)"
 COGNITO_CLIENT_ID="$(terraform -chdir="${TF_ENV_DIR}" output -raw cognito_user_pool_client_id)"
 COGNITO_DOMAIN_PREFIX="$(terraform -chdir="${TF_ENV_DIR}" output -raw cognito_user_pool_domain)"
@@ -199,7 +200,7 @@ fi
 
 FRONTEND_BASE_URL="${FRONTEND_BASE_URL%/}"
 REDIRECT_URI="${FRONTEND_BASE_URL}/auth/callback"
-LOGOUT_URI="${FRONTEND_BASE_URL}/login"
+LOGOUT_URI="${FRONTEND_BASE_URL}/"
 COGNITO_DOMAIN="https://${COGNITO_DOMAIN_PREFIX}.auth.${REGION}.amazoncognito.com"
 BACKEND_API_ORIGIN="${API_SCHEME}://${ALB_DNS_NAME}"
 BACKEND_API_HTTPS_EDGE=""
@@ -207,14 +208,25 @@ if [[ -n "${API_CLOUDFRONT_DOMAIN}" && "${API_CLOUDFRONT_DOMAIN}" != "null" && "
   BACKEND_API_HTTPS_EDGE="https://${API_CLOUDFRONT_DOMAIN}"
 fi
 
+if [[ "${API_BASE_URL_FROM_TERRAFORM}" == "null" || "${API_BASE_URL_FROM_TERRAFORM}" == "None" ]]; then
+  API_BASE_URL_FROM_TERRAFORM=""
+fi
+
+API_BASE_URL_SOURCE="alb-origin"
 if [[ -n "${API_BASE_URL_OVERRIDE}" ]]; then
   API_BASE_URL="${API_BASE_URL_OVERRIDE%/}"
+  API_BASE_URL_SOURCE="override"
+elif [[ -n "${API_BASE_URL_FROM_TERRAFORM}" ]]; then
+  API_BASE_URL="${API_BASE_URL_FROM_TERRAFORM%/}"
+  API_BASE_URL_SOURCE="terraform-output"
 else
   API_BASE_URL="${BACKEND_API_ORIGIN}"
 fi
 
 if [[ "${ENABLE_API_PROXY}" == "auto" ]]; then
-  if [[ "${FRONTEND_BASE_URL}" == https://* && "${API_SCHEME}" == "http" ]]; then
+  if [[ "${API_BASE_URL_SOURCE}" == "terraform-output" ]]; then
+    ENABLE_API_PROXY="false"
+  elif [[ "${FRONTEND_BASE_URL}" == https://* && "${API_SCHEME}" == "http" ]]; then
     if [[ -n "${BACKEND_API_HTTPS_EDGE}" ]]; then
       ENABLE_API_PROXY="false"
       if [[ -z "${API_BASE_URL_OVERRIDE}" ]]; then
@@ -303,7 +315,7 @@ echo "Backend API origin: ${BACKEND_API_ORIGIN}"
 if [[ -n "${BACKEND_API_HTTPS_EDGE}" ]]; then
   echo "Backend API HTTPS edge: ${BACKEND_API_HTTPS_EDGE}"
 fi
-echo "VITE_API_BASE_URL: ${API_BASE_URL}"
+echo "VITE_API_BASE_URL: ${API_BASE_URL} (source: ${API_BASE_URL_SOURCE})"
 echo "VITE_BILLING_CHECKOUT_ENDPOINT: ${BILLING_CHECKOUT_ENDPOINT}"
 echo "VITE_BILLING_PORTAL_ENDPOINT: ${BILLING_PORTAL_ENDPOINT}"
 echo "Amplify API proxy automation: ${ENABLE_API_PROXY}"

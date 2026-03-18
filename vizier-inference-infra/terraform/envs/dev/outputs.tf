@@ -18,6 +18,14 @@ output "api_cloudfront_domain_name" {
   value = module.api_cloudfront.distribution_domain_name
 }
 
+output "api_custom_domain_name" {
+  value = trimspace(var.api_custom_domain_name) != "" ? trimspace(var.api_custom_domain_name) : null
+}
+
+output "api_base_url" {
+  value = trimspace(var.api_custom_domain_name) != "" ? "https://${trimspace(var.api_custom_domain_name)}" : "https://${module.api_cloudfront.distribution_domain_name}"
+}
+
 output "jobs_queue_url" {
   value = module.sqs.queue_url
 }

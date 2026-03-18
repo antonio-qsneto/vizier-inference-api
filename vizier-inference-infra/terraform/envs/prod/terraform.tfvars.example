@@ -41,3 +41,9 @@ stripe_allowed_redirect_origins = [
 alb_ingress_cidrs = [
   "0.0.0.0/0",
 ]
+
+# recomendado para endpoint estável em produção:
+# api_custom_domain_name = "api.viziermed.com"
+# api_route53_zone_id = "Z123EXAMPLE"
+# se você já tiver ACM emitido no us-east-1, pode setar:
+# api_cloudfront_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxx"

@@ -45,6 +45,9 @@ Criar dois GitHub Environments:
 21. `TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY` (opcional)
 22. `TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL` (opcional)
 23. `TF_VAR_STRIPE_ALLOWED_REDIRECT_ORIGINS` (JSON array string opcional; ex.: `["https://viziermed.com"]`)
+24. `TF_VAR_API_CUSTOM_DOMAIN_NAME` (ex.: `api.viziermed.com`)
+25. `TF_VAR_API_ROUTE53_ZONE_ID` (Hosted Zone ID do domínio raiz no Route53)
+26. `TF_VAR_API_CLOUDFRONT_CERTIFICATE_ARN` (opcional; se vazio, Terraform cria ACM em `us-east-1` via DNS)
 
 Valor recomendado no seu cenário:
 - `996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse:v2-20260317-164247-03338460`

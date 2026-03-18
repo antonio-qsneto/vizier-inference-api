@@ -97,6 +97,21 @@ variable "alb_ingress_cidrs" {
   ]
 }
 
+variable "api_custom_domain_name" {
+  type    = string
+  default = ""
+}
+
+variable "api_route53_zone_id" {
+  type    = string
+  default = ""
+}
+
+variable "api_cloudfront_certificate_arn" {
+  type    = string
+  default = ""
+}
+
 variable "s3_artifacts_bucket_name" {
   type    = string
   default = null
@@ -400,9 +415,9 @@ variable "cognito_callback_urls" {
 variable "cognito_logout_urls" {
   type = list(string)
   default = [
-    "http://localhost:3000/login",
+    "http://localhost:3000/",
     "http://localhost:8000/",
-    "https://viziermed.com/login",
+    "https://viziermed.com/",
   ]
 }
 

@@ -32,7 +32,7 @@ FRONTEND_DIRECT_OUTPUTS: tuple[TerraformOutput, ...] = (
 )
 
 DEFAULT_FRONTEND_REDIRECT_URI = "http://localhost:3000/auth/callback"
-DEFAULT_FRONTEND_LOGOUT_URI = "http://localhost:3000/login"
+DEFAULT_FRONTEND_LOGOUT_URI = "http://localhost:3000/"
 
 
 def _repo_root() -> Path:

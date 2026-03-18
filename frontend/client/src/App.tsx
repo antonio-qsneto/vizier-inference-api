@@ -39,6 +39,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={HomePage} />
+      <Route path="/login" component={HomePage} />
       <Route path="/auth/callback" component={AuthCallbackPage} />
 
       <Route path="/dashboard">

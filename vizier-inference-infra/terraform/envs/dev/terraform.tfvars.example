@@ -1,7 +1,7 @@
 aws_region                 = "us-east-1"
 project_name               = "vizier-inference"
 environment                = "dev"
-single_az_mode             = true
+single_az_mode             = false
 enable_nat_gateway         = true
 enable_vpc_endpoints       = false
 django_allowed_hosts       = "*"
@@ -16,8 +16,13 @@ ecr_force_delete           = false
 
 rds_password      = "change-me"
 django_secret_key = "change-me"
-rds_skip_final_snapshot = true
-# rds_final_snapshot_identifier = "vizier-postgres-dev-final-20260314"
+rds_skip_final_snapshot = false
+# recomendado para evitar conflito de snapshot ao destruir/recriar:
+# rds_final_snapshot_identifier = "vizier-postgres-dev-final-20260318"
+rds_deletion_protection = true
+api_desired_count = 2
+worker_desired_count = 2
+rds_backup_retention_days = 14
 
 inference_api_bearer_token = ""
 enable_stripe_billing = true
@@ -41,3 +46,8 @@ stripe_allowed_redirect_origins = [
 alb_ingress_cidrs = [
   "0.0.0.0/0",
 ]
+
+# opcional para endpoint estável da API:
+# api_custom_domain_name = "api-dev.viziermed.com"
+# api_route53_zone_id = "Z123EXAMPLE"
+# api_cloudfront_certificate_arn = ""

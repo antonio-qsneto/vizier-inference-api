@@ -122,7 +122,7 @@ COGNITO_DOMAIN_PREFIX="$(terraform -chdir="${TF_ENV_DIR}" output -raw cognito_us
 
 COGNITO_DOMAIN="https://${COGNITO_DOMAIN_PREFIX}.auth.${REGION}.amazoncognito.com"
 DEFAULT_REDIRECT_URI="${FRONTEND_BASE_URL%/}/auth/callback"
-DEFAULT_LOGOUT_URI="${FRONTEND_BASE_URL%/}/login"
+DEFAULT_LOGOUT_URI="${FRONTEND_BASE_URL%/}/"
 
 if [[ -z "${REDIRECT_URI}" ]]; then
   REDIRECT_URI="${DEFAULT_REDIRECT_URI}"

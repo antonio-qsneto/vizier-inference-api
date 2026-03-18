@@ -15,7 +15,7 @@ variable "availability_zone_b" {
 
 variable "single_az_mode" {
   type    = bool
-  default = true
+  default = false
 }
 
 variable "enable_nat_gateway" {
@@ -97,6 +97,21 @@ variable "alb_ingress_cidrs" {
   ]
 }
 
+variable "api_custom_domain_name" {
+  type    = string
+  default = ""
+}
+
+variable "api_route53_zone_id" {
+  type    = string
+  default = ""
+}
+
+variable "api_cloudfront_certificate_arn" {
+  type    = string
+  default = ""
+}
+
 variable "s3_artifacts_bucket_name" {
   type    = string
   default = null
@@ -169,12 +184,12 @@ variable "biomedparse_image_override" {
 
 variable "api_desired_count" {
   type    = number
-  default = 1
+  default = 2
 }
 
 variable "worker_desired_count" {
   type    = number
-  default = 1
+  default = 2
 }
 
 variable "api_cpu" {
@@ -229,12 +244,12 @@ variable "rds_allocated_storage" {
 
 variable "rds_backup_retention_days" {
   type    = number
-  default = 7
+  default = 14
 }
 
 variable "rds_skip_final_snapshot" {
   type    = bool
-  default = true
+  default = false
 }
 
 variable "rds_final_snapshot_identifier" {
@@ -244,7 +259,7 @@ variable "rds_final_snapshot_identifier" {
 
 variable "rds_deletion_protection" {
   type    = bool
-  default = false
+  default = true
 }
 
 variable "django_secret_key" {
@@ -400,9 +415,9 @@ variable "cognito_callback_urls" {
 variable "cognito_logout_urls" {
   type = list(string)
   default = [
-    "http://localhost:3000/login",
+    "http://localhost:3000/",
     "http://localhost:8000/",
-    "https://viziermed.com/login",
+    "https://viziermed.com/",
   ]
 }
 

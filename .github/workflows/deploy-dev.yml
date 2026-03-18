@@ -37,8 +37,11 @@ env:
   TF_VAR_stripe_price_lookup_key_individual_annual: ${{ vars.TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL || '' }}
   TF_VAR_stripe_allowed_redirect_origins: ${{ vars.TF_VAR_STRIPE_ALLOWED_REDIRECT_ORIGINS || '[]' }}
   TF_VAR_django_allowed_hosts: ${{ vars.TF_VAR_DJANGO_ALLOWED_HOSTS || '*' }}
+  TF_VAR_api_custom_domain_name: ${{ vars.TF_VAR_API_CUSTOM_DOMAIN_NAME || '' }}
+  TF_VAR_api_route53_zone_id: ${{ vars.TF_VAR_API_ROUTE53_ZONE_ID || '' }}
+  TF_VAR_api_cloudfront_certificate_arn: ${{ vars.TF_VAR_API_CLOUDFRONT_CERTIFICATE_ARN || '' }}
   TF_VAR_cognito_callback_urls: ${{ vars.TF_VAR_COGNITO_CALLBACK_URLS || '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]' }}
-  TF_VAR_cognito_logout_urls: ${{ vars.TF_VAR_COGNITO_LOGOUT_URLS || '["http://localhost:3000/login","http://localhost:8000/","https://viziermed.com/login"]' }}
+  TF_VAR_cognito_logout_urls: ${{ vars.TF_VAR_COGNITO_LOGOUT_URLS || '["http://localhost:3000/","http://localhost:8000/","https://viziermed.com/"]' }}
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
   TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
   BACKEND_ECR_REPOSITORY_URL: ${{ vars.BACKEND_ECR_REPOSITORY_URL || '' }}
@@ -202,12 +205,12 @@ jobs:
         run: |
           set -euo pipefail
           CALLBACKS='["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]'
-          LOGOUTS='["http://localhost:3000/login","http://localhost:8000/","https://viziermed.com/login"]'
+          LOGOUTS='["http://localhost:3000/","http://localhost:8000/","https://viziermed.com/"]'
 
           if [[ -n "${AMPLIFY_FRONTEND_BASE_URL}" ]]; then
             BASE="${AMPLIFY_FRONTEND_BASE_URL%/}"
             CALLBACKS="$(jq -cn --arg base "${BASE}" '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback",($base + "/auth/callback")]')"
-            LOGOUTS="$(jq -cn --arg base "${BASE}" '["http://localhost:3000/login","http://localhost:8000/",($base + "/login")]')"
+            LOGOUTS="$(jq -cn --arg base "${BASE}" '["http://localhost:3000/","http://localhost:8000/",($base + "/")]')"
           fi
 
           if [[ -n "${TF_VAR_cognito_callback_urls}" ]]; then

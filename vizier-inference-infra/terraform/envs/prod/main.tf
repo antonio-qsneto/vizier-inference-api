@@ -2,6 +2,11 @@ provider "aws" {
   region = var.aws_region
 }
 
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 data "aws_caller_identity" "current" {}
 
 locals {
@@ -102,6 +107,51 @@ locals {
     ? var.stripe_allowed_redirect_origins
     : var.frontend_upload_allowed_origins
   )
+
+  enable_api_custom_domain             = trimspace(var.api_custom_domain_name) != ""
+  create_api_custom_domain_certificate = local.enable_api_custom_domain && trimspace(var.api_cloudfront_certificate_arn) == "" && trimspace(var.api_route53_zone_id) != ""
+  create_api_dns_record                = local.enable_api_custom_domain && trimspace(var.api_route53_zone_id) != ""
+  api_cloudfront_certificate_arn_resolved = trimspace(var.api_cloudfront_certificate_arn) != "" ? trimspace(var.api_cloudfront_certificate_arn) : (
+    local.create_api_custom_domain_certificate ? aws_acm_certificate_validation.api_cloudfront[0].certificate_arn : ""
+  )
+}
+
+resource "aws_acm_certificate" "api_cloudfront" {
+  count    = local.create_api_custom_domain_certificate ? 1 : 0
+  provider = aws.us_east_1
+
+  domain_name       = trimspace(var.api_custom_domain_name)
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = local.tags
+}
+
+resource "aws_route53_record" "api_cloudfront_certificate_validation" {
+  for_each = local.create_api_custom_domain_certificate ? {
+    for dvo in aws_acm_certificate.api_cloudfront[0].domain_validation_options : dvo.domain_name => {
+      name  = dvo.resource_record_name
+      type  = dvo.resource_record_type
+      value = dvo.resource_record_value
+    }
+  } : {}
+
+  zone_id = trimspace(var.api_route53_zone_id)
+  name    = each.value.name
+  type    = each.value.type
+  ttl     = 60
+  records = [each.value.value]
+}
+
+resource "aws_acm_certificate_validation" "api_cloudfront" {
+  count    = local.create_api_custom_domain_certificate ? 1 : 0
+  provider = aws.us_east_1
+
+  certificate_arn         = aws_acm_certificate.api_cloudfront[0].arn
+  validation_record_fqdns = [for record in aws_route53_record.api_cloudfront_certificate_validation : record.fqdn]
 }
 
 module "app_secrets" {
@@ -175,9 +225,39 @@ module "alb" {
 module "api_cloudfront" {
   source = "../../modules/api-cloudfront"
 
-  name               = "vizier-${var.environment}-api-edge"
-  origin_domain_name = module.alb.alb_dns_name
-  tags               = local.tags
+  name                = "vizier-${var.environment}-api-edge"
+  origin_domain_name  = module.alb.alb_dns_name
+  aliases             = local.enable_api_custom_domain ? [trimspace(var.api_custom_domain_name)] : []
+  acm_certificate_arn = local.api_cloudfront_certificate_arn_resolved
+  tags                = local.tags
+}
+
+resource "aws_route53_record" "api_cloudfront_alias_a" {
+  count = local.create_api_dns_record ? 1 : 0
+
+  zone_id = trimspace(var.api_route53_zone_id)
+  name    = trimspace(var.api_custom_domain_name)
+  type    = "A"
+
+  alias {
+    name                   = module.api_cloudfront.distribution_domain_name
+    zone_id                = module.api_cloudfront.distribution_hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "api_cloudfront_alias_aaaa" {
+  count = local.create_api_dns_record ? 1 : 0
+
+  zone_id = trimspace(var.api_route53_zone_id)
+  name    = trimspace(var.api_custom_domain_name)
+  type    = "AAAA"
+
+  alias {
+    name                   = module.api_cloudfront.distribution_domain_name
+    zone_id                = module.api_cloudfront.distribution_hosted_zone_id
+    evaluate_target_health = false
+  }
 }
 
 resource "aws_security_group" "fargate_app" {

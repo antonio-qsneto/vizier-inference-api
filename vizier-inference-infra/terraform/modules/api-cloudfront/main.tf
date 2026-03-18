@@ -2,6 +2,7 @@ locals {
   origin_id = "${var.name}-origin"
   # AWS managed CloudFront cache policy: Managed-CachingDisabled
   caching_disabled_policy_id = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+  use_custom_certificate     = trimspace(var.acm_certificate_arn) != ""
 }
 
 resource "aws_cloudfront_origin_request_policy" "all_viewer" {
@@ -27,6 +28,7 @@ resource "aws_cloudfront_distribution" "this" {
   comment             = "HTTPS API edge for ${var.name}"
   price_class         = var.price_class
   wait_for_deployment = false
+  aliases             = var.aliases
 
   origin {
     domain_name = var.origin_domain_name
@@ -71,8 +73,17 @@ resource "aws_cloudfront_distribution" "this" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = local.use_custom_certificate ? false : true
+    acm_certificate_arn            = local.use_custom_certificate ? trimspace(var.acm_certificate_arn) : null
+    ssl_support_method             = local.use_custom_certificate ? "sni-only" : null
     minimum_protocol_version       = "TLSv1.2_2021"
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(var.aliases) == 0 || local.use_custom_certificate
+      error_message = "acm_certificate_arn is required when aliases are configured."
+    }
   }
 
   tags = var.tags
