@@ -531,6 +531,109 @@ function isBoundaryPixel(
   return false;
 }
 
+function appendContourSegment(
+  segments: number[],
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+) {
+  segments.push(x1, y1, x2, y2);
+}
+
+function extractContourSegmentsForLabel(
+  labelData: Int32Array,
+  width: number,
+  height: number,
+  label: number,
+) {
+  const segments: number[] = [];
+  if (width < 2 || height < 2) {
+    return segments;
+  }
+
+  for (let row = 0; row < height - 1; row += 1) {
+    const nextRow = row + 1;
+    for (let column = 0; column < width - 1; column += 1) {
+      const nextColumn = column + 1;
+      const topLeft = labelData[row * width + column] === label;
+      const topRight = labelData[row * width + nextColumn] === label;
+      const bottomRight = labelData[nextRow * width + nextColumn] === label;
+      const bottomLeft = labelData[nextRow * width + column] === label;
+
+      const mask =
+        (topLeft ? 8 : 0) |
+        (topRight ? 4 : 0) |
+        (bottomRight ? 2 : 0) |
+        (bottomLeft ? 1 : 0);
+
+      if (mask === 0 || mask === 15) {
+        continue;
+      }
+
+      const topX = column + 0.5;
+      const topY = row;
+      const rightX = nextColumn;
+      const rightY = row + 0.5;
+      const bottomX = column + 0.5;
+      const bottomY = nextRow;
+      const leftX = column;
+      const leftY = row + 0.5;
+
+      switch (mask) {
+        case 1:
+          appendContourSegment(segments, leftX, leftY, bottomX, bottomY);
+          break;
+        case 2:
+          appendContourSegment(segments, bottomX, bottomY, rightX, rightY);
+          break;
+        case 3:
+          appendContourSegment(segments, leftX, leftY, rightX, rightY);
+          break;
+        case 4:
+          appendContourSegment(segments, topX, topY, rightX, rightY);
+          break;
+        case 5:
+          appendContourSegment(segments, topX, topY, rightX, rightY);
+          appendContourSegment(segments, leftX, leftY, bottomX, bottomY);
+          break;
+        case 6:
+          appendContourSegment(segments, topX, topY, bottomX, bottomY);
+          break;
+        case 7:
+          appendContourSegment(segments, topX, topY, leftX, leftY);
+          break;
+        case 8:
+          appendContourSegment(segments, topX, topY, leftX, leftY);
+          break;
+        case 9:
+          appendContourSegment(segments, topX, topY, bottomX, bottomY);
+          break;
+        case 10:
+          appendContourSegment(segments, topX, topY, leftX, leftY);
+          appendContourSegment(segments, rightX, rightY, bottomX, bottomY);
+          break;
+        case 11:
+          appendContourSegment(segments, topX, topY, rightX, rightY);
+          break;
+        case 12:
+          appendContourSegment(segments, leftX, leftY, rightX, rightY);
+          break;
+        case 13:
+          appendContourSegment(segments, rightX, rightY, bottomX, bottomY);
+          break;
+        case 14:
+          appendContourSegment(segments, leftX, leftY, bottomX, bottomY);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  return segments;
+}
+
 export function getLabelColor(
   label: number,
   paletteId: PaletteId,
@@ -616,8 +719,8 @@ export function renderSliceToCanvas(options: {
 
   const imageData = offscreenContext.createImageData(width, height);
   const overlayData = offscreenContext.createImageData(width, height);
-  const contourData = offscreenContext.createImageData(width, height);
   const labelData = new Int32Array(width * height);
+  const presentLabels = new Set<number>();
   const range = Math.max(windowRange.max - windowRange.min, 1e-6);
 
   for (let row = 0; row < height; row += 1) {
@@ -643,6 +746,7 @@ export function renderSliceToCanvas(options: {
         const label = Math.round(maskVolume.data[voxelIndex]);
         if (label > 0 && visibleSegmentIds.has(label)) {
           labelData[row * width + column] = label;
+          presentLabels.add(label);
         }
       }
 
@@ -657,7 +761,6 @@ export function renderSliceToCanvas(options: {
   offscreenContext.putImageData(imageData, 0, 0);
 
   if (maskVolume) {
-    const white = { r: 255, g: 255, b: 255 };
     for (let row = 0; row < height; row += 1) {
       for (let column = 0; column < width; column += 1) {
         const bufferIndex = row * width + column;
@@ -700,18 +803,6 @@ export function renderSliceToCanvas(options: {
         overlayData.data[pixelIndex + 2] = vividColor.b;
         overlayData.data[pixelIndex + 3] = softAlpha;
 
-        if (isBoundary) {
-          const contourColor = mixColor(vividColor, white, 0.35);
-          const contourAlpha = clamp(
-            Math.round(168 + smoothFactor * 72),
-            140,
-            236,
-          );
-          contourData.data[pixelIndex] = contourColor.r;
-          contourData.data[pixelIndex + 1] = contourColor.g;
-          contourData.data[pixelIndex + 2] = contourColor.b;
-          contourData.data[pixelIndex + 3] = contourAlpha;
-        }
       }
     }
   }
@@ -743,37 +834,58 @@ export function renderSliceToCanvas(options: {
       context.save();
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
-      context.filter = "blur(1.15px) saturate(1.08)";
+      context.filter = "blur(0.55px) saturate(1.12)";
       context.drawImage(overlayCanvas, originX, originY, drawWidth, drawHeight);
       context.restore();
 
       context.save();
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
-      context.globalAlpha = 0.56;
+      context.globalAlpha = 0.44;
       context.drawImage(overlayCanvas, originX, originY, drawWidth, drawHeight);
       context.restore();
     }
 
-    const contourCanvas = document.createElement("canvas");
-    contourCanvas.width = width;
-    contourCanvas.height = height;
-    const contourContext = contourCanvas.getContext("2d");
-    if (contourContext) {
-      contourContext.putImageData(contourData, 0, 0);
-      context.save();
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = "high";
-      context.filter = "blur(0.9px)";
-      context.globalAlpha = 0.84;
-      context.drawImage(contourCanvas, originX, originY, drawWidth, drawHeight);
-      context.restore();
+    if (presentLabels.size > 0) {
+      const sortedLabels = Array.from(presentLabels).sort((left, right) => left - right);
+      const scaleX = drawWidth / width;
+      const scaleY = drawHeight / height;
+      const avgScale = Math.max((Math.abs(scaleX) + Math.abs(scaleY)) / 2, 1e-6);
+      const white = { r: 255, g: 255, b: 255 };
 
       context.save();
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = "high";
-      context.globalAlpha = 0.72;
-      context.drawImage(contourCanvas, originX, originY, drawWidth, drawHeight);
+      context.translate(originX, originY);
+      context.scale(scaleX, scaleY);
+      context.lineCap = "round";
+      context.lineJoin = "round";
+
+      for (const label of sortedLabels) {
+        const segments = extractContourSegmentsForLabel(labelData, width, height, label);
+        if (!segments.length) {
+          continue;
+        }
+
+        const baseColor = hexToRgb(getLabelColor(label, paletteId, legendMap));
+        const vividColor = boostOverlayColor(baseColor);
+        const contourColor = mixColor(vividColor, white, 0.18);
+        const crispLineWidth = clamp(1.9 / avgScale, 0.7, 2.4);
+        const glowLineWidth = clamp(3.1 / avgScale, 1.1, 3.8);
+
+        context.beginPath();
+        for (let index = 0; index < segments.length; index += 4) {
+          context.moveTo(segments[index], segments[index + 1]);
+          context.lineTo(segments[index + 2], segments[index + 3]);
+        }
+
+        context.strokeStyle = `rgba(${contourColor.r}, ${contourColor.g}, ${contourColor.b}, 0.3)`;
+        context.lineWidth = glowLineWidth;
+        context.stroke();
+
+        context.strokeStyle = `rgba(${contourColor.r}, ${contourColor.g}, ${contourColor.b}, 0.97)`;
+        context.lineWidth = crispLineWidth;
+        context.stroke();
+      }
+
       context.restore();
     }
   }
