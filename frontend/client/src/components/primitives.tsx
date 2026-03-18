@@ -70,16 +70,49 @@ const toneClasses: Record<string, string> = {
   OK: "border-emerald-400/20 bg-emerald-500/14 text-emerald-200",
 };
 
+const statusLabels: Record<string, string> = {
+  ACCEPTED: "ACEITO",
+  ACTIVE: "ATIVO",
+  CANCELED: "CANCELADO",
+  CANCELLED: "CANCELADO",
+  CLINIC: "CLÍNICA",
+  COMPLETED: "CONCLUÍDO",
+  CREATED: "CRIADO",
+  EXPIRED: "EXPIRADO",
+  FAILED: "FALHOU",
+  FREE: "GRATUITO",
+  HEALTHY: "SAUDÁVEL",
+  INDIVIDUAL: "INDIVIDUAL",
+  OK: "OK",
+  PENDING: "PENDENTE",
+  POSTPROCESSING: "PÓS-PROCESSANDO",
+  PREPROCESSING: "PRÉ-PROCESSANDO",
+  PROCESSING: "PROCESSANDO",
+  QUEUED: "NA FILA",
+  REJECTED: "REJEITADO",
+  REMOVED: "REMOVIDO",
+  RUNNING: "EM EXECUÇÃO",
+  SUBMITTED: "ENVIADO",
+  UNKNOWN: "DESCONHECIDO",
+  UPLOADED: "UPLOAD CONCLUÍDO",
+  UPLOAD_PENDING: "AGUARDANDO UPLOAD",
+  VALIDATING: "VALIDANDO",
+};
+
 export function StatusPill({ status }: { status: string | null | undefined }) {
-  const label = status || "UNKNOWN";
+  const rawLabel = (status || "UNKNOWN").toString();
+  const normalizedLabel = rawLabel.toUpperCase();
+  const translatedLabel =
+    statusLabels[normalizedLabel] || rawLabel.replaceAll("_", " ");
+
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]",
-        toneClasses[label] || "border-white/8 bg-white/6 text-slate-200",
+        toneClasses[normalizedLabel] || "border-white/8 bg-white/6 text-slate-200",
       )}
     >
-      {label}
+      {translatedLabel}
     </span>
   );
 }

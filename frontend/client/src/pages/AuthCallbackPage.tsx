@@ -34,7 +34,7 @@ export default function AuthCallbackPage() {
         if (callbackError instanceof Error) {
           setError(callbackError.message);
         } else {
-          setError("Authentication callback failed");
+          setError("Falha ao concluir autenticação");
         }
       }
     }
@@ -52,7 +52,7 @@ export default function AuthCallbackPage() {
         {error ? (
           <>
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-rose-200">
-              Authentication failed
+              Falha na autenticação
             </p>
             <h1 className="text-2xl font-semibold text-white">{error}</h1>
             <button

@@ -241,8 +241,8 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
   if (isAsyncFlow) {
     if (!asyncStatus) {
       return (
-        <InlineNotice title="Inference job not found" tone="danger">
-          {error || "The inference job could not be loaded."}
+        <InlineNotice title="Job de inferência não encontrado" tone="danger">
+          {error || "Não foi possível carregar o job de inferência."}
         </InlineNotice>
       );
     }
@@ -276,7 +276,7 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
           }
         />
 
-        {error ? <InlineNotice title="Job request failed">{error}</InlineNotice> : null}
+        {error ? <InlineNotice title="Falha ao consultar job">{error}</InlineNotice> : null}
 
         <Panel className="space-y-5">
           <div className="flex flex-wrap items-center gap-3">
@@ -284,7 +284,7 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
           </div>
           <div>
             <div className="flex items-center justify-between text-xs uppercase tracking-[0.16em] text-slate-400">
-              <span>Progress</span>
+              <span>Progresso</span>
               <span>{formatPercentage(asyncStatus.progress_percent || 0)}</span>
             </div>
             <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/8">
@@ -298,17 +298,17 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Created</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Criado</p>
               <p className="mt-2 text-sm font-semibold text-white">{formatDateTime(asyncStatus.created_at)}</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Updated</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Atualizado</p>
               <p className="mt-2 text-sm font-semibold text-white">{formatDateTime(asyncStatus.updated_at)}</p>
             </div>
           </div>
 
           {asyncStatus.error_message ? (
-            <InlineNotice title="Processing error" tone="danger">
+            <InlineNotice title="Erro de processamento" tone="danger">
               {asyncStatus.error_message}
             </InlineNotice>
           ) : null}
@@ -344,8 +344,8 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
 
   if (!study) {
     return (
-      <InlineNotice title="Study not found" tone="danger">
-        {error || "The backend did not return the requested study."}
+      <InlineNotice title="Estudo não encontrado" tone="danger">
+        {error || "O backend não retornou o estudo solicitado."}
       </InlineNotice>
     );
   }
@@ -361,7 +361,7 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
       className="space-y-6"
     >
       <PageIntro
-        eyebrow="Study detail"
+        eyebrow="Detalhe do estudo"
         title={study.case_identification || study.patient_name || "Estudo clínico"}
         description="Detalhe do estudo com polling em `/status/`, metadata do upload e acesso ao viewer quando o backend finalizar o processamento."
         actions={
@@ -384,28 +384,28 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
         }
       />
 
-      {error ? <InlineNotice title="Study request failed">{error}</InlineNotice> : null}
-      {polling.error ? <InlineNotice title="Status polling failed">{polling.error}</InlineNotice> : null}
+      {error ? <InlineNotice title="Falha ao consultar estudo">{error}</InlineNotice> : null}
+      {polling.error ? <InlineNotice title="Falha no monitoramento de status">{polling.error}</InlineNotice> : null}
 
       <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
         <Panel className="space-y-5">
           <div className="flex flex-wrap items-center gap-3">
             <StatusPill status={currentStatus} />
             <p className="text-sm text-slate-300">
-              Processamento {statusSnapshot?.job_status || study.job?.status || "UNKNOWN"}
+              Processamento {statusSnapshot?.job_status || study.job?.status || "DESCONHECIDO"}
             </p>
           </div>
           <div className="space-y-2">
             <p className="text-sm leading-7 text-slate-300">
-              {study.exam_modality || "Unknown modality"} · {study.category}
+              {study.exam_modality || "Modalidade desconhecida"} · {study.category}
             </p>
             <p className="text-sm leading-7 text-slate-300">
-              Source: {study.exam_source || "N/A"} · Owner: {study.owner_email}
+              Origem: {study.exam_source || "N/D"} · Responsável: {study.owner_email}
             </p>
           </div>
           <div>
             <div className="flex items-center justify-between text-xs uppercase tracking-[0.16em] text-slate-400">
-              <span>Progress</span>
+              <span>Progresso</span>
               <span>{formatPercentage(jobProgress)}</span>
             </div>
             <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/8">
@@ -416,7 +416,7 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
             </div>
           </div>
           {study.error_message ? (
-            <InlineNotice title="Processing error" tone="danger">
+            <InlineNotice title="Erro de processamento" tone="danger">
               {study.error_message}
             </InlineNotice>
           ) : null}
@@ -425,13 +425,13 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
         <div className="space-y-6">
           <Panel className="space-y-4">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-              Timeline
+              Linha do tempo
             </p>
             <div className="grid gap-3 md:grid-cols-2">
               {[
-                { label: "Created", value: formatDateTime(study.created_at) },
-                { label: "Updated", value: formatDateTime(study.updated_at) },
-                { label: "Completed", value: formatDateTime(study.completed_at) },
+                { label: "Criado", value: formatDateTime(study.created_at) },
+                { label: "Atualizado", value: formatDateTime(study.updated_at) },
+                { label: "Concluído", value: formatDateTime(study.completed_at) },
               ].map((entry) => (
                 <div
                   key={entry.label}
@@ -448,12 +448,12 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
 
           <Panel className="space-y-4">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-              Result summary
+              Resumo do resultado
             </p>
             {result ? (
               <div className="space-y-3">
                 <p className="text-sm leading-7 text-slate-300">
-                  Assets ready: {result.image_file_name} and {result.mask_file_name}
+                  Arquivos prontos: {result.image_file_name} e {result.mask_file_name}
                 </p>
                 {result.segments_legend.length ? (
                   <div className="space-y-3">

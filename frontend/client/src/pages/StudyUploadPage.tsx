@@ -50,10 +50,10 @@ function toTitleCase(value: string) {
 
 function formatTargetGroupLabel(modality: string, groupId: string) {
   if (modality === "MRI" && groupId === "head_tumor_cerebral") {
-    return "Head - Tumor cerebral";
+    return "Cabeça - Tumor cerebral";
   }
   if (modality === "MRI" && groupId === "head_esclerose_multipla") {
-    return "Head - Esclerose multipla";
+    return "Cabeça - Esclerose múltipla";
   }
 
   return toTitleCase(groupId.replace(/[_-]+/g, " "));
@@ -66,8 +66,8 @@ function formatTargetGroupLabelWithPrompt(
 ) {
   const explicit = formatTargetGroupLabel(modality, groupId);
   if (
-    explicit === "Head - Tumor cerebral" ||
-    explicit === "Head - Esclerose multipla"
+    explicit === "Cabeça - Tumor cerebral" ||
+    explicit === "Cabeça - Esclerose múltipla"
   ) {
     return explicit;
   }
@@ -170,7 +170,7 @@ export default function StudyUploadPage() {
     }
     if (!uploadEnabled) {
       if (canUpgradeIndividually) {
-        toast.error("Upload indisponível. Faça upgrade no billing.");
+        toast.error("Upload indisponível. Faça upgrade na assinatura.");
         navigate("/billing");
       } else {
         toast.error("Upload indisponível para o estado atual da conta.");
@@ -179,13 +179,13 @@ export default function StudyUploadPage() {
     }
 
     if (!accessToken || !formState.file) {
-      toast.error("Select a supported file before submitting");
+      toast.error("Selecione um arquivo suportado antes de enviar");
       return;
     }
 
     const ageValue = Number(formState.age);
     if (!Number.isFinite(ageValue) || ageValue < 0) {
-      toast.error("Age must be a valid positive number");
+      toast.error("A idade deve ser um número válido e positivo");
       return;
     }
 
@@ -217,7 +217,7 @@ export default function StudyUploadPage() {
           sizeBytes: formState.file.size,
         });
 
-        toast.success("Inference job submitted");
+        toast.success("Job de inferência enviado");
         navigate(`/studies/${createResponse.job_id}?async=1`);
       } else {
         const study = await uploadStudy(accessToken, {
@@ -229,7 +229,7 @@ export default function StudyUploadPage() {
           examModality: formState.examModality,
           categoryId: formState.categoryId,
         });
-        toast.success("Study submitted");
+        toast.success("Estudo enviado");
         const ingestionMessage = buildDicomIngestionMessage(study.ingestion_report);
         if (ingestionMessage) {
           toast.message(ingestionMessage);
@@ -240,7 +240,7 @@ export default function StudyUploadPage() {
       toast.error(
         requestError instanceof Error
           ? requestError.message
-          : "Study upload failed",
+          : "Falha no upload do estudo",
       );
     } finally {
       setSubmitting(false);
@@ -259,13 +259,13 @@ export default function StudyUploadPage() {
       className="space-y-6"
     >
       <PageIntro
-        eyebrow="Upload"
-        title="Submit a study to the inference pipeline"
+        eyebrow="Envio"
+        title="Enviar estudo para a pipeline de inferência"
         description="Envie um estudo para processamento assíncrono."
       />
 
       {isClinicAdmin ? (
-        <InlineNotice title="Upload bloqueado para admin">
+        <InlineNotice title="Upload bloqueado para administrador">
           O perfil `CLINIC_ADMIN` é apenas gerencial e não pode enviar estudos.
         </InlineNotice>
       ) : null}
@@ -275,11 +275,11 @@ export default function StudyUploadPage() {
           {canUpgradeIndividually ? (
             <>
               Para enviar estudos, assine o plano individual mensal ou anual na
-              página de billing.
+              página de assinatura.
               <span className="ml-2 inline-flex">
                 <Link href="/billing">
                   <a className="font-semibold text-sky-300 underline underline-offset-4">
-                    Ir para billing
+                    Ir para assinatura
                   </a>
                 </Link>
               </span>
@@ -291,7 +291,7 @@ export default function StudyUploadPage() {
       ) : null}
 
       {error ? (
-        <InlineNotice title="Catalog load failed">{error}</InlineNotice>
+        <InlineNotice title="Falha ao carregar catálogo">{error}</InlineNotice>
       ) : null}
 
       {!isClinicAdmin && uploadEnabled ? (
@@ -320,7 +320,7 @@ export default function StudyUploadPage() {
                   patientName: event.target.value,
                 }))
               }
-              placeholder="Patient name"
+              placeholder="Nome do paciente"
               className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/50"
             />
             <input
@@ -334,7 +334,7 @@ export default function StudyUploadPage() {
               type="number"
               min={0}
               max={130}
-              placeholder="Age"
+              placeholder="Idade"
               className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/50"
             />
             <input
@@ -345,7 +345,7 @@ export default function StudyUploadPage() {
                   examSource: event.target.value,
                 }))
               }
-              placeholder="Exam source"
+              placeholder="Origem do exame"
               className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/50"
             />
           </div>
@@ -353,7 +353,7 @@ export default function StudyUploadPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                Exam Modality
+                Modalidade do exame
               </label>
               <select
                 value={formState.examModality}
@@ -367,7 +367,7 @@ export default function StudyUploadPage() {
                 className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-white outline-none focus:border-sky-300/50"
               >
                 <option value="" className="bg-slate-900">
-                  Select modality
+                  Selecione a modalidade
                 </option>
                 {modalities.map((modality) => (
                   <option
@@ -382,7 +382,7 @@ export default function StudyUploadPage() {
             </div>
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                Target Group
+                Grupo-alvo
               </label>
               <select
                 value={formState.categoryId}
@@ -396,7 +396,7 @@ export default function StudyUploadPage() {
                 className="w-full rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-white outline-none focus:border-sky-300/50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <option value="" className="bg-slate-900">
-                  Select group
+                  Selecione o grupo
                 </option>
                 {targetGroups.map((group) => (
                   <option key={group} value={group} className="bg-slate-900">
@@ -413,7 +413,7 @@ export default function StudyUploadPage() {
 
           <label className="block rounded-[28px] border border-dashed border-white/15 bg-white/5 p-6">
             <span className="text-sm font-semibold text-white">
-              Upload ZIP, NPZ, NIfTI (.nii / .nii.gz)
+              Envie ZIP, NPZ ou NIfTI (.nii / .nii.gz)
             </span>
             <p className="mt-2 text-sm leading-7 text-slate-300">
               Para DICOM, envie `.zip` (não `.dcm` isolado). O backend tenta ler
@@ -452,14 +452,14 @@ export default function StudyUploadPage() {
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? <Spinner className="size-4" /> : null}
-            {submitting ? "Uploading study..." : "Submit study"}
+            {submitting ? "Enviando estudo..." : "Enviar estudo"}
           </button>
         </Panel>
 
         <div className="space-y-6">
           <Panel className="space-y-4">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-              Included segmentation targets
+              Alvos de segmentação incluídos
             </p>
             {includedTargets.length ? (
               <div className="flex flex-wrap gap-2">

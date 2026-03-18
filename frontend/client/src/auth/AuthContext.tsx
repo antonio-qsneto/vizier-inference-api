@@ -121,7 +121,7 @@ async function exchangeCodeWithBackend(
     throw new Error(
       payload?.details ||
         payload?.error ||
-        "Token exchange with backend failed",
+        "Falha na troca de token com o backend",
     );
   }
 
@@ -154,7 +154,7 @@ async function exchangeCodeWithCognito(code: string, codeVerifier: string) {
     const details =
       payload && "error_description" in payload
         ? payload.error_description
-        : "Token exchange with Cognito failed";
+        : "Falha na troca de token com o Cognito";
     throw new Error(details);
   }
 
@@ -194,7 +194,7 @@ function resolveAuthErrorMessage(error: unknown) {
     return error.message;
   }
 
-  return "Authentication failed";
+  return "Falha na autenticação";
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -258,7 +258,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (payload: DevMockLoginPayload) => {
       if (!env.enableDevMockAuth) {
         throw new Error(
-          "Development mock auth is disabled in frontend config.",
+          "A autenticação mock de desenvolvimento está desabilitada na configuração do frontend.",
         );
       }
 
@@ -278,7 +278,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (payload: DevMockSignupPayload) => {
       if (!env.enableDevMockAuth) {
         throw new Error(
-          "Development mock auth is disabled in frontend config.",
+          "A autenticação mock de desenvolvimento está desabilitada na configuração do frontend.",
         );
       }
 
@@ -306,16 +306,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (!code) {
-        throw new Error("Missing authorization code");
+        throw new Error("Código de autorização ausente");
       }
 
       const pendingState = loadPendingPkce();
       if (!pendingState) {
-        throw new Error("Authentication session not found. Start login again.");
+        throw new Error("Sessão de autenticação não encontrada. Inicie o login novamente.");
       }
 
       if (pendingState.state !== returnedState) {
-        throw new Error("Invalid authentication state");
+        throw new Error("Estado de autenticação inválido");
       }
 
       if (pendingState.intent === "signup") {
@@ -422,7 +422,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error("useAuth must be used inside AuthProvider");
+    throw new Error("useAuth deve ser usado dentro de AuthProvider");
   }
   return context;
 }

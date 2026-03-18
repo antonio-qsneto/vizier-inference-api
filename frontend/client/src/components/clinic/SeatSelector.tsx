@@ -16,7 +16,7 @@ export default function SeatSelector({
   min = 1,
   max,
   disabled = false,
-  label = "Doctor seats",
+  label = "Assentos de médicos",
   description,
 }: SeatSelectorProps) {
   const normalizedValue = Number.isFinite(value) ? Math.max(min, Math.floor(value)) : min;

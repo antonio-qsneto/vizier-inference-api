@@ -71,7 +71,7 @@ export default function BillingPage() {
     currentPassword?: string,
   ) {
     if (planId === "free") {
-      toast.message("Plano free não exige checkout.");
+      toast.message("Plano gratuito não exige pagamento.");
       return;
     }
 
@@ -100,7 +100,7 @@ export default function BillingPage() {
       toast.error(
         requestError instanceof Error
           ? requestError.message
-          : "Billing start failed",
+          : "Falha ao iniciar assinatura",
       );
     }
   }
@@ -109,7 +109,7 @@ export default function BillingPage() {
     planId: "free" | "plano_individual_mensal" | "plano_individual_anual",
   ) {
     if (planId === "free") {
-      toast.message("Plano free não exige checkout.");
+      toast.message("Plano gratuito não exige pagamento.");
       return;
     }
 
@@ -156,7 +156,7 @@ export default function BillingPage() {
       toast.error(
         requestError instanceof Error
           ? requestError.message
-          : "Failed to open billing portal",
+          : "Falha ao abrir portal de assinatura",
       );
     } finally {
       setOpeningPortal(false);
@@ -171,9 +171,9 @@ export default function BillingPage() {
       className="space-y-6"
     >
       <PageIntro
-        eyebrow="Billing"
+        eyebrow="Assinatura"
         title="Assinatura individual Stripe"
-        description="Usuário individual começa no plano free (sem upload). Para habilitar upload, assine o plano mensal ou anual."
+        description="Usuário individual começa no plano gratuito (sem upload). Para habilitar upload, assine o plano mensal ou anual."
       />
 
       {!isIndividualUser ? (
@@ -187,7 +187,7 @@ export default function BillingPage() {
         <InlineNotice title="Quer plano de clínica?">
           Para ativar cobrança por assentos (múltiplos médicos), use o fluxo de upgrade em{" "}
           <Link href="/clinic">
-            <a className="font-semibold text-sky-200 underline">Clinic</a>
+            <a className="font-semibold text-sky-200 underline">Clínica</a>
           </Link>
           .
         </InlineNotice>
@@ -283,14 +283,14 @@ export default function BillingPage() {
         <InlineNotice title="Gerenciamento de clínica">
           Contas admin de clínica gerenciam assinatura e cancelamento na página{" "}
           <Link href="/clinic">
-            <a className="font-semibold text-sky-200 underline">Clinic</a>
+            <a className="font-semibold text-sky-200 underline">Clínica</a>
           </Link>
           .
         </InlineNotice>
       ) : (
-        <InlineNotice title="Billing indisponível">
-          Desvincule-se da clínica para voltar ao plano free individual e acessar
-          os planos de billing.
+        <InlineNotice title="Assinatura indisponível">
+          Desvincule-se da clínica para voltar ao plano individual gratuito e acessar
+          os planos de assinatura.
         </InlineNotice>
       )}
 

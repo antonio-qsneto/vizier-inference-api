@@ -33,6 +33,14 @@ interface ClinicalCaseRow {
   isAsync: boolean;
 }
 
+const STATUS_FILTER_LABELS: Record<string, string> = {
+  ALL: "Todos",
+  SUBMITTED: "Enviado",
+  PROCESSING: "Processando",
+  COMPLETED: "Concluído",
+  FAILED: "Falhou",
+};
+
 function mapAsyncStatusToCaseStatus(status: string) {
   const normalized = (status || "").toUpperCase();
   if (normalized === "COMPLETED") {
@@ -110,9 +118,9 @@ export default function StudiesPage() {
       id: study.id,
       caseIdentification:
         study.case_identification || study.patient_name || "Estudo sem identificação",
-      patientName: study.patient_name || "Unnamed patient",
+      patientName: study.patient_name || "Paciente sem nome",
       category: study.category || "--",
-      examModality: study.exam_modality || "Unknown",
+      examModality: study.exam_modality || "Desconhecida",
       ownerEmail: study.owner_email || "--",
       status: study.status || "SUBMITTED",
       createdAt: study.created_at,
@@ -126,9 +134,9 @@ export default function StudiesPage() {
         String(payload.case_identification || "").trim() ||
         String(payload.patient_name || "").trim() ||
         "Inferência assíncrona";
-      const patientName = String(payload.patient_name || "").trim() || "Unnamed patient";
-      const category = String(payload.category_id || "").trim() || "Async inference";
-      const examModality = String(payload.exam_modality || "").trim() || "Unknown";
+      const patientName = String(payload.patient_name || "").trim() || "Paciente sem nome";
+      const category = String(payload.category_id || "").trim() || "Inferência assíncrona";
+      const examModality = String(payload.exam_modality || "").trim() || "Desconhecida";
 
       return {
         id: job.id,
@@ -196,21 +204,21 @@ export default function StudiesPage() {
       className="space-y-6"
     >
       <PageIntro
-        eyebrow="Clinical Cases"
-        title="Clinical Cases"
-        description="Manage and review all studies submitted to the platform."
+        eyebrow="Casos clínicos"
+        title="Casos clínicos"
+        description="Gerencie e revise todos os estudos enviados para a plataforma."
         actions={
           <Link href="/studies/new">
             <a className="inline-flex items-center gap-2 rounded-[10px] border border-sky-300/25 bg-sky-500/14 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500/20">
               <ArrowUpFromLine className="h-4 w-4" />
-              New study
+              Novo estudo
             </a>
           </Link>
         }
       />
 
       {error ? (
-        <InlineNotice title="Studies request failed">{error}</InlineNotice>
+        <InlineNotice title="Falha ao carregar estudos">{error}</InlineNotice>
       ) : null}
 
       <Panel className="space-y-4">
@@ -220,7 +228,7 @@ export default function StudiesPage() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by patient, case, category or owner"
+              placeholder="Buscar por paciente, caso, categoria ou responsável"
               className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
             />
           </label>
@@ -234,7 +242,7 @@ export default function StudiesPage() {
               {["ALL", "SUBMITTED", "PROCESSING", "COMPLETED", "FAILED"].map(
                 (status) => (
                   <option key={status} value={status} className="bg-slate-900">
-                    {status}
+                    {STATUS_FILTER_LABELS[status] || status}
                   </option>
                 ),
               )}
@@ -294,11 +302,11 @@ export default function StudiesPage() {
             <div className="min-w-[980px]">
               <div className="grid grid-cols-[1.1fr_1fr_0.7fr_0.9fr_0.9fr_0.65fr] gap-4 border-b border-white/6 px-6 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                 <span>Caso</span>
-                <span>Patient</span>
-                <span>Modality</span>
-                <span>Owner</span>
+                <span>Paciente</span>
+                <span>Modalidade</span>
+                <span>Responsável</span>
                 <span>Status</span>
-                <span>Action</span>
+                <span>Ação</span>
               </div>
 
               <div className="divide-y divide-white/6">
@@ -312,7 +320,7 @@ export default function StudiesPage() {
                         {study.caseIdentification}
                         {study.isAsync ? (
                           <span className="ml-2 rounded-full border border-sky-300/30 bg-sky-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-sky-200">
-                            Async
+                            Assíncrono
                           </span>
                         ) : null}
                       </p>
@@ -329,7 +337,7 @@ export default function StudiesPage() {
                     </div>
 
                     <div className="flex items-center text-slate-300">
-                      {study.examModality || "Unknown"}
+                      {study.examModality || "Desconhecida"}
                     </div>
 
                     <div className="flex items-center text-sm text-slate-400">
@@ -344,7 +352,7 @@ export default function StudiesPage() {
                       <Link href={study.detailHref}>
                         <a className="inline-flex items-center gap-2 text-sm font-semibold text-sky-400 transition hover:text-sky-300">
                           <Eye className="h-4 w-4" />
-                          View
+                          Ver
                         </a>
                       </Link>
                     </div>
@@ -356,8 +364,8 @@ export default function StudiesPage() {
         </Panel>
       ) : (
         <EmptyState
-          title="No studies found"
-          description="Nenhum estudo corresponde aos filtros atuais. Use `New study` para enviar um volume compatível com o backend."
+          title="Nenhum estudo encontrado"
+          description="Nenhum estudo corresponde aos filtros atuais. Use `Novo estudo` para enviar um volume compatível com o backend."
         />
       )}
     </motion.section>

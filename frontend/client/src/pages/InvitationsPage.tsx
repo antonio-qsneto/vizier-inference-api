@@ -56,10 +56,12 @@ export default function InvitationsPage() {
     try {
       await acceptInvitation(accessToken, invitationId);
       await refreshProfile();
-      toast.success("Invitation accepted");
+      toast.success("Convite aceito");
       await loadInvitations();
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "Invitation acceptance failed");
+      toast.error(
+        requestError instanceof Error ? requestError.message : "Falha ao aceitar convite",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -77,8 +79,8 @@ export default function InvitationsPage() {
       className="space-y-6"
     >
       <PageIntro
-        eyebrow="Invitations"
-        title="Doctor invitation acceptance"
+        eyebrow="Convites"
+        title="Aceite de convite de médico"
         description="Página dedicada a `GET /my_invitations/` e `POST /doctor-invitations/:id/accept/`."
       />
 
@@ -101,7 +103,7 @@ export default function InvitationsPage() {
                     </p>
                   </div>
                   <p className="text-sm text-slate-300">
-                    Sent by {invitation.invited_by_email}
+                    Enviado por {invitation.invited_by_email}
                   </p>
                 </div>
                 <button
@@ -110,19 +112,19 @@ export default function InvitationsPage() {
                   onClick={() => void handleAccept(invitation.id)}
                   className="rounded-full bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Accept invitation
+                  Aceitar convite
                 </button>
               </div>
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                Expires {formatDateTime(invitation.expires_at)}
+                Expira em {formatDateTime(invitation.expires_at)}
               </p>
             </Panel>
           ))}
         </div>
       ) : (
         <EmptyState
-          title="No pending invitations"
-          description="O endpoint `/my_invitations/` não retornou convites pendentes para o email autenticado."
+          title="Sem convites pendentes"
+          description="O endpoint `/my_invitations/` não retornou convites pendentes para o e-mail autenticado."
         />
       )}
     </motion.section>

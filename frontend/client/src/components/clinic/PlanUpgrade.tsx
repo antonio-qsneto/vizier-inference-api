@@ -86,20 +86,20 @@ export default function PlanUpgrade({
       <Panel className="space-y-5">
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-            Plan upgrade
+            Upgrade de plano
           </p>
           <h2 className="text-2xl font-semibold text-white">
             {isExistingClinic
               ? "Ativar assinatura da clínica"
-              : "Ativar Clinic Plan (seat-based)"}
+              : "Ativar plano de clínica (por assento)"}
           </h2>
           <p className="text-sm leading-7 text-slate-300">
             {isExistingClinic ? (
               <>Escolha ciclo e assentos para iniciar a cobrança Stripe da sua clínica.</>
             ) : (
               <>
-                Ao ativar, seu usuário será convertido de <strong>Individual</strong> para
-                <strong> Clinic Admin</strong>. Assinaturas de clínica são cobradas por médico.
+                Ao ativar, seu usuário será convertido de <strong>Individual</strong> para{" "}
+                <strong>Administrador da clínica</strong>. Assinaturas de clínica são cobradas por médico.
               </>
             )}
           </p>
@@ -113,7 +113,7 @@ export default function PlanUpgrade({
             </>
           ) : (
             <>
-              O upgrade cria uma conta de clínica, define você como administrador e inicia checkout
+              O upgrade cria uma conta de clínica, define você como administrador e inicia o pagamento
               Stripe com quantidade de assentos igual ao número de médicos planejado.
             </>
           )}
@@ -138,7 +138,7 @@ export default function PlanUpgrade({
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Billing cycle
+                Ciclo de cobrança
               </p>
               <select
                 value={planId}
@@ -146,10 +146,10 @@ export default function PlanUpgrade({
                 className="h-10 w-full rounded-xl border border-white/12 bg-white/6 px-3 text-sm font-semibold text-white outline-none transition focus:border-sky-300/50"
               >
                 <option value="clinic_monthly" className="bg-slate-900">
-                  Monthly
+                  Mensal
                 </option>
                 <option value="clinic_yearly" className="bg-slate-900">
-                  Yearly (10% off)
+                  Anual (10% de desconto)
                 </option>
               </select>
             </div>
@@ -158,7 +158,7 @@ export default function PlanUpgrade({
               value={seats}
               onChange={setSeats}
               min={minimumSeats}
-              label="Doctor seats"
+              label="Assentos de médicos"
               description={
                 isExistingClinic
                   ? `Mínimo atual: ${minimumSeats} médico(s)`
@@ -177,7 +177,7 @@ export default function PlanUpgrade({
               </p>
             </div>
             <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">
-              Stripe price ID: {CLINIC_STRIPE_PRICE_IDS[planId]}
+              ID de preço Stripe: {CLINIC_STRIPE_PRICE_IDS[planId]}
             </p>
           </div>
         </div>
@@ -189,10 +189,10 @@ export default function PlanUpgrade({
           className="rounded-2xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submitting
-            ? "Iniciando checkout..."
+            ? "Iniciando pagamento..."
             : isExistingClinic
               ? "Ativar assinatura no Stripe"
-              : "Ativar Clinic Plan"}
+              : "Ativar plano de clínica"}
         </button>
       </Panel>
 
@@ -208,7 +208,7 @@ export default function PlanUpgrade({
                 </>
               ) : (
                 <>
-                  Você será promovido para <strong>Clinic Admin</strong> de "{clinicName || "sua clínica"}".
+                  Você será promovido para <strong>Administrador da clínica</strong> de "{clinicName || "sua clínica"}".
                 </>
               )}{" "}
               Assentos iniciais: <strong>{seats}</strong>.
@@ -242,7 +242,7 @@ export default function PlanUpgrade({
               disabled={submitting || !clinicName.trim()}
               className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Processando..." : "Confirmar e ir para Stripe"}
+              {submitting ? "Processando..." : "Confirmar e abrir Stripe"}
             </button>
           </DialogFooter>
         </DialogContent>

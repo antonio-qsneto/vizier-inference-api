@@ -19,7 +19,7 @@ export default function LoginPage() {
     isCognitoConfigured,
     isDevMockAuthEnabled,
   } = useAuth();
-  const [healthLabel, setHealthLabel] = useState("Checking backend...");
+  const [healthLabel, setHealthLabel] = useState("Verificando backend...");
   const [notice, setNotice] = useState<string | null>(null);
   const [devEmail, setDevEmail] = useState("dev@example.com");
   const [devPassword, setDevPassword] = useState("dev-password-123");
@@ -41,7 +41,7 @@ export default function LoginPage() {
         }
       } catch {
         if (isActive) {
-          setHealthLabel("Backend unavailable");
+          setHealthLabel("Backend indisponível");
         }
       }
     }
@@ -121,8 +121,9 @@ export default function LoginPage() {
             Frontend clínico reconstruído para os endpoints reais do backend.
           </h1>
           <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300">
-            Auth via Cognito Hosted UI, clinic workflow, upload de estudos com
-            catálogo dinâmico e viewer PACS para `image.nii.gz` + `mask.nii.gz`.
+            Autenticação via Cognito Managed Login, fluxo de clínica, upload de
+            estudos com catálogo dinâmico e visualizador PACS para
+            `image.nii.gz` + `mask.nii.gz`.
           </p>
 
           {isCognitoConfigured ? (
@@ -161,7 +162,7 @@ export default function LoginPage() {
             <Panel className="mt-8 space-y-4 border border-sky-400/20 bg-sky-500/5 p-5">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-200/80">
-                  Development mock auth
+                  Autenticação mock de desenvolvimento
                 </p>
                 <p className="text-sm text-slate-300">
                   Cadastro e login local sem passar pelo Cognito.
@@ -234,18 +235,18 @@ export default function LoginPage() {
                 detail: healthLabel,
               },
               {
-                label: "Auth mode",
+                label: "Modo de autenticação",
                 value: isCognitoConfigured
-                  ? "Hosted UI + PKCE + Dev mock"
-                  : "Development bearer + Dev mock",
+                  ? "Managed login + PKCE + ambiente de teste"
+                  : "Bearer de desenvolvimento + ambiente de teste",
                 detail:
                   "O frontend usa o token Bearer contra /api/auth/users/me/ e todos os endpoints protegidos.",
               },
               {
-                label: "Viewer",
+                label: "Visualizador",
                 value: "Tri-planar PACS",
                 detail:
-                  "Carrega `result/` e faz proxy de `file://` local em ambiente de desenvolvimento.",
+                  "Carrega `result/` e faz proxy de `file://` local no ambiente de desenvolvimento.",
               },
             ].map((item) => (
               <Panel key={item.label} className="space-y-3 p-5">
@@ -296,15 +297,15 @@ export default function LoginPage() {
             </div>
             <ul className="space-y-3 text-sm text-slate-200">
               <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                Modality dropdown usa `GET /api/auth/categories/` como source of
-                truth.
+                O seletor de modalidade usa `GET /api/auth/categories/` como
+                fonte oficial.
               </li>
               <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                Clinic management cobre criação, convite, aceite e remoção de
+                Gestão da clínica cobre criação, convite, aceite e remoção de
                 médicos.
               </li>
               <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                Study monitor faz polling em `/status/` até `COMPLETED` ou
+                Monitoramento do estudo faz polling em `/status/` até `COMPLETED` ou
                 `FAILED`.
               </li>
             </ul>
@@ -312,15 +313,15 @@ export default function LoginPage() {
 
           <Panel className="space-y-4">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-              Session notes
+              Notas da sessão
             </p>
             <p className="text-sm leading-7 text-slate-300">
-              O login Cognito continua disponível via Hosted UI + PKCE para
+              O login Cognito continua disponível via Managed Login + PKCE para
               fluxo real de autenticação.
             </p>
             <p className="text-sm leading-7 text-slate-300">
               Em desenvolvimento, o frontend também permite criar cadastro e
-              fazer login mock local, sem passar pelo Cognito.
+              fazer login local de teste, sem passar pelo Cognito.
             </p>
           </Panel>
         </motion.section>

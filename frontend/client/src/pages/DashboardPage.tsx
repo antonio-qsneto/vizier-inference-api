@@ -138,7 +138,7 @@ export default function DashboardPage() {
         title: caseIdentification || patientName || "Estudo assíncrono",
         patient: patientName || "Paciente sem nome",
         category: category || "Inferência assíncrona",
-        modality: modality || "Unknown",
+        modality: modality || "Desconhecida",
         status: mapAsyncStatusToCaseStatus(job.status),
         createdAt: job.created_at,
         href: `/studies/${job.id}/viewer?async=1`,
@@ -149,7 +149,7 @@ export default function DashboardPage() {
       title: study.case_identification || study.patient_name || "Estudo sem identificação",
       patient: study.patient_name || "Paciente sem nome",
       category: study.category || "--",
-      modality: study.exam_modality || "Unknown",
+      modality: study.exam_modality || "Desconhecida",
       status: study.status || "SUBMITTED",
       createdAt: study.created_at,
       href: `/studies/${study.id}/viewer`,
@@ -166,46 +166,46 @@ export default function DashboardPage() {
       className="space-y-6"
     >
       <PageIntro
-        eyebrow="Dashboard"
-        title="Dashboard"
-        description="Overview of clinical cases, backend status and your active workspace."
+        eyebrow="Painel"
+        title="Painel"
+        description="Visão geral dos casos clínicos, status do backend e do seu espaço de trabalho."
       />
 
       {error ? (
-        <InlineNotice title="Dashboard request failed">{error}</InlineNotice>
+        <InlineNotice title="Falha ao carregar o painel">{error}</InlineNotice>
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-4">
         <MetricCard
-          label="Exams in processing"
+          label="Exames em processamento"
           value={String(processingStudies.length)}
-          detail="Studies in queue, submission or active inference."
+          detail="Estudos em fila, enviados ou com inferência ativa."
           icon={Clock3}
           tone="amber"
         />
         <MetricCard
-          label="Critical findings"
+          label="Achados críticos"
           value={String(failedStudies.length)}
-          detail="Failed or blocked studies requiring operator review."
+          detail="Estudos com falha ou bloqueados, exigindo revisão do operador."
           icon={TriangleAlert}
           tone="rose"
         />
         <MetricCard
-          label="Completed analyses"
+          label="Análises concluídas"
           value={String(completedStudies.length)}
-          detail={`${studies.length} total studies registered in the workspace.`}
+          detail={`${studies.length} estudos totais registrados no espaço de trabalho.`}
           icon={CheckCircle2}
           tone="emerald"
         />
         <MetricCard
-          label="System status"
+          label="Status do sistema"
           value={
-            health?.status === "ok" ? "Healthy" : health?.status || "Unknown"
+            health?.status === "ok" ? "Saudável" : health?.status || "Desconhecido"
           }
           detail={
             health?.version
-              ? `Backend version ${health.version}`
-              : "No version reported"
+              ? `Versão do backend ${health.version}`
+              : "Nenhuma versão reportada"
           }
           icon={HeartPulse}
           tone="blue"
@@ -217,16 +217,16 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Recent cases
+                Casos recentes
               </p>
               <h2 className="mt-2 text-2xl font-semibold text-white">
-                Clinical activity
+                Atividade clínica
               </h2>
             </div>
             <Link href="/studies">
               <a className="inline-flex items-center gap-2 rounded-[10px] border border-white/8 bg-[#25262d] px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-[#2e3038]">
                 <Eye className="h-4 w-4 text-sky-400" />
-                Open studies
+                Abrir estudos
               </a>
             </Link>
           </div>
@@ -235,9 +235,9 @@ export default function DashboardPage() {
             <div className="overflow-x-auto">
               <div className="min-w-[720px]">
                 <div className="grid grid-cols-[1.3fr_1fr_0.8fr_0.9fr] gap-4 border-b border-white/6 px-6 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  <span>Case</span>
-                  <span>Patient</span>
-                  <span>Modality</span>
+                  <span>Caso</span>
+                  <span>Paciente</span>
+                  <span>Modalidade</span>
                   <span>Status</span>
                 </div>
 
@@ -285,10 +285,10 @@ export default function DashboardPage() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Account
+                Conta
               </p>
               <h2 className="mt-2 text-2xl font-semibold text-white">
-                {user?.full_name || "Authenticated user"}
+                {user?.full_name || "Usuário autenticado"}
               </h2>
             </div>
             <div className="inline-flex h-12 w-12 items-center justify-center rounded-[14px] border border-sky-400/20 bg-sky-500/12 text-sky-300">
@@ -303,9 +303,9 @@ export default function DashboardPage() {
               </span>
             </div>
             <div className="flex items-center justify-between rounded-[12px] border border-white/8 bg-[#25262d] px-4 py-3">
-              <span>Plan</span>
+              <span>Plano</span>
               <span className="font-medium text-slate-200">
-                {user?.subscription_plan || "free"}
+                {user?.subscription_plan || "gratuito"}
               </span>
             </div>
           </div>

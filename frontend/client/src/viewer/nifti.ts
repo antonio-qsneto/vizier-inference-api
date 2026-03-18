@@ -604,7 +604,7 @@ function mapCrosshairToPlane(
 function getReader(datatype: number) {
   const reader = datatypeReaders[datatype as keyof typeof datatypeReaders];
   if (!reader) {
-    throw new Error(`Unsupported NIfTI datatype: ${datatype}`);
+    throw new Error(`Tipo de dado NIfTI não suportado: ${datatype}`);
   }
   return reader;
 }
@@ -624,7 +624,7 @@ function paletteIndexForLabel(label: number, paletteSize: number) {
 async function gunzipBuffer(buffer: ArrayBuffer) {
   if (typeof DecompressionStream === "undefined") {
     throw new Error(
-      "This browser does not support gzip decompression for NIfTI assets.",
+      "Este navegador não suporta descompressão gzip para arquivos NIfTI.",
     );
   }
 
@@ -654,7 +654,7 @@ async function fetchBuffer(url: string) {
 
   if (!response.ok) {
     throw new Error(
-      `Failed to fetch volume: ${response.status} ${response.statusText}`,
+      `Falha ao carregar volume: ${response.status} ${response.statusText}`,
     );
   }
 
@@ -679,7 +679,7 @@ export async function loadNiftiVolume(assetUrl: string) {
       : view.getInt32(0, false) === 348
         ? false
         : (() => {
-            throw new Error("Invalid NIfTI header");
+            throw new Error("Cabeçalho NIfTI inválido");
           })();
 
   const dimX = Math.max(view.getInt16(42, littleEndian), 1);

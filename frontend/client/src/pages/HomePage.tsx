@@ -195,7 +195,7 @@ export default function HomePage() {
                       className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-4 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 md:text-sm"
                     >
                       <LogIn className="h-4 w-4" />
-                      Login
+                      Entrar
                     </button>
                     <button
                       type="button"
@@ -212,7 +212,7 @@ export default function HomePage() {
                     className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-4 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 md:text-sm"
                   >
                     <LogIn className="h-4 w-4" />
-                    Login
+                    Entrar
                   </button>
                 )}
               </>
@@ -270,7 +270,7 @@ export default function HomePage() {
             <div className="relative z-10 flex h-full items-center px-6 py-8 md:px-10">
               <div className="max-w-2xl">
                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-200/80">
-                  Segmentação Assistido por IA
+                  Segmentação assistida por IA
                 </p>
                 <h1 className="mt-4 leading-tight">
                   <img

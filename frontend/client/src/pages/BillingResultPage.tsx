@@ -111,17 +111,17 @@ export default function BillingResultPage({
     <div className="flex min-h-[70vh] items-center justify-center">
       <Panel className="w-full max-w-2xl space-y-5 text-center">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-          Billing return
+          Retorno da assinatura
         </p>
         <h1 className="text-3xl font-semibold text-white">
           {isSuccess
-            ? "Checkout Stripe concluído"
-            : "Checkout Stripe cancelado"}
+            ? "Pagamento Stripe concluído"
+            : "Pagamento Stripe cancelado"}
         </h1>
         <p className="text-sm leading-7 text-slate-300">
           {isSuccess
             ? "Estamos sincronizando sua assinatura com o Stripe para refletir o plano imediatamente."
-            : "O plano não foi alterado. Você pode voltar ao billing e tentar novamente."}
+            : "O plano não foi alterado. Você pode voltar para assinatura e tentar novamente."}
         </p>
 
         {isSuccess ? (
@@ -151,7 +151,7 @@ export default function BillingResultPage({
 
         <Link href="/billing">
           <a className="inline-flex rounded-full bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400">
-            Back to billing
+            Voltar para assinatura
           </a>
         </Link>
       </Panel>

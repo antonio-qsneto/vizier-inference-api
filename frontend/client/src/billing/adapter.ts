@@ -18,7 +18,7 @@ export interface BillingCheckoutResult {
 export const billingPlans: BillingPlan[] = [
   {
     id: "free",
-    label: "Free",
+    label: "Gratuito",
     priceLabel: "R$ 0",
     summary: "Acesso sem assinatura para navegação básica.",
     features: ["Sem upload de estudos", "Sem cobrança", "Upgrade opcional"],
@@ -64,7 +64,7 @@ export async function startBillingCheckout({
     return {
       mode: "mock",
       url: "/billing",
-      message: "Plano free não exige checkout.",
+      message: "Plano gratuito não exige pagamento.",
     };
   }
 
@@ -79,7 +79,7 @@ export async function startBillingCheckout({
 
   if (!isBillingConfigured || !token) {
     throw new Error(
-      "Billing não está configurado. Defina VITE_ENABLE_BILLING=true e endpoint de checkout.",
+      "A assinatura não está configurada. Defina VITE_ENABLE_BILLING=true e o endpoint de checkout.",
     );
   }
 
@@ -129,14 +129,14 @@ export async function startBillingCheckout({
     return {
       mode: "updated",
       url: "/billing",
-      message: payload?.detail || "Subscription updated successfully.",
+      message: payload?.detail || "Assinatura atualizada com sucesso.",
     };
   }
 
   if (!response.ok || !checkoutUrl) {
     if (response.ok && looksLikeHtmlResponse) {
       throw new Error(
-        `Billing endpoint (${env.billingCheckoutEndpoint}) retornou HTML em vez de JSON. ` +
+        `Endpoint de assinatura (${env.billingCheckoutEndpoint}) retornou HTML em vez de JSON. ` +
           "Isso indica fallback/proxy do Amplify para a SPA. " +
           "Ajuste VITE_BILLING_CHECKOUT_ENDPOINT para a API real ou corrija a regra /api/<*> no Amplify.",
       );
@@ -149,7 +149,7 @@ export async function startBillingCheckout({
       (responseText && responseText.length < 400 ? responseText : null);
     throw new Error(
       backendMessage ||
-        `Billing checkout endpoint did not return a redirect URL (HTTP ${response.status})`,
+        `O endpoint de checkout não retornou URL de redirecionamento (HTTP ${response.status})`,
     );
   }
 
@@ -162,7 +162,7 @@ export async function startBillingCheckout({
 export async function startBillingPortal(token: string | null) {
   if (!isBillingConfigured || !token) {
     throw new Error(
-      "Billing não está configurado. Defina VITE_ENABLE_BILLING=true e endpoint do portal.",
+      "A assinatura não está configurada. Defina VITE_ENABLE_BILLING=true e o endpoint do portal.",
     );
   }
 
@@ -188,7 +188,7 @@ export async function startBillingPortal(token: string | null) {
   } | null;
   if (!response.ok || !payload?.url) {
     throw new Error(
-      payload?.detail || "Billing portal endpoint did not return a URL",
+      payload?.detail || "O endpoint do portal de assinatura não retornou URL",
     );
   }
 

@@ -111,7 +111,7 @@ function normalizeLegendLabel(rawLabel: string | null | undefined, segmentId: nu
     .replace(/\s+/g, " ")
     .trim();
   if (!compact || /^label\s*\d+$/i.test(compact)) {
-    return `Segment ${segmentId}`;
+    return `Segmento ${segmentId}`;
   }
   return compact;
 }
@@ -218,7 +218,7 @@ export function OrthogonalViewer({
           : resampleMaskVolumeToDims(nextMaskVolume, nextImageVolume.dims);
       if (nextImageVolume.dims.join("x") !== nextMaskVolume.dims.join("x")) {
         toast.warning(
-          "Mask dimensions did not match the image. Viewer applied nearest-neighbor alignment.",
+          "As dimensões da máscara não correspondiam à imagem. O visualizador aplicou alinhamento por vizinho mais próximo.",
         );
       }
 
@@ -242,7 +242,7 @@ export function OrthogonalViewer({
       if (viewerError instanceof Error) {
         setError(viewerError.message);
       } else {
-        setError("Failed to load viewer assets");
+        setError("Falha ao carregar os arquivos do visualizador");
       }
     } finally {
       setLoading(false);
@@ -888,7 +888,7 @@ export function OrthogonalViewer({
                 : "border-white/8 bg-[#20222a] text-slate-200 hover:border-white/16",
             )}
           >
-            Focus
+            Foco
           </button>
         </div>
         <input
@@ -906,7 +906,7 @@ export function OrthogonalViewer({
           <span>
             {metrics.currentSlice + 1} / {metrics.sliceCount}
           </span>
-          <span>{primaryPlane === plane ? "main" : "sync"}</span>
+          <span>{primaryPlane === plane ? "principal" : "sincronizado"}</span>
         </div>
       </div>
     );
@@ -977,7 +977,7 @@ export function OrthogonalViewer({
                     <p className="mt-0.5 text-[11px] text-slate-500">
                       {segment.voxels
                         ? `${segment.voxels.toLocaleString()} voxels · ${segment.percentage}%`
-                        : `Segment ID ${segment.id}`}
+                        : `ID do segmento ${segment.id}`}
                     </p>
                   </div>
                   <span
@@ -1008,13 +1008,13 @@ export function OrthogonalViewer({
           <div className="flex items-center gap-2">
             <FolderOpen className="h-3.5 w-3.5 text-sky-300/80" />
             <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-100/80">
-              Viewport Rail
+              Painel de cortes
             </p>
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-400">
             {viewMode === "single"
               ? "Arraste um corte lateral para o viewport principal."
-              : "Controles rapidos e sincronizados dos cortes."}
+              : "Controles rápidos e sincronizados dos cortes."}
           </p>
         </div>
 
@@ -1079,7 +1079,7 @@ export function OrthogonalViewer({
       <div className="overflow-hidden rounded-[12px] border border-white/8 bg-[#1d1f26]">
         <div className="flex min-h-[70vh] items-center justify-center gap-3 text-sm text-slate-200">
           <LoaderCircle className="h-5 w-5 animate-spin text-sky-300" />
-          Loading image and mask volumes...
+          Carregando volumes de imagem e máscara...
         </div>
       </div>
     );
@@ -1089,7 +1089,7 @@ export function OrthogonalViewer({
     return (
       <div className="overflow-hidden rounded-[12px] border border-rose-400/20 bg-[#1d1f26] p-5">
         <p className="text-lg font-semibold text-white">
-          Viewer failed to load
+          Falha ao carregar o visualizador
         </p>
         <p className="mt-2 text-sm leading-7 text-slate-300">{error}</p>
         <button
@@ -1100,7 +1100,7 @@ export function OrthogonalViewer({
           }}
           className="mt-4 rounded-[8px] border border-sky-300/30 bg-sky-500/12 px-4 py-2 text-sm font-semibold text-sky-50 transition hover:bg-sky-500/18"
         >
-          Retry
+          Tentar novamente
         </button>
       </div>
     );
@@ -1158,10 +1158,10 @@ export function OrthogonalViewer({
               className="h-full bg-transparent pr-2 text-xs font-semibold uppercase tracking-[0.14em] text-white outline-none"
             >
               {[
-                { id: "legend", label: "Legend" },
-                { id: "teal", label: "Teal" },
-                { id: "warm", label: "Warm" },
-                { id: "contrast", label: "Contrast" },
+                { id: "legend", label: "Legenda" },
+                { id: "teal", label: "Azulado" },
+                { id: "warm", label: "Quente" },
+                { id: "contrast", label: "Contraste" },
               ].map((palette) => (
                 <option
                   key={palette.id}
@@ -1177,7 +1177,7 @@ export function OrthogonalViewer({
           <div className="flex items-center gap-2 rounded-[8px] border border-white/8 bg-[#26272e] px-3 py-1.5">
             <PaletteIcon className="h-3.5 w-3.5 text-sky-300/80" />
             <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">
-              Mask
+              Máscara
             </span>
             <input
               type="range"
@@ -1199,8 +1199,8 @@ export function OrthogonalViewer({
 
           <div className="flex items-center gap-px">
             {[
-              { id: "physical", label: "Fisico" },
-              { id: "anatomical", label: "Anatomico" },
+              { id: "physical", label: "Físico" },
+              { id: "anatomical", label: "Anatômico" },
             ].map((mode) =>
               renderToolbarButton({
                 active: displayAspectMode === mode.id,
@@ -1213,8 +1213,8 @@ export function OrthogonalViewer({
 
           <div className="flex items-center gap-px">
             {[
-              { id: "crosshair", label: "Crosshair", Icon: CrosshairIcon },
-              { id: "pan", label: "Pan", Icon: Hand },
+              { id: "crosshair", label: "Mira", Icon: CrosshairIcon },
+              { id: "pan", label: "Mover", Icon: Hand },
             ].map((mode) =>
               renderToolbarButton({
                 active: interactionMode === mode.id,
@@ -1264,7 +1264,7 @@ export function OrthogonalViewer({
             ) : (
               <Play className="h-3.5 w-3.5" />
             )}
-            {cinePlaying ? "Pause" : "Cine"}
+            {cinePlaying ? "Pausar" : "Cine"}
           </button>
         </div>
       </div>

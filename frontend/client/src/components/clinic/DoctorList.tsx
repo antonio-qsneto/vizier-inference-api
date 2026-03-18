@@ -42,7 +42,7 @@ export default function DoctorList({
               disabled={disablingActions}
               className="rounded-full border border-rose-300/25 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Remove doctor
+              Remover médico
             </button>
           ) : null}
         </div>

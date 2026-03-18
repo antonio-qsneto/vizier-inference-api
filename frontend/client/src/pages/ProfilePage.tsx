@@ -124,8 +124,8 @@ export default function ProfilePage() {
     <section className="space-y-6">
       <PageIntro
         eyebrow="Perfil"
-        title="Gerenciar perfil e offboarding"
-        description="Cancelamento de assinatura e exclusão de conta com validações de billing."
+        title="Gerenciar perfil e encerramento de conta"
+        description="Cancelamento de assinatura e exclusão de conta com validações de cobrança."
       />
 
       <Panel className="space-y-4">
@@ -138,7 +138,7 @@ export default function ProfilePage() {
           Role efetiva: {statusPayload?.effective_role || effectiveRole}
         </p>
         <p className="text-sm text-slate-300">
-          Estado da conta: {user?.account_lifecycle_status || "active"}
+          Estado da conta: {user?.account_lifecycle_status || "ativo"}
         </p>
       </Panel>
 
@@ -147,8 +147,8 @@ export default function ProfilePage() {
           Assinatura
         </p>
         <p className="text-sm text-slate-300">
-          Escopo: {statusPayload?.subscription_scope || "none"} · Status:{" "}
-          {statusPayload?.status || "none"}
+          Escopo: {statusPayload?.subscription_scope || "nenhum"} · Status:{" "}
+          {statusPayload?.status || "nenhum"}
         </p>
         {statusPayload?.billing_period_end ? (
           <InlineNotice title="Acesso até o fim do ciclo">
@@ -169,7 +169,7 @@ export default function ProfilePage() {
 
       <Panel className="space-y-4 border-rose-300/25 bg-rose-500/5">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-rose-200">
-          Danger Zone
+          Zona de risco
         </p>
         {statusPayload?.blockers?.length ? (
           <div className="space-y-2 rounded-xl border border-amber-300/30 bg-amber-500/10 p-3 text-sm text-amber-50">

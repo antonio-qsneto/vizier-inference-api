@@ -146,7 +146,7 @@ export default function ClinicPage() {
     const query = new URLSearchParams(window.location.search);
     const billingStatus = query.get("billing");
     if (billingStatus === "cancel") {
-      toast.message("Checkout Stripe cancelado.");
+      toast.message("Pagamento Stripe cancelado.");
       billingReturnHandledRef.current = true;
       return;
     }
@@ -155,7 +155,7 @@ export default function ClinicPage() {
     }
 
     billingReturnHandledRef.current = true;
-    toast.success("Checkout Stripe concluído.");
+    toast.success("Pagamento Stripe concluído.");
 
     if (!accessToken || !isClinicAdmin) {
       return;
@@ -188,7 +188,7 @@ export default function ClinicPage() {
             toast.error(
               requestError instanceof Error
                 ? requestError.message
-                : "Falha ao sincronizar assinatura após checkout",
+                : "Falha ao sincronizar assinatura após pagamento",
             );
             await loadClinicData();
           }
@@ -251,13 +251,15 @@ export default function ClinicPage() {
       }
 
       if (!currentClinic) {
-        throw new Error("Não foi possível criar/recuperar a clínica para iniciar billing.");
+        throw new Error("Não foi possível criar/recuperar a clínica para iniciar a assinatura.");
       }
 
       await startClinicCheckout(accessToken, payload.planId, payload.seats);
     } catch (requestError) {
       toast.error(
-        requestError instanceof Error ? requestError.message : "Falha ao ativar Clinic Plan",
+        requestError instanceof Error
+          ? requestError.message
+          : "Falha ao ativar plano de clínica",
       );
       throw requestError;
     } finally {
@@ -280,7 +282,7 @@ export default function ClinicPage() {
       await startClinicCheckout(accessToken, payload.planId, payload.seats);
     } catch (requestError) {
       toast.error(
-        requestError instanceof Error ? requestError.message : "Falha ao iniciar checkout da clínica",
+        requestError instanceof Error ? requestError.message : "Falha ao iniciar pagamento da clínica",
       );
       throw requestError;
     } finally {
@@ -305,10 +307,12 @@ export default function ClinicPage() {
     setSubmitting(true);
     try {
       await inviteDoctor(accessToken, email);
-      toast.success("Invitation sent");
+      toast.success("Convite enviado");
       await loadClinicData();
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "Invitation failed");
+      toast.error(
+        requestError instanceof Error ? requestError.message : "Falha ao enviar convite",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -322,10 +326,12 @@ export default function ClinicPage() {
     setSubmitting(true);
     try {
       await removeDoctor(accessToken, doctorId);
-      toast.success("Doctor removed");
+      toast.success("Médico removido");
       await loadClinicData();
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "Doctor removal failed");
+      toast.error(
+        requestError instanceof Error ? requestError.message : "Falha ao remover médico",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -342,7 +348,9 @@ export default function ClinicPage() {
       toast.success(response.detail);
       await loadClinicData();
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "Seat update failed");
+      toast.error(
+        requestError instanceof Error ? requestError.message : "Falha ao atualizar assentos",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -379,11 +387,11 @@ export default function ClinicPage() {
     setSubmitting(true);
     try {
       await cancelInvitation(accessToken, invitationId);
-      toast.success("Invitation canceled");
+      toast.success("Convite cancelado");
       await loadClinicData();
     } catch (requestError) {
       toast.error(
-        requestError instanceof Error ? requestError.message : "Invitation cancellation failed",
+        requestError instanceof Error ? requestError.message : "Falha ao cancelar convite",
       );
     } finally {
       setSubmitting(false);
@@ -396,7 +404,7 @@ export default function ClinicPage() {
     }
 
     const confirmed = window.confirm(
-      "Você será desvinculado desta clínica e voltará para o plano free individual. Deseja continuar?",
+      "Você será desvinculado desta clínica e voltará para o plano individual gratuito. Deseja continuar?",
     );
     if (!confirmed) {
       return;
@@ -448,16 +456,16 @@ export default function ClinicPage() {
       className="space-y-6"
     >
       <PageIntro
-        eyebrow="Clinic"
-        title="Clinic plan and team management"
-        description="Fluxo de upgrade Individual → Clinic Admin com assentos por médico, cobrança Stripe e gestão de equipe da clínica."
+        eyebrow="Clínica"
+        title="Plano da clínica e gestão da equipe"
+        description="Fluxo de upgrade de usuário individual para administrador da clínica, com assentos por médico, cobrança Stripe e gestão da equipe."
       />
 
-      {error ? <InlineNotice title="Clinic workflow error">{error}</InlineNotice> : null}
+      {error ? <InlineNotice title="Erro no fluxo da clínica">{error}</InlineNotice> : null}
 
       {!billingEnabled ? (
-        <InlineNotice title="Billing desabilitado" tone="warning">
-          O modo de billing Stripe está desativado no ambiente atual.
+        <InlineNotice title="Assinatura desabilitada" tone="warning">
+          O modo de assinatura Stripe está desativado no ambiente atual.
         </InlineNotice>
       ) : null}
 
@@ -466,17 +474,17 @@ export default function ClinicPage() {
           <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
             <Panel className="space-y-5">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                Clinic profile
+                Perfil da clínica
               </p>
               <h2 className="text-3xl font-semibold text-white">{clinic.name}</h2>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Plan</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Plano</p>
                   <p className="mt-2 text-lg font-semibold text-white">{clinic.subscription_plan}</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Seats</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Assentos</p>
                   <p className="mt-2 text-lg font-semibold text-white">
                     {clinic.seat_used ?? 0} / {clinic.seat_limit ?? 0}
                   </p>
@@ -489,8 +497,8 @@ export default function ClinicPage() {
               </div>
 
               <p className="text-sm leading-7 text-slate-300">
-                Owner: {clinic.owner?.email || "N/A"} · Created{" "}
-                {clinic.created_at ? formatDateTime(clinic.created_at) : "N/A"}
+                Responsável: {clinic.owner?.email || "N/D"} · Criada em{" "}
+                {clinic.created_at ? formatDateTime(clinic.created_at) : "N/D"}
               </p>
             </Panel>
 
@@ -518,7 +526,7 @@ export default function ClinicPage() {
 
             <Panel className="space-y-4 xl:col-span-2">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                Invitations log
+                Histórico de convites
               </p>
               <div className="space-y-3">
                 {clinicInvitations.length ? (
@@ -534,10 +542,10 @@ export default function ClinicPage() {
                             <p className="text-sm font-semibold text-white">{invitation.email}</p>
                           </div>
                           <p className="mt-3 text-sm text-slate-300">
-                            Invited by {invitation.invited_by_email}
+                            Convidado por {invitation.invited_by_email}
                           </p>
                           <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">
-                            Expires {formatDateTime(invitation.expires_at)}
+                            Expira em {formatDateTime(invitation.expires_at)}
                           </p>
                         </div>
                         {invitation.status === "PENDING" ? (
@@ -547,7 +555,7 @@ export default function ClinicPage() {
                             disabled={submitting}
                             className="rounded-full border border-rose-300/25 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            Cancel invitation
+                            Cancelar convite
                           </button>
                         ) : null}
                       </div>
@@ -564,12 +572,12 @@ export default function ClinicPage() {
         ) : isClinicDoctor ? (
           <Panel className="space-y-5">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-              Clinic membership
+              Vínculo com clínica
             </p>
             <h2 className="text-3xl font-semibold text-white">{clinic.name}</h2>
-            <InlineNotice title="Acesso de doctor vinculado">
-              Você está vinculado a esta clínica como doctor. Dados de billing e
-              gestão de assentos ficam visíveis apenas para admins.
+            <InlineNotice title="Acesso de médico vinculado">
+              Você está vinculado a esta clínica como médico. Dados de assinatura e
+              gestão de assentos ficam visíveis apenas para administradores.
             </InlineNotice>
             <button
               type="button"
@@ -582,8 +590,8 @@ export default function ClinicPage() {
           </Panel>
         ) : (
           <EmptyState
-            title="Clinic membership"
-            description="Este perfil não possui permissões para gerenciar esta clínica."
+            title="Vínculo com clínica"
+            description="Este perfil não possui permissão para gerenciar esta clínica."
           />
         )
       ) : canShowIndividualUpgrade ? (
@@ -597,7 +605,7 @@ export default function ClinicPage() {
           {myInvitations.length ? (
             <Panel className="space-y-4">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                Pending invitations
+                Convites pendentes
               </p>
               {myInvitations.map((invitation) => (
                 <div
@@ -609,26 +617,26 @@ export default function ClinicPage() {
                     <p className="text-sm font-semibold text-white">{invitation.clinic_name}</p>
                   </div>
                   <p className="mt-3 text-sm leading-7 text-slate-300">
-                    Sent by {invitation.invited_by_email}. Accept it from the Invitations page.
+                    Enviado por {invitation.invited_by_email}. Aceite o convite para entrar na clínica.
                   </p>
                 </div>
               ))}
             </Panel>
           ) : (
             <EmptyState
-              title="No clinic linked yet"
-              description="Ative um Clinic Plan para criar sua clínica ou aguarde um convite em `Invitations`."
+              title="Nenhuma clínica vinculada ainda"
+              description="Ative um plano de clínica para criar sua clínica ou aguarde um convite."
             />
           )}
         </div>
       ) : isIndividualPaidSubscriber ? (
         <InlineNotice title="Migração para clínica indisponível">
-          Assinantes individuais com plano ativo não podem virar Clinic Admin.
+          Assinantes individuais com plano ativo não podem virar administrador de clínica.
           Cancele o plano individual e aguarde o fim do ciclo para criar clínica.
         </InlineNotice>
       ) : (
         <EmptyState
-          title="Clinic plan unavailable"
+          title="Plano de clínica indisponível"
           description="Apenas usuários individuais podem iniciar o upgrade para o plano de clínica neste fluxo."
         />
       )}

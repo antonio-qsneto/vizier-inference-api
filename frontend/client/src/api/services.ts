@@ -61,7 +61,7 @@ export function pickUploadFieldName(fileName: string): UploadFieldName {
   }
 
   throw new Error(
-    "Unsupported file format. Use ZIP (.zip), NPZ (.npz), or NIfTI (.nii/.nii.gz).",
+    "Formato de arquivo não suportado. Use ZIP (.zip), NPZ (.npz) ou NIfTI (.nii/.nii.gz).",
   );
 }
 
@@ -528,7 +528,7 @@ export async function uploadFileDirectToS3(
   if (!response.ok) {
     const errorBody = await response.text().catch(() => "");
     throw new Error(
-      `S3 upload failed (${response.status}): ${errorBody || response.statusText}`,
+      `Falha no upload para S3 (${response.status}): ${errorBody || response.statusText}`,
     );
   }
 }

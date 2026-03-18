@@ -24,12 +24,12 @@ interface TeamManagementProps {
 
 function planLabel(plan: ClinicSubscriptionPlan | undefined) {
   if (plan === "clinic_yearly") {
-    return "Clinic yearly";
+    return "Clínica anual";
   }
   if (plan === "clinic_monthly") {
-    return "Clinic monthly";
+    return "Clínica mensal";
   }
-  return "Free";
+  return "Gratuito";
 }
 
 export default function TeamManagement({
@@ -92,9 +92,9 @@ export default function TeamManagement({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-              Team management
+              Gestão da equipe
             </p>
-            <h2 className="mt-2 text-2xl font-semibold text-white">Clinic seats and doctors</h2>
+            <h2 className="mt-2 text-2xl font-semibold text-white">Assentos e médicos da clínica</h2>
             <p className="mt-2 text-sm leading-7 text-slate-300">
               Gerencie equipe médica, assentos comprados e cobrança Stripe da clínica.
             </p>
@@ -104,18 +104,18 @@ export default function TeamManagement({
 
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Plan</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Plano</p>
             <p className="mt-2 text-lg font-semibold text-white">{planLabel(clinic.subscription_plan)}</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Seats used</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Assentos usados</p>
             <p className="mt-2 text-lg font-semibold text-white">
               {seatsUsed} / {seatsLimit}
             </p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Billing status</p>
-            <p className="mt-2 text-lg font-semibold text-white">{clinic.account_status || "unknown"}</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Status da cobrança</p>
+            <p className="mt-2 text-lg font-semibold text-white">{clinic.account_status || "desconhecido"}</p>
           </div>
         </div>
 
@@ -127,12 +127,12 @@ export default function TeamManagement({
             />
           </div>
           <p className="text-xs uppercase tracking-[0.16em] text-slate-400">
-            Seats used: {seatsProgress}%
+            Assentos usados: {seatsProgress}%
           </p>
         </div>
 
         {clinic.has_pending_seat_reduction ? (
-          <InlineNotice title="Seat reduction scheduled" tone="warning">
+          <InlineNotice title="Redução de assentos agendada" tone="warning">
             Redução agendada para {clinic.scheduled_seat_limit} assentos em
             {" "}
             {clinic.scheduled_seat_effective_at
@@ -143,7 +143,7 @@ export default function TeamManagement({
         ) : null}
 
         {seatsReached ? (
-          <InlineNotice title="Seat limit reached" tone="warning">
+          <InlineNotice title="Limite de assentos atingido" tone="warning">
             Não é possível convidar mais médicos até aumentar os assentos comprados.
           </InlineNotice>
         ) : null}
@@ -173,9 +173,9 @@ export default function TeamManagement({
         <Panel className="space-y-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-              Invite doctor
+              Convidar médico
             </p>
-            <h3 className="mt-2 text-xl font-semibold text-white">Add a doctor seat</h3>
+            <h3 className="mt-2 text-xl font-semibold text-white">Adicionar assento de médico</h3>
           </div>
 
           <form className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]" onSubmit={handleInviteDoctor}>
@@ -183,7 +183,7 @@ export default function TeamManagement({
               value={inviteEmail}
               onChange={(event) => setInviteEmail(event.target.value)}
               type="email"
-              placeholder="doctor@clinic.com"
+              placeholder="medico@clinica.com"
               disabled={submitting || seatsReached}
               className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/50 disabled:cursor-not-allowed disabled:opacity-60"
             />
@@ -192,7 +192,7 @@ export default function TeamManagement({
               disabled={submitting || seatsReached || !inviteEmail.trim()}
               className="rounded-2xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Invite Doctor
+              Convidar médico
             </button>
           </form>
         </Panel>
@@ -202,9 +202,9 @@ export default function TeamManagement({
         <Panel className="space-y-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-              Change seats
+              Alterar assentos
             </p>
-            <h3 className="mt-2 text-xl font-semibold text-white">Update purchased seats</h3>
+            <h3 className="mt-2 text-xl font-semibold text-white">Atualizar assentos contratados</h3>
           </div>
 
           <form className="space-y-4" onSubmit={handleChangeSeats}>
@@ -230,7 +230,7 @@ export default function TeamManagement({
               disabled={submitting || targetSeats === seatsLimit}
               className="rounded-2xl border border-sky-300/30 bg-sky-500/10 px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Change Seats
+              Alterar assentos
             </button>
           </form>
         </Panel>
@@ -239,9 +239,9 @@ export default function TeamManagement({
       <Panel className="space-y-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-            Doctors
+            Médicos
           </p>
-          <h3 className="mt-2 text-xl font-semibold text-white">Current clinic team</h3>
+          <h3 className="mt-2 text-xl font-semibold text-white">Equipe atual da clínica</h3>
         </div>
 
         <DoctorList

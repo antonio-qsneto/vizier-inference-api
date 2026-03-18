@@ -8,13 +8,13 @@ export default function NotFoundPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
           404
         </p>
-        <h1 className="text-3xl font-semibold text-white">Route not found</h1>
+        <h1 className="text-3xl font-semibold text-white">Rota não encontrada</h1>
         <p className="text-sm leading-7 text-slate-300">
-          Use o menu lateral para voltar ao workspace principal.
+          Use o menu lateral para voltar ao espaço de trabalho principal.
         </p>
         <Link href="/dashboard">
           <a className="inline-flex rounded-full bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400">
-            Open dashboard
+            Abrir painel
           </a>
         </Link>
       </Panel>

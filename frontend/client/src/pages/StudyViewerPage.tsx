@@ -512,14 +512,14 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
   }, [isAsyncFlow, loadResult, statusSnapshot?.status, study?.status]);
 
   if (loading) {
-    return <LoadingState label={isAsyncFlow ? "Preparing async viewer..." : "Preparing viewer..."} />;
+    return <LoadingState label={isAsyncFlow ? "Preparando visualizador assíncrono..." : "Preparando visualizador..."} />;
   }
 
   if (isAsyncFlow) {
     if (!asyncStatus) {
       return (
-        <InlineNotice title="Inference job unavailable" tone="danger">
-          {error || "The inference job could not be loaded from the backend."}
+        <InlineNotice title="Job de inferência indisponível" tone="danger">
+          {error || "Não foi possível carregar o job de inferência no backend."}
         </InlineNotice>
       );
     }
@@ -550,7 +550,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
               {asyncModality || "Modalidade não informada"}
             </p>
             <p className="mt-1 text-xs text-slate-400">
-              Segmentation targets: {asyncSegmentationTargets}
+              Alvos de segmentação: {asyncSegmentationTargets}
             </p>
           </div>
 
@@ -559,7 +559,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
             <Link href={`/studies/${asyncStatus.id}?async=1`}>
               <a className="inline-flex items-center gap-2 rounded-[8px] border border-white/10 bg-[#2a2c34] px-3 py-2 text-sm font-semibold text-slate-100 transition hover:bg-[#31343d]">
                 <FolderOpen className="h-4 w-4" />
-                Back to detail
+                Voltar ao detalhe
               </a>
             </Link>
             <button
@@ -568,19 +568,19 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
               className="inline-flex items-center gap-2 rounded-[8px] border border-sky-300/30 bg-sky-500/15 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-400/20"
             >
               <RotateCcw className="h-4 w-4" />
-              Reload assets
+              Recarregar arquivos
             </button>
           </div>
         </div>
 
         {error ? (
-          <InlineNotice title="Viewer request failed">{error}</InlineNotice>
+          <InlineNotice title="Falha ao consultar visualizador">{error}</InlineNotice>
         ) : null}
 
         {currentAsyncStatus !== "COMPLETED" ? (
           <Panel className="space-y-4">
             <p className="text-lg font-semibold text-white">
-              Viewer will unlock when processing completes
+              O visualizador será liberado ao concluir o processamento
             </p>
             <p className="text-sm leading-7 text-slate-300">
               Este job ainda não finalizou. Assim que chegar em `COMPLETED`, o
@@ -602,7 +602,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
         ) : (
           <Panel className="space-y-4">
             <p className="text-lg font-semibold text-white">
-              Result assets not ready
+              Arquivos de resultado ainda indisponíveis
             </p>
             <p className="text-sm leading-7 text-slate-300">
               O job está `COMPLETED`, mas o frontend não encontrou os dois
@@ -617,8 +617,8 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
 
   if (!study) {
     return (
-      <InlineNotice title="Study unavailable" tone="danger">
-        {error || "The study could not be loaded from the backend."}
+      <InlineNotice title="Estudo indisponível" tone="danger">
+        {error || "Não foi possível carregar o estudo no backend."}
       </InlineNotice>
     );
   }
@@ -641,17 +641,17 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
           <div className="flex items-center gap-2">
             <FolderOpen className="h-3.5 w-3.5 text-sky-300/80" />
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-300/80">
-              Viewer
+              Visualizador
             </p>
           </div>
           <h1 className="mt-1 truncate text-xl font-semibold tracking-tight text-white">
             {study.case_identification || study.patient_name || "Estudo clínico"}
           </h1>
           <p className="mt-1 text-sm text-slate-300">
-            {study.exam_modality || "Unknown"}
+            {study.exam_modality || "Desconhecida"}
           </p>
           <p className="mt-1 text-xs text-slate-400">
-            Segmentation targets: {legacySegmentationTargets}
+            Alvos de segmentação: {legacySegmentationTargets}
           </p>
         </div>
 
@@ -660,7 +660,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
           <Link href={`/studies/${study.id}`}>
             <a className="inline-flex items-center gap-2 rounded-[8px] border border-white/10 bg-[#2a2c34] px-3 py-2 text-sm font-semibold text-slate-100 transition hover:bg-[#31343d]">
               <FolderOpen className="h-4 w-4" />
-              Back to detail
+              Voltar ao detalhe
             </a>
           </Link>
           <button
@@ -669,16 +669,16 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
             className="inline-flex items-center gap-2 rounded-[8px] border border-sky-300/30 bg-sky-500/15 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-400/20"
           >
             <RotateCcw className="h-4 w-4" />
-            Reload assets
+            Recarregar arquivos
           </button>
         </div>
       </div>
 
       {error ? (
-        <InlineNotice title="Viewer request failed">{error}</InlineNotice>
+        <InlineNotice title="Falha ao consultar visualizador">{error}</InlineNotice>
       ) : null}
       {polling.error ? (
-        <InlineNotice title="Status polling failed">
+        <InlineNotice title="Falha no monitoramento de status">
           {polling.error}
         </InlineNotice>
       ) : null}
@@ -686,7 +686,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
       {currentStatus !== "COMPLETED" ? (
         <Panel className="space-y-4">
           <p className="text-lg font-semibold text-white">
-            Viewer will unlock when processing completes
+            O visualizador será liberado ao concluir o processamento
           </p>
           <p className="text-sm leading-7 text-slate-300">
             O endpoint `/result/` só fica disponível quando o estudo chega em
@@ -708,7 +708,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
       ) : (
         <Panel className="space-y-4">
           <p className="text-lg font-semibold text-white">
-            Result assets not ready
+            Arquivos de resultado ainda indisponíveis
           </p>
           <p className="text-sm leading-7 text-slate-300">
             O backend marcou o estudo como `COMPLETED`, mas o frontend ainda não

@@ -5,14 +5,14 @@ import { AnimatedConnector } from "@/components/site/AnimatedConnector";
 
 const medicalImageSources = [
   {
-    name: "CT Scan",
+    name: "Exame de CT",
     type: "Tomografia Computadorizada",
     modality: "CT",
     imageSrc: "/site/brain_ct.png",
     imageAlt: "Prévia de exame CT cerebral",
   },
   {
-    name: "MRI Scan",
+    name: "Exame de MRI",
     type: "Ressonância Magnética",
     modality: "MRI",
     imageSrc: "/site/lung_mri.png",
@@ -248,7 +248,7 @@ function AIModelComponent({
         </motion.div>
 
         <div className="text-center">
-          <h3 className="mb-1 text-xl text-white">Vizier Model IA</h3>
+          <h3 className="mb-1 text-xl text-white">Modelo de IA Vizier</h3>
 
           {isProcessing ? (
             <motion.div
