@@ -62,6 +62,14 @@ const viewModeOptions: Array<{
   { id: "mpr", label: "MPR", Icon: LayoutGrid },
 ];
 
+const cineSpeedOptions = [
+  { intervalMs: 220, label: "0.6x" },
+  { intervalMs: 170, label: "0.8x" },
+  { intervalMs: 130, label: "1x" },
+  { intervalMs: 95, label: "1.35x" },
+  { intervalMs: 70, label: "1.85x" },
+];
+
 const panelVariantConfig: Record<
   PanelVariant,
   {
@@ -146,6 +154,7 @@ export function OrthogonalViewer({
   );
   const [cinePlane, setCinePlane] = useState<Plane>("axial");
   const [cinePlaying, setCinePlaying] = useState(false);
+  const [cineIntervalMs, setCineIntervalMs] = useState(130);
   const [viewportState, setViewportState] = useState<
     Record<Plane, { zoom: number; panX: number; panY: number }>
   >({
@@ -389,10 +398,10 @@ export function OrthogonalViewer({
         ...current,
         [axisKey]: current[axisKey] >= maxSlice ? 0 : current[axisKey] + 1,
       }));
-    }, 130);
+    }, cineIntervalMs);
 
     return () => window.clearInterval(intervalId);
-  }, [cinePlane, cinePlaying, imageVolume]);
+  }, [cineIntervalMs, cinePlane, cinePlaying, imageVolume]);
 
   function updateViewport(
     plane: Plane,
@@ -1207,6 +1216,25 @@ export function OrthogonalViewer({
               {planes.map((plane) => (
                 <option key={plane} value={plane} className="bg-slate-950">
                   {planeLabels[plane]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex h-8 items-center gap-2 rounded-[8px] border border-white/8 bg-[#26272e] px-3">
+            <SlidersHorizontal className="h-3.5 w-3.5 text-sky-300/80" />
+            <select
+              value={cineIntervalMs}
+              onChange={(event) => setCineIntervalMs(Number(event.target.value))}
+              className="h-full bg-transparent pr-2 text-xs font-semibold uppercase tracking-[0.14em] text-white outline-none"
+            >
+              {cineSpeedOptions.map((speed) => (
+                <option
+                  key={speed.intervalMs}
+                  value={speed.intervalMs}
+                  className="bg-slate-950"
+                >
+                  {speed.label}
                 </option>
               ))}
             </select>
