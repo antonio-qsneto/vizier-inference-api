@@ -352,7 +352,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(
-    (remote = true) => {
+    (remote = false) => {
       const shouldLogoutFromCognito =
         remote && isCognitoConfigured && session?.provider === "cognito";
 

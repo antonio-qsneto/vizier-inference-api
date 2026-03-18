@@ -226,7 +226,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => logout(true)}
+                    onClick={() => logout(false)}
                     aria-label="Logout"
                     title="Logout"
                     className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-white/8 bg-[#2a2b31] text-slate-300 transition hover:bg-[#32343c] hover:text-white"
@@ -326,7 +326,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
                   <button
                     type="button"
-                    onClick={() => logout(true)}
+                    onClick={() => logout(false)}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-[10px] border border-white/8 bg-[#25262d] px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:bg-[#2e3038]"
                   >
                     <LogOut className="h-4 w-4 text-sky-400" />
