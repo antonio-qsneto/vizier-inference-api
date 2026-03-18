@@ -278,6 +278,13 @@ variable "stripe_webhook_secret" {
   default     = ""
 }
 
+variable "google_api_key" {
+  type        = string
+  description = "Google Gemini API key used by Django studies/result descriptive analysis."
+  sensitive   = true
+  default     = ""
+}
+
 variable "stripe_product_id" {
   type        = string
   description = "Stripe product id used as fallback for price resolution."

@@ -158,6 +158,7 @@ gh secret set AWS_ROLE_ARN --repo "$GH_REPO" --env development --body "$AWS_ROLE
 gh secret set TF_VAR_RDS_PASSWORD --repo "$GH_REPO" --env development --body "$RDS_PASSWORD_DEV"
 gh secret set TF_VAR_DJANGO_SECRET_KEY --repo "$GH_REPO" --env development --body "$DJANGO_SECRET_KEY_DEV"
 gh secret set TF_VAR_INFERENCE_API_BEARER_TOKEN --repo "$GH_REPO" --env development --body "$API_BEARER_DEV"
+gh secret set TF_VAR_GOOGLE_API_KEY --repo "$GH_REPO" --env development --body "<google_api_key_temporaria_ou_real>"
 gh secret set TF_VAR_STRIPE_SECRET_KEY --repo "$GH_REPO" --env development --body "<sk_live_ou_sk_test>"
 gh secret set TF_VAR_STRIPE_WEBHOOK_SECRET --repo "$GH_REPO" --env development --body "<whsec_...>"
 # opcional:
@@ -198,6 +199,7 @@ gh secret set AWS_ROLE_ARN --repo "$GH_REPO" --env production --body "$AWS_ROLE_
 gh secret set TF_VAR_RDS_PASSWORD --repo "$GH_REPO" --env production --body "$RDS_PASSWORD_PROD"
 gh secret set TF_VAR_DJANGO_SECRET_KEY --repo "$GH_REPO" --env production --body "$DJANGO_SECRET_KEY_PROD"
 gh secret set TF_VAR_INFERENCE_API_BEARER_TOKEN --repo "$GH_REPO" --env production --body "$API_BEARER_PROD"
+gh secret set TF_VAR_GOOGLE_API_KEY --repo "$GH_REPO" --env production --body "<google_api_key_temporaria_ou_real>"
 gh secret set TF_VAR_STRIPE_SECRET_KEY --repo "$GH_REPO" --env production --body "<sk_live_...>"
 gh secret set TF_VAR_STRIPE_WEBHOOK_SECRET --repo "$GH_REPO" --env production --body "<whsec_...>"
 # opcional:

@@ -15,6 +15,7 @@ Criar dois GitHub Environments:
 2. `SMOKE_AUTH_TOKEN`
 3. `TF_VAR_STRIPE_SECRET_KEY`
 4. `TF_VAR_STRIPE_WEBHOOK_SECRET`
+5. `TF_VAR_GOOGLE_API_KEY` (para Gemini no endpoint `/api/studies/result/`)
 
 ## Variables obrigatórias (por environment)
 1. `AWS_REGION` (ex.: `us-east-1`)
@@ -68,6 +69,7 @@ Os workflows mapeiam secrets GitHub em variáveis Terraform assim:
 - `TF_VAR_RDS_PASSWORD` -> `TF_VAR_rds_password`
 - `TF_VAR_DJANGO_SECRET_KEY` -> `TF_VAR_django_secret_key`
 - `TF_VAR_INFERENCE_API_BEARER_TOKEN` -> `TF_VAR_inference_api_bearer_token`
+- `TF_VAR_GOOGLE_API_KEY` -> `TF_VAR_google_api_key`
 
 ## Amplify (frontend)
 No Amplify App, configurar por branch/ambiente:

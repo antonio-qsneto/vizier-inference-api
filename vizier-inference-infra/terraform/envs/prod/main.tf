@@ -113,6 +113,7 @@ module "app_secrets" {
     DATABASE_URL               = local.django_database_url
     DJANGO_SECRET_KEY          = var.django_secret_key
     INFERENCE_API_BEARER_TOKEN = var.inference_api_bearer_token
+    GOOGLE_API_KEY             = var.google_api_key
     STRIPE_SECRET_KEY          = var.stripe_secret_key
     STRIPE_WEBHOOK_SECRET      = var.stripe_webhook_secret
   })
@@ -271,6 +272,7 @@ module "ecs_fargate_django" {
     { name = "DATABASE_URL", valueFrom = "${module.app_secrets.secret_arn}:DATABASE_URL::" },
     { name = "DJANGO_SECRET_KEY", valueFrom = "${module.app_secrets.secret_arn}:DJANGO_SECRET_KEY::" },
     { name = "INFERENCE_API_BEARER_TOKEN", valueFrom = "${module.app_secrets.secret_arn}:INFERENCE_API_BEARER_TOKEN::" },
+    { name = "GOOGLE_API_KEY", valueFrom = "${module.app_secrets.secret_arn}:GOOGLE_API_KEY::" },
     { name = "STRIPE_SECRET_KEY", valueFrom = "${module.app_secrets.secret_arn}:STRIPE_SECRET_KEY::" },
     { name = "STRIPE_WEBHOOK_SECRET", valueFrom = "${module.app_secrets.secret_arn}:STRIPE_WEBHOOK_SECRET::" },
   ]
@@ -313,6 +315,7 @@ module "ecs_fargate_worker" {
     { name = "DATABASE_URL", valueFrom = "${module.app_secrets.secret_arn}:DATABASE_URL::" },
     { name = "DJANGO_SECRET_KEY", valueFrom = "${module.app_secrets.secret_arn}:DJANGO_SECRET_KEY::" },
     { name = "INFERENCE_API_BEARER_TOKEN", valueFrom = "${module.app_secrets.secret_arn}:INFERENCE_API_BEARER_TOKEN::" },
+    { name = "GOOGLE_API_KEY", valueFrom = "${module.app_secrets.secret_arn}:GOOGLE_API_KEY::" },
   ]
   tags = local.tags
 }

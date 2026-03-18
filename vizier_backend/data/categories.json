@@ -21,14 +21,8 @@
     "abdomen_pancreas_tumors": [
       "pancreas tumors"
     ],
-    "abdomen_colon": [
-      "colon"
-    ],
     "abdomen_colon_cancer_primaries": [
       "colon cancer primaries"
-    ],
-    "abdomen_pancreas": [
-      "pancreas"
     ],
     "whole_body_lesion": [
       "whole-body lesion"
