@@ -11,8 +11,6 @@ import BillingResultPage from "@/pages/BillingResultPage";
 import ClinicPage from "@/pages/ClinicPage";
 import DashboardPage from "@/pages/DashboardPage";
 import HomePage from "@/pages/HomePage";
-import InvitationsPage from "@/pages/InvitationsPage";
-import LoginPage from "@/pages/LoginPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import ProfilePage from "@/pages/ProfilePage";
 import StudyDetailPage from "@/pages/StudyDetailPage";
@@ -26,7 +24,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (status === "guest") {
-      navigate("/login");
+      navigate("/");
     }
   }, [navigate, status]);
 
@@ -41,7 +39,6 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={HomePage} />
-      <Route path="/login" component={LoginPage} />
       <Route path="/auth/callback" component={AuthCallbackPage} />
 
       <Route path="/dashboard">
@@ -53,12 +50,6 @@ function Router() {
       <Route path="/clinic">
         <AuthGate>
           <ClinicPage />
-        </AuthGate>
-      </Route>
-
-      <Route path="/invitations">
-        <AuthGate>
-          <InvitationsPage />
         </AuthGate>
       </Route>
 

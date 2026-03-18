@@ -230,6 +230,25 @@ function parseAsyncSummaryAnalysis(summary: unknown): string | null {
   return null;
 }
 
+function getAsyncViewerTitle(status: InferenceJobStatus) {
+  const payload =
+    status.request_payload && typeof status.request_payload === "object"
+      ? (status.request_payload as Record<string, unknown>)
+      : {};
+
+  const caseIdentification = String(payload.case_identification || "").trim();
+  if (caseIdentification) {
+    return caseIdentification;
+  }
+
+  const patientName = String(payload.patient_name || "").trim();
+  if (patientName) {
+    return patientName;
+  }
+
+  return "Estudo assíncrono";
+}
+
 export default function StudyViewerPage({ studyId }: { studyId: string }) {
   const { accessToken } = useAuth();
   const isAsyncFlow = useMemo(() => {
@@ -480,10 +499,10 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
               </p>
             </div>
             <h1 className="mt-1 truncate text-xl font-semibold tracking-tight text-white">
-              Inference job {asyncStatus.id}
+              {getAsyncViewerTitle(asyncStatus)}
             </h1>
             <p className="mt-1 text-sm text-slate-300">
-              Opened from async S3-first pipeline outputs.
+              Visualização dos artefatos gerados pelo processamento assíncrono.
             </p>
           </div>
 
@@ -541,11 +560,6 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
               artefatos necessários para o viewer (`ORIGINAL_NIFTI` e
               `MASK_NIFTI`).
             </p>
-            {asyncAssets?.availableOutputKinds?.length ? (
-              <p className="text-sm text-slate-300">
-                Available kinds: {asyncAssets.availableOutputKinds.join(", ")}
-              </p>
-            ) : null}
           </Panel>
         )}
       </motion.section>
@@ -578,7 +592,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
             </p>
           </div>
           <h1 className="mt-1 truncate text-xl font-semibold tracking-tight text-white">
-            {study.case_identification || study.patient_name || study.id}
+            {study.case_identification || study.patient_name || "Estudo clínico"}
           </h1>
           <p className="mt-1 text-sm text-slate-300">
             {study.exam_modality || "Unknown"} · {study.category}

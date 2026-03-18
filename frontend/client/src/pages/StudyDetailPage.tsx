@@ -37,8 +37,38 @@ interface AsyncOutputLink {
   expiresIn: number;
 }
 
+const asyncOutputKindLabels: Record<string, string> = {
+  ORIGINAL_NIFTI: "Volume original (NIfTI)",
+  MASK_NIFTI: "Máscara de segmentação (NIfTI)",
+  SUMMARY_JSON: "Resumo da inferência (JSON)",
+  NORMALIZED_INPUT_NPZ: "Input normalizado (NPZ)",
+};
+
 function isAsyncTerminalStatus(status?: string | null) {
   return status === "COMPLETED" || status === "FAILED";
+}
+
+function getAsyncJobDisplayTitle(status: InferenceJobStatus) {
+  const payload =
+    status.request_payload && typeof status.request_payload === "object"
+      ? (status.request_payload as Record<string, unknown>)
+      : {};
+
+  const caseIdentification = String(payload.case_identification || "").trim();
+  if (caseIdentification) {
+    return caseIdentification;
+  }
+
+  const patientName = String(payload.patient_name || "").trim();
+  if (patientName) {
+    return patientName;
+  }
+
+  return "Estudo assíncrono";
+}
+
+function getOutputKindLabel(kind: string) {
+  return asyncOutputKindLabels[kind] || kind.replaceAll("_", " ");
 }
 
 export default function StudyDetailPage({ studyId }: { studyId: string }) {
@@ -225,9 +255,9 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
         className="space-y-6"
       >
         <PageIntro
-          eyebrow="Inference job"
-          title={`Job ${asyncStatus.id}`}
-          description="Fluxo assíncrono S3-first: upload direto no S3, processamento por fila e outputs com presigned download."
+          eyebrow="Inferência assíncrona"
+          title={getAsyncJobDisplayTitle(asyncStatus)}
+          description="Fluxo assíncrono com upload direto no S3 e processamento em fila."
           actions={
             <div className="flex gap-3">
               <button
@@ -235,12 +265,12 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
                 onClick={() => void loadData()}
                 className="rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
               >
-                Refresh
+                Atualizar
               </button>
               {asyncStatus.status === "COMPLETED" ? (
                 <Link href={`/studies/${asyncStatus.id}/viewer?async=1`}>
                   <a className="rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-400">
-                    Open viewer
+                    Abrir visualizador
                   </a>
                 </Link>
               ) : null}
@@ -253,7 +283,6 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
         <Panel className="space-y-5">
           <div className="flex flex-wrap items-center gap-3">
             <StatusPill status={asyncStatus.status} />
-            <p className="text-sm text-slate-300">Correlation {asyncStatus.correlation_id}</p>
           </div>
           <div>
             <div className="flex items-center justify-between text-xs uppercase tracking-[0.16em] text-slate-400">
@@ -289,7 +318,7 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
 
         <Panel className="space-y-4">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-            Output artifacts
+            Arquivos de saída
           </p>
           {asyncOutputs.length ? (
             <div className="space-y-3">
@@ -301,13 +330,13 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
                   rel="noreferrer"
                   className="block rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white hover:bg-white/10"
                 >
-                  {item.output.kind} · {item.output.key}
+                  {getOutputKindLabel(item.output.kind)}
                 </a>
               ))}
             </div>
           ) : (
             <p className="text-sm leading-7 text-slate-300">
-              Outputs will appear after `COMPLETED`.
+              Os arquivos aparecerão após o status `COMPLETED`.
             </p>
           )}
         </Panel>
@@ -335,7 +364,7 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
     >
       <PageIntro
         eyebrow="Study detail"
-        title={study.case_identification || study.patient_name || study.id}
+        title={study.case_identification || study.patient_name || "Estudo clínico"}
         description="Detalhe do estudo com polling em `/status/`, metadata do upload e acesso ao viewer quando o backend finalizar o processamento."
         actions={
           <div className="flex gap-3">
@@ -344,12 +373,12 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
               onClick={() => void loadData()}
               className="rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
             >
-              Refresh
+              Atualizar
             </button>
             {currentStatus === "COMPLETED" ? (
               <Link href={`/studies/${study.id}/viewer`}>
                 <a className="rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-400">
-                  Open viewer
+                  Abrir visualizador
                 </a>
               </Link>
             ) : null}
@@ -365,7 +394,7 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
           <div className="flex flex-wrap items-center gap-3">
             <StatusPill status={currentStatus} />
             <p className="text-sm text-slate-300">
-              Job {statusSnapshot?.job_status || study.job?.status || "UNKNOWN"}
+              Processamento {statusSnapshot?.job_status || study.job?.status || "UNKNOWN"}
             </p>
           </div>
           <div className="space-y-2">
@@ -405,10 +434,6 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
                 { label: "Created", value: formatDateTime(study.created_at) },
                 { label: "Updated", value: formatDateTime(study.updated_at) },
                 { label: "Completed", value: formatDateTime(study.completed_at) },
-                {
-                  label: "External job",
-                  value: study.job?.external_job_id || "Not available",
-                },
               ].map((entry) => (
                 <div
                   key={entry.label}

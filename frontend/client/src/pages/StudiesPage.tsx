@@ -92,7 +92,8 @@ export default function StudiesPage() {
   const caseRows = useMemo<ClinicalCaseRow[]>(() => {
     const legacyRows = studies.map<ClinicalCaseRow>((study) => ({
       id: study.id,
-      caseIdentification: study.case_identification || study.id,
+      caseIdentification:
+        study.case_identification || study.patient_name || "Estudo sem identificação",
       patientName: study.patient_name || "Unnamed patient",
       category: study.category || "--",
       examModality: study.exam_modality || "Unknown",
@@ -106,7 +107,9 @@ export default function StudiesPage() {
     const asyncRows = inferenceJobs.map<ClinicalCaseRow>((job) => {
       const payload = (job.request_payload || {}) as Record<string, unknown>;
       const caseIdentification =
-        String(payload.case_identification || "").trim() || `Job ${job.id}`;
+        String(payload.case_identification || "").trim() ||
+        String(payload.patient_name || "").trim() ||
+        "Inferência assíncrona";
       const patientName = String(payload.patient_name || "").trim() || "Unnamed patient";
       const category = String(payload.category_id || "").trim() || "Async inference";
       const examModality = String(payload.exam_modality || "").trim() || "Unknown";
@@ -213,7 +216,7 @@ export default function StudiesPage() {
           <div className="overflow-x-auto">
             <div className="min-w-[980px]">
               <div className="grid grid-cols-[1.1fr_1fr_0.7fr_0.9fr_0.9fr_0.65fr] gap-4 border-b border-white/6 px-6 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                <span>Case ID</span>
+                <span>Caso</span>
                 <span>Patient</span>
                 <span>Modality</span>
                 <span>Owner</span>

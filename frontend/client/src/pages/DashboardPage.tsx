@@ -188,7 +188,9 @@ export default function DashboardPage() {
                       <a className="grid grid-cols-[1.3fr_1fr_0.8fr_0.9fr] gap-4 px-6 py-4 transition hover:bg-white/4">
                         <div className="space-y-1">
                           <p className="font-medium text-white">
-                            {study.case_identification || study.id}
+                            {study.case_identification ||
+                              study.patient_name ||
+                              "Estudo sem identificação"}
                           </p>
                           <p className="text-sm text-slate-500">
                             {formatDateTime(study.created_at)}
