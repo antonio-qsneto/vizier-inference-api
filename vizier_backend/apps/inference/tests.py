@@ -81,7 +81,7 @@ class InferencePreprocessorTest(TestCase):
                 self.assertEqual(npz_data["imgs"].ndim, 3)
                 self.assertEqual(
                     tuple(npz_data["imgs"].shape),
-                    tuple(np.transpose(input_volume_xyz, (2, 0, 1)).shape),
+                    tuple(np.transpose(input_volume_xyz, (2, 1, 0)).shape),
                 )
 
             restored_nifti = nib.load(prepared["original_nifti"])
