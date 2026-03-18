@@ -66,11 +66,14 @@ export default function AuthCallbackPage() {
         ) : (
           <>
             <LoaderCircle className="mx-auto h-8 w-8 animate-spin text-sky-300" />
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-sky-200">
-              Cognito callback
-            </p>
+            <img
+              src="/site/vizier_white.svg"
+              alt="Vizier"
+              className="mx-auto h-10 w-auto"
+              loading="eager"
+            />
             <h1 className="text-2xl font-semibold text-white">
-              Concluindo autenticação e carregando o workspace...
+              Finalizando acesso seguro e preparando seu dashboard...
             </h1>
           </>
         )}
