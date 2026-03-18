@@ -59,6 +59,26 @@ function formatTargetGroupLabel(modality: string, groupId: string) {
   return toTitleCase(groupId.replace(/[_-]+/g, " "));
 }
 
+function formatTargetGroupLabelWithPrompt(
+  modality: string,
+  groupId: string,
+  catalog: CategoriesCatalog,
+) {
+  const explicit = formatTargetGroupLabel(modality, groupId);
+  if (
+    explicit === "Head - Tumor cerebral" ||
+    explicit === "Head - Esclerose multipla"
+  ) {
+    return explicit;
+  }
+
+  const prompts = catalog[modality]?.[groupId] || [];
+  if (prompts.length === 1) {
+    return prompts[0];
+  }
+  return explicit;
+}
+
 export default function StudyUploadPage() {
   const [, navigate] = useLocation();
   const { accessToken, user } = useAuth();
@@ -345,7 +365,11 @@ export default function StudyUploadPage() {
                 </option>
                 {targetGroups.map((group) => (
                   <option key={group} value={group} className="bg-slate-900">
-                    {formatTargetGroupLabel(formState.examModality, group)}
+                    {formatTargetGroupLabelWithPrompt(
+                      formState.examModality,
+                      group,
+                      catalog,
+                    )}
                   </option>
                 ))}
               </select>

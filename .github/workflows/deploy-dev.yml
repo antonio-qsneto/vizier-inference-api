@@ -1,16 +1,10 @@
 name: Deploy Dev
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types:
-      - completed
-    branches:
-      - main
   workflow_dispatch:
 
 concurrency:
-  group: deploy-dev-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
+  group: deploy-dev-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -55,14 +49,11 @@ env:
 
 jobs:
   deploy:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: development
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -194,7 +185,7 @@ jobs:
       - name: Resolve ECR backend repository
         working-directory: ${{ env.TF_DIR }}
         run: |
-          SOURCE_SHA="${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}"
+          SOURCE_SHA="${{ github.sha }}"
           REPO_URL="${BACKEND_ECR_REPOSITORY_URL}"
           if [[ -z "${REPO_URL}" ]]; then
             REPO_URL="$(terraform output -raw backend_ecr_repository_url)"

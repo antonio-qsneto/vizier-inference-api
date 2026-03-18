@@ -3,21 +3,37 @@
     "head": [
       "cancer"
     ],
-    "torax": [
-      "lung lesions",
+    "torax_lung_lesions": [
+      "lung lesions"
+    ],
+    "torax_covid_19": [
       "COVID-19"
     ],
-    "abdomen": [
-      "adrenocortical carcinoma",
-      "kidney lesions/cysts L/R",
-      "liver tumors",
-      "pancreas tumors",
-      "colon",
-      "colon cancer primaries",
+    "abdomen_adrenocortical_carcinoma": [
+      "adrenocortical carcinoma"
+    ],
+    "abdomen_kidney_lesions_cysts_lr": [
+      "kidney lesions/cysts L/R"
+    ],
+    "abdomen_liver_tumors": [
+      "liver tumors"
+    ],
+    "abdomen_pancreas_tumors": [
+      "pancreas tumors"
+    ],
+    "abdomen_colon": [
+      "colon"
+    ],
+    "abdomen_colon_cancer_primaries": [
+      "colon cancer primaries"
+    ],
+    "abdomen_pancreas": [
       "pancreas"
     ],
-    "whole-body": [
-      "whole-body lesion",
+    "whole_body_lesion": [
+      "whole-body lesion"
+    ],
+    "whole_body_lymph_nodes": [
       "lymph nodes"
     ]
   },
