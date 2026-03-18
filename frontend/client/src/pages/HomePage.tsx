@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, LogIn } from "lucide-react";
 import { useLocation } from "wouter";
@@ -65,6 +65,8 @@ export default function HomePage() {
   const [, navigate] = useLocation();
   const { status, signIn, isCognitoConfigured } = useAuth();
   const [activeVideoIndex, setActiveVideoIndex] = useState(0);
+  const [videoPlaybackError, setVideoPlaybackError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [consultationForm, setConsultationForm] = useState<ConsultationRequestPayload>(
     INITIAL_CONSULTATION_FORM,
   );
@@ -85,6 +87,27 @@ export default function HomePage() {
 
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    const element = videoRef.current;
+    if (!element) {
+      return;
+    }
+
+    element.defaultMuted = true;
+    element.muted = true;
+
+    const playPromise = element.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise
+        .then(() => setVideoPlaybackError(null))
+        .catch(() => {
+          setVideoPlaybackError(
+            "Não foi possível iniciar a reprodução automática do vídeo.",
+          );
+        });
+    }
+  }, [activeVideo.src]);
 
   function updateConsultationField(
     field: keyof ConsultationRequestPayload,
@@ -210,23 +233,34 @@ export default function HomePage() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.7, ease: "easeOut" }}
               >
-                <motion.video
+                <video
+                  ref={videoRef}
+                  key={activeVideo.src}
                   className="h-full w-full object-cover object-right"
-                  src={activeVideo.src}
                   autoPlay
                   muted
                   loop
                   playsInline
-                  preload="metadata"
-                  initial={{ scale: 1.04 }}
-                  animate={{ scale: 1 }}
-                  transition={{ duration: 0.7, ease: "easeOut" }}
-                />
+                  preload="auto"
+                  onCanPlay={() => setVideoPlaybackError(null)}
+                  onError={() =>
+                    setVideoPlaybackError(
+                      "Falha ao carregar o vídeo desta seção.",
+                    )
+                  }
+                >
+                  <source src={activeVideo.src} type="video/mp4" />
+                </video>
               </motion.div>
             </AnimatePresence>
 
             <div className="pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-[#05080f] via-[#05080f]/95 via-45% to-transparent md:w-[66%]" />
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(6,182,212,0.16),transparent_34%)]" />
+            {videoPlaybackError ? (
+              <div className="absolute right-4 top-4 z-20 rounded-lg border border-amber-300/35 bg-black/55 px-3 py-2 text-xs text-amber-100">
+                {videoPlaybackError}
+              </div>
+            ) : null}
 
             <div className="relative z-10 flex h-full items-center px-6 py-8 md:px-10">
               <div className="max-w-2xl">
