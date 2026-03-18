@@ -28,23 +28,27 @@ export function PageIntro({
   description,
   actions,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
-  description: string;
+  description?: string;
   actions?: ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div className="max-w-3xl space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-400">
-          {eyebrow}
-        </p>
+        {eyebrow ? (
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-400">
+            {eyebrow}
+          </p>
+        ) : null}
         <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
           {title}
         </h1>
-        <p className="max-w-2xl text-sm leading-7 text-slate-400 sm:text-base">
-          {description}
-        </p>
+        {description ? (
+          <p className="max-w-2xl text-sm leading-7 text-slate-400 sm:text-base">
+            {description}
+          </p>
+        ) : null}
       </div>
       {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
     </div>

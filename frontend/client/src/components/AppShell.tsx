@@ -290,26 +290,28 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="border-t border-white/6 p-3">
                 <div className="space-y-3 rounded-[14px] border border-white/8 bg-[#2f3036] p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
                         Session
                       </p>
-                      <p className="mt-2 text-sm font-semibold text-white">
+                      <p className="mt-2 break-words text-sm font-semibold text-white">
                         {user?.full_name || user?.email || "Authenticated user"}
                       </p>
-                      <p className="mt-1 text-sm text-slate-400">
+                      <p className="mt-1 break-words text-sm text-slate-400">
                         {user?.clinic_name || "No clinic linked"}
                       </p>
                     </div>
-                    <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-sky-500 text-xs font-semibold text-white">
+                    <div className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-500 text-xs font-semibold text-white">
                       {userInitials}
                     </div>
                   </div>
 
                   {effectiveRole !== "clinic_doctor" ? (
-                    <div className="flex items-center justify-between text-xs uppercase tracking-[0.16em] text-slate-500">
-                      <span>Plan</span>
-                      <span>{user?.subscription_plan || "free"}</span>
+                    <div className="flex min-w-0 items-start justify-between gap-3 text-xs uppercase tracking-[0.16em] text-slate-500">
+                      <span className="shrink-0">Plan</span>
+                      <span className="min-w-0 break-all text-right normal-case tracking-normal text-slate-300">
+                        {user?.subscription_plan || "free"}
+                      </span>
                     </div>
                   ) : null}
 

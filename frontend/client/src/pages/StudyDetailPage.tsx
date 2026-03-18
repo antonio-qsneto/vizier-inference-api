@@ -255,9 +255,7 @@ export default function StudyDetailPage({ studyId }: { studyId: string }) {
         className="space-y-6"
       >
         <PageIntro
-          eyebrow="Inferência assíncrona"
           title={getAsyncJobDisplayTitle(asyncStatus)}
-          description="Fluxo assíncrono com upload direto no S3 e processamento em fila."
           actions={
             <div className="flex gap-3">
               <button
