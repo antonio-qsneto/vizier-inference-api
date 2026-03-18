@@ -398,10 +398,66 @@ export async function acknowledgeNotices(
 }
 
 export async function fetchStudies(token: string, signal?: AbortSignal) {
-  return apiRequest<PaginatedResponse<Study>>("/api/studies/", {
-    token,
-    signal,
-  });
+  return fetchStudiesPage(token, { signal });
+}
+
+export async function fetchStudiesPage(
+  token: string,
+  options?: {
+    page?: number;
+    pageSize?: number;
+    signal?: AbortSignal;
+  },
+) {
+  const params = new URLSearchParams();
+  if (options?.page && options.page > 0) {
+    params.set("page", String(options.page));
+  }
+  if (options?.pageSize && options.pageSize > 0) {
+    params.set("page_size", String(options.pageSize));
+  }
+  const query = params.toString();
+
+  return apiRequest<PaginatedResponse<Study>>(
+    `/api/studies/${query ? `?${query}` : ""}`,
+    {
+      token,
+      signal: options?.signal,
+    },
+  );
+}
+
+export async function fetchInferenceJobs(
+  token: string,
+  signal?: AbortSignal,
+) {
+  return fetchInferenceJobsPage(token, { signal });
+}
+
+export async function fetchInferenceJobsPage(
+  token: string,
+  options?: {
+    page?: number;
+    pageSize?: number;
+    signal?: AbortSignal;
+  },
+) {
+  const params = new URLSearchParams();
+  if (options?.page && options.page > 0) {
+    params.set("page", String(options.page));
+  }
+  if (options?.pageSize && options.pageSize > 0) {
+    params.set("page_size", String(options.pageSize));
+  }
+  const query = params.toString();
+
+  return apiRequest<InferenceJobListResponse>(
+    `/api/inference/jobs/${query ? `?${query}` : ""}`,
+    {
+      token,
+      signal: options?.signal,
+    },
+  );
 }
 
 export async function fetchStudy(
@@ -451,16 +507,6 @@ export async function createInferenceJob(
       slice_batch_size: input.sliceBatchSize,
       correlation_id: input.correlationId,
     }),
-  });
-}
-
-export async function fetchInferenceJobs(
-  token: string,
-  signal?: AbortSignal,
-) {
-  return apiRequest<InferenceJobListResponse>("/api/inference/jobs/", {
-    token,
-    signal,
   });
 }
 

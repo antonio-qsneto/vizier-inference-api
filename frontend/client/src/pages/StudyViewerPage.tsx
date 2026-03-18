@@ -249,6 +249,26 @@ function getAsyncViewerTitle(status: InferenceJobStatus) {
   return "Estudo assíncrono";
 }
 
+function getAsyncViewerPatientName(status: InferenceJobStatus) {
+  const payload =
+    status.request_payload && typeof status.request_payload === "object"
+      ? (status.request_payload as Record<string, unknown>)
+      : {};
+  const patientName = String(payload.patient_name || "").trim();
+  if (patientName) {
+    return patientName;
+  }
+  return getAsyncViewerTitle(status);
+}
+
+function getAsyncViewerModality(status: InferenceJobStatus) {
+  const payload =
+    status.request_payload && typeof status.request_payload === "object"
+      ? (status.request_payload as Record<string, unknown>)
+      : {};
+  return String(payload.exam_modality || "").trim();
+}
+
 export default function StudyViewerPage({ studyId }: { studyId: string }) {
   const { accessToken } = useAuth();
   const isAsyncFlow = useMemo(() => {
@@ -482,6 +502,11 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     }
 
     const currentAsyncStatus = asyncStatus.status;
+    const asyncPatientName = getAsyncViewerPatientName(asyncStatus);
+    const asyncModality = getAsyncViewerModality(asyncStatus);
+    const asyncHeaderTitle = asyncModality
+      ? `${asyncPatientName} · ${asyncModality}`
+      : asyncPatientName;
 
     return (
       <motion.section
@@ -492,18 +517,9 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
       >
         <div className="flex flex-col gap-3 rounded-[10px] border border-white/8 bg-[#23252d] px-4 py-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <FolderOpen className="h-3.5 w-3.5 text-sky-300/80" />
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-300/80">
-                Async Viewer
-              </p>
-            </div>
             <h1 className="mt-1 truncate text-xl font-semibold tracking-tight text-white">
-              {getAsyncViewerTitle(asyncStatus)}
+              {asyncHeaderTitle}
             </h1>
-            <p className="mt-1 text-sm text-slate-300">
-              Visualização dos artefatos gerados pelo processamento assíncrono.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -544,7 +560,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
             <OrthogonalViewer
               imageUrl={asyncAssets.imageUrl}
               maskUrl={asyncAssets.maskUrl}
-              modality={null}
+              modality={asyncModality || null}
               segmentsLegend={asyncAssets.segmentsLegend}
               fallbackSegmentNames={asyncAssets.fallbackSegmentNames}
               descriptiveAnalysis={asyncAssets.descriptiveAnalysis}

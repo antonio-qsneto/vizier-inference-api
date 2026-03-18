@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { ArrowUpFromLine, Eye, Search, SlidersHorizontal } from "lucide-react";
-import { fetchInferenceJobs, fetchStudies, getPageResults } from "@/api/services";
+import {
+  fetchInferenceJobsPage,
+  fetchStudiesPage,
+  getPageResults,
+} from "@/api/services";
 import { useAuth } from "@/auth/AuthContext";
 import {
   EmptyState,
@@ -51,6 +55,9 @@ export default function StudiesPage() {
   const [inferenceJobs, setInferenceJobs] = useState<InferenceJobListItem[]>([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
 
   const loadStudies = useCallback(async () => {
     if (!accessToken) {
@@ -59,22 +66,31 @@ export default function StudiesPage() {
 
     setLoading(true);
     try {
-      const requests: [Promise<unknown>, Promise<unknown> | null] = [
-        fetchStudies(accessToken),
-        env.useAsyncS3Upload ? fetchInferenceJobs(accessToken) : null,
-      ];
-
-      const [studiesPayload, inferencePayload] = await Promise.all([
-        requests[0],
-        requests[1] ?? Promise.resolve(null),
-      ]);
-
-      setStudies(getPageResults<Study>(studiesPayload));
-      setInferenceJobs(
-        inferencePayload && typeof inferencePayload === "object" && Array.isArray((inferencePayload as { results?: unknown }).results)
-          ? ((inferencePayload as { results: InferenceJobListItem[] }).results || [])
-          : [],
-      );
+      if (env.useAsyncS3Upload) {
+        const inferencePayload = await fetchInferenceJobsPage(accessToken, {
+          page,
+          pageSize,
+        });
+        setStudies([]);
+        setInferenceJobs(getPageResults<InferenceJobListItem>(inferencePayload));
+        setTotalCount(
+          typeof inferencePayload?.count === "number"
+            ? inferencePayload.count
+            : getPageResults<InferenceJobListItem>(inferencePayload).length,
+        );
+      } else {
+        const studiesPayload = await fetchStudiesPage(accessToken, {
+          page,
+          pageSize,
+        });
+        setInferenceJobs([]);
+        setStudies(getPageResults<Study>(studiesPayload));
+        setTotalCount(
+          typeof studiesPayload?.count === "number"
+            ? studiesPayload.count
+            : getPageResults<Study>(studiesPayload).length,
+        );
+      }
       setError(null);
     } catch (requestError) {
       if (requestError instanceof Error) {
@@ -83,7 +99,7 @@ export default function StudiesPage() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, page, pageSize]);
 
   useEffect(() => {
     void loadStudies();
@@ -100,7 +116,7 @@ export default function StudiesPage() {
       ownerEmail: study.owner_email || "--",
       status: study.status || "SUBMITTED",
       createdAt: study.created_at,
-      detailHref: `/studies/${study.id}`,
+      detailHref: `/studies/${study.id}/viewer`,
       isAsync: false,
     }));
 
@@ -123,7 +139,7 @@ export default function StudiesPage() {
         ownerEmail: job.owner_email || "--",
         status: mapAsyncStatusToCaseStatus(job.status),
         createdAt: job.created_at,
-        detailHref: `/studies/${job.id}?async=1`,
+        detailHref: `/studies/${job.id}/viewer?async=1`,
         isAsync: true,
       };
     });
@@ -151,6 +167,14 @@ export default function StudiesPage() {
       return matchesStatus && matchesQuery;
     });
   }, [caseRows, search, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   if (loading) {
     return <LoadingState label="Carregando estudos..." />;
@@ -182,7 +206,7 @@ export default function StudiesPage() {
       ) : null}
 
       <Panel className="space-y-4">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px_180px]">
           <label className="flex items-center gap-3 rounded-[12px] border border-white/8 bg-[#25262d] px-4 py-3">
             <Search className="h-4 w-4 text-sky-400" />
             <input
@@ -208,6 +232,51 @@ export default function StudiesPage() {
               )}
             </select>
           </label>
+          <label className="flex items-center gap-3 rounded-[12px] border border-white/8 bg-[#25262d] px-4 py-3">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+              Itens
+            </span>
+            <select
+              value={String(pageSize)}
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                setPageSize(next);
+                setPage(1);
+              }}
+              className="w-full bg-transparent text-sm text-white outline-none"
+            >
+              {[10, 50, 100].map((size) => (
+                <option key={size} value={size} className="bg-slate-900">
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-sm text-slate-300">
+          <p>
+            Página {page} de {totalPages} · {totalCount} estudos
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              className="rounded-lg border border-white/12 bg-white/6 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() =>
+                setPage((current) => Math.min(totalPages, current + 1))
+              }
+              className="rounded-lg border border-white/12 bg-white/6 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Próxima
+            </button>
+          </div>
         </div>
       </Panel>
 
