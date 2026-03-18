@@ -1307,7 +1307,7 @@ export function renderSliceToCanvas(options: {
       const scaleY = drawHeight / height;
       const avgScale = Math.max((Math.abs(scaleX) + Math.abs(scaleY)) / 2, 1e-6);
       const black = { r: 0, g: 0, b: 0 };
-      const msContourColor = { r: 92, g: 52, b: 146 };
+      const msContourColor = { r: 255, g: 0, b: 0 };
 
       context.save();
       context.translate(originX, originY);
@@ -1329,11 +1329,11 @@ export function renderSliceToCanvas(options: {
             : mixColor(vividColor, black, 0.42);
         const crispLineWidth =
           overlayStylePreset === "head_esclerose_multipla"
-            ? clamp(1.45 / avgScale, 0.55, 1.8)
+            ? clamp(1.7 / avgScale, 0.65, 2.1)
             : clamp(1.2 / avgScale, 0.45, 1.5);
         const glowLineWidth =
           overlayStylePreset === "head_esclerose_multipla"
-            ? clamp(2.35 / avgScale, 0.9, 2.9)
+            ? clamp(2.65 / avgScale, 1.0, 3.2)
             : clamp(1.95 / avgScale, 0.75, 2.45);
         const glowAlpha =
           overlayStylePreset === "head_esclerose_multipla" ? 0.34 : 0.28;
