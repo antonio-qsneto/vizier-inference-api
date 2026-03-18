@@ -71,19 +71,19 @@ const panelVariantConfig: Record<
   hero: {
     canvasWidth: 1440,
     canvasHeight: 900,
-    canvasClassName: "aspect-[16/10] w-full max-h-[72vh]",
+    canvasClassName: "block h-auto w-full max-h-[72vh]",
     bodyClassName: "flex-1 p-2 md:p-3",
   },
   standard: {
     canvasWidth: 720,
     canvasHeight: 720,
-    canvasClassName: "aspect-square w-full",
+    canvasClassName: "block h-auto w-full",
     bodyClassName: "p-2",
   },
   rail: {
     canvasWidth: 420,
     canvasHeight: 320,
-    canvasClassName: "aspect-[4/3] w-full",
+    canvasClassName: "block h-auto w-full",
     bodyClassName: "p-2",
   },
 };
