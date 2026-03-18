@@ -15,6 +15,11 @@ const VIDEO_SHOWCASE = [
     src: "/site/videos/cerebro.mp4",
   },
   {
+    title: "Esclerose múltipla",
+    subtitle: "Segmentação inteligente de lesões.",
+    src: "/site/videos/MS.mp4",
+  },
+  {
     title: "Análise hepática",
     subtitle: "Mapeamento de estruturas suspeitas em fígado e abdômen.",
     src: "/site/videos/figado.mp4",
