@@ -62,6 +62,8 @@ data "aws_iam_policy_document" "terraform_permissions" {
       "secretsmanager:*",
       "kms:*",
       "cognito-idp:*",
+      "acm:*",
+      "route53:*",
       "amplify:*",
       "cloudfront:*",
       "ssm:*",
