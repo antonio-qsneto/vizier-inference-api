@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { SegmentLegendItem } from "@/types/api";
 import {
+  type OverlayStylePreset,
   Plane,
   PaletteId,
   type DisplayAspectMode,
@@ -122,6 +123,7 @@ export function OrthogonalViewer({
   imageUrl,
   maskUrl,
   modality,
+  categoryId,
   segmentsLegend,
   fallbackSegmentNames = [],
   descriptiveAnalysis,
@@ -129,6 +131,7 @@ export function OrthogonalViewer({
   imageUrl: string;
   maskUrl: string;
   modality: string | null;
+  categoryId?: string | null;
   segmentsLegend: SegmentLegendItem[];
   fallbackSegmentNames?: string[];
   descriptiveAnalysis?: string | null;
@@ -182,6 +185,16 @@ export function OrthogonalViewer({
     () => buildLegendColorMap(segmentsLegend),
     [segmentsLegend],
   );
+  const overlayStylePreset = useMemo<OverlayStylePreset>(() => {
+    const normalizedCategory = String(categoryId || "").trim().toLowerCase();
+    if (
+      normalizedCategory === "head_esclerose_multipla" ||
+      normalizedCategory.includes("head_esclerose_multipla")
+    ) {
+      return "head_esclerose_multipla";
+    }
+    return "default";
+  }, [categoryId]);
 
   const loadVolumes = useCallback(async () => {
     setLoading(true);
@@ -335,6 +348,7 @@ export function OrthogonalViewer({
         visibleSegmentIds,
         plane,
         aspectMode: displayAspectMode,
+        overlayStylePreset,
         slices,
         windowRange: activePreset,
         overlayOpacity,
@@ -351,6 +365,7 @@ export function OrthogonalViewer({
     overlayOpacity,
     paletteId,
     displayAspectMode,
+    overlayStylePreset,
     slices,
     visibleSegmentIds,
     viewportState,

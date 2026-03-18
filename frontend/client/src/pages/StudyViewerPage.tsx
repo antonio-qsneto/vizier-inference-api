@@ -269,6 +269,14 @@ function getAsyncViewerModality(status: InferenceJobStatus) {
   return String(payload.exam_modality || "").trim();
 }
 
+function getAsyncViewerCategoryId(status: InferenceJobStatus) {
+  const payload =
+    status.request_payload && typeof status.request_payload === "object"
+      ? (status.request_payload as Record<string, unknown>)
+      : {};
+  return String(payload.category_id || "").trim();
+}
+
 function formatSegmentationTargets(labels: string[]) {
   const normalized = labels.map((item) => item.trim()).filter(Boolean);
   if (!normalized.length) {
@@ -519,6 +527,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     const currentAsyncStatus = asyncStatus.status;
     const asyncPatientName = getAsyncViewerPatientName(asyncStatus);
     const asyncModality = getAsyncViewerModality(asyncStatus);
+    const asyncCategoryId = getAsyncViewerCategoryId(asyncStatus);
     const asyncSegmentationTargets = formatSegmentationTargets(
       asyncAssets?.segmentsLegend?.length
         ? asyncAssets.segmentsLegend.map((segment) => segment.label)
@@ -584,6 +593,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
               imageUrl={asyncAssets.imageUrl}
               maskUrl={asyncAssets.maskUrl}
               modality={asyncModality || null}
+              categoryId={asyncCategoryId}
               segmentsLegend={asyncAssets.segmentsLegend}
               fallbackSegmentNames={asyncAssets.fallbackSegmentNames}
               descriptiveAnalysis={asyncAssets.descriptiveAnalysis}
@@ -690,6 +700,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
             imageUrl={result.image_url}
             maskUrl={result.mask_url}
             modality={study.exam_modality}
+            categoryId={study.category}
             segmentsLegend={result.segments_legend}
             descriptiveAnalysis={result.descriptive_analysis}
           />

@@ -4,6 +4,7 @@ import type { SegmentLegendItem } from "@/types/api";
 export type Plane = "axial" | "coronal" | "sagittal";
 export type PaletteId = "legend" | "teal" | "warm" | "contrast";
 export type DisplayAspectMode = "physical" | "anatomical";
+export type OverlayStylePreset = "default" | "head_esclerose_multipla";
 
 export interface VolumeData {
   sourceUrl: string;
@@ -1100,6 +1101,7 @@ export function renderSliceToCanvas(options: {
   visibleSegmentIds: Set<number>;
   plane: Plane;
   aspectMode?: DisplayAspectMode;
+  overlayStylePreset?: OverlayStylePreset;
   slices: { x: number; y: number; z: number };
   windowRange: { min: number; max: number };
   overlayOpacity: number;
@@ -1114,6 +1116,7 @@ export function renderSliceToCanvas(options: {
     visibleSegmentIds,
     plane,
     aspectMode = "anatomical",
+    overlayStylePreset = "default",
     slices,
     windowRange,
     overlayOpacity,
@@ -1178,6 +1181,7 @@ export function renderSliceToCanvas(options: {
   offscreenContext.putImageData(imageData, 0, 0);
 
   if (maskVolume) {
+    const msFillColor = { r: 220, g: 72, b: 94 };
     for (let row = 0; row < height; row += 1) {
       for (let column = 0; column < width; column += 1) {
         const bufferIndex = row * width + column;
@@ -1187,7 +1191,10 @@ export function renderSliceToCanvas(options: {
         }
 
         const baseColor = hexToRgb(getLabelColor(label, paletteId, legendMap));
-        const vividColor = boostOverlayColor(baseColor);
+        const vividColor =
+          overlayStylePreset === "head_esclerose_multipla"
+            ? msFillColor
+            : boostOverlayColor(baseColor);
         const matchingNeighbors = countMatchingNeighbors(
           labelData,
           width,
@@ -1205,9 +1212,14 @@ export function renderSliceToCanvas(options: {
           label,
         );
         const smoothFactor = matchingNeighbors / 8;
-        const alphaScale = isBoundary
-          ? 0.32 + smoothFactor * 0.52
-          : 0.6 + smoothFactor * 0.34;
+        const alphaScale =
+          overlayStylePreset === "head_esclerose_multipla"
+            ? isBoundary
+              ? 0.34 + smoothFactor * 0.5
+              : 0.58 + smoothFactor * 0.34
+            : isBoundary
+              ? 0.32 + smoothFactor * 0.52
+              : 0.6 + smoothFactor * 0.34;
         const softAlpha = clamp(
           Math.round(overlayOpacity * 255 * alphaScale),
           22,
@@ -1251,14 +1263,18 @@ export function renderSliceToCanvas(options: {
       context.save();
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
-      context.filter = "blur(0.55px) saturate(1.12)";
+      context.filter =
+        overlayStylePreset === "head_esclerose_multipla"
+          ? "blur(0.3px) saturate(1.08)"
+          : "blur(0.55px) saturate(1.12)";
       context.drawImage(overlayCanvas, originX, originY, drawWidth, drawHeight);
       context.restore();
 
       context.save();
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
-      context.globalAlpha = 0.44;
+      context.globalAlpha =
+        overlayStylePreset === "head_esclerose_multipla" ? 0.34 : 0.44;
       context.drawImage(overlayCanvas, originX, originY, drawWidth, drawHeight);
       context.restore();
     }
@@ -1269,6 +1285,7 @@ export function renderSliceToCanvas(options: {
       const scaleY = drawHeight / height;
       const avgScale = Math.max((Math.abs(scaleX) + Math.abs(scaleY)) / 2, 1e-6);
       const white = { r: 255, g: 255, b: 255 };
+      const msContourColor = { r: 166, g: 102, b: 255 };
 
       context.save();
       context.translate(originX, originY);
@@ -1284,9 +1301,22 @@ export function renderSliceToCanvas(options: {
 
         const baseColor = hexToRgb(getLabelColor(label, paletteId, legendMap));
         const vividColor = boostOverlayColor(baseColor);
-        const contourColor = mixColor(vividColor, white, 0.18);
-        const crispLineWidth = clamp(1.9 / avgScale, 0.7, 2.4);
-        const glowLineWidth = clamp(3.1 / avgScale, 1.1, 3.8);
+        const contourColor =
+          overlayStylePreset === "head_esclerose_multipla"
+            ? msContourColor
+            : mixColor(vividColor, white, 0.18);
+        const crispLineWidth =
+          overlayStylePreset === "head_esclerose_multipla"
+            ? clamp(2.4 / avgScale, 0.95, 3.2)
+            : clamp(1.9 / avgScale, 0.7, 2.4);
+        const glowLineWidth =
+          overlayStylePreset === "head_esclerose_multipla"
+            ? clamp(4.1 / avgScale, 1.4, 5.2)
+            : clamp(3.1 / avgScale, 1.1, 3.8);
+        const glowAlpha =
+          overlayStylePreset === "head_esclerose_multipla" ? 0.38 : 0.3;
+        const crispAlpha =
+          overlayStylePreset === "head_esclerose_multipla" ? 0.99 : 0.97;
 
         context.beginPath();
         for (let index = 0; index < segments.length; index += 4) {
@@ -1294,11 +1324,11 @@ export function renderSliceToCanvas(options: {
           context.lineTo(segments[index + 2], segments[index + 3]);
         }
 
-        context.strokeStyle = `rgba(${contourColor.r}, ${contourColor.g}, ${contourColor.b}, 0.3)`;
+        context.strokeStyle = `rgba(${contourColor.r}, ${contourColor.g}, ${contourColor.b}, ${glowAlpha})`;
         context.lineWidth = glowLineWidth;
         context.stroke();
 
-        context.strokeStyle = `rgba(${contourColor.r}, ${contourColor.g}, ${contourColor.b}, 0.97)`;
+        context.strokeStyle = `rgba(${contourColor.r}, ${contourColor.g}, ${contourColor.b}, ${crispAlpha})`;
         context.lineWidth = crispLineWidth;
         context.stroke();
       }
