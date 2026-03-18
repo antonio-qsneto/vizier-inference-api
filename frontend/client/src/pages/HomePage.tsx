@@ -61,6 +61,21 @@ const IMPACT_HIGHLIGHTS = [
   },
 ] as const;
 
+function describeMediaError(error: MediaError | null) {
+  if (!error) {
+    return "unknown";
+  }
+
+  const codeLabel = {
+    1: "MEDIA_ERR_ABORTED",
+    2: "MEDIA_ERR_NETWORK",
+    3: "MEDIA_ERR_DECODE",
+    4: "MEDIA_ERR_SRC_NOT_SUPPORTED",
+  }[error.code] || `MEDIA_ERR_${error.code}`;
+
+  return `${codeLabel}${error.message ? `: ${error.message}` : ""}`;
+}
+
 export default function HomePage() {
   const [, navigate] = useLocation();
   const { status, signIn, isCognitoConfigured } = useAuth();
@@ -100,13 +115,72 @@ export default function HomePage() {
     const playPromise = element.play();
     if (playPromise && typeof playPromise.catch === "function") {
       playPromise
-        .then(() => setVideoPlaybackError(null))
-        .catch(() => {
+        .then(() => {
+          setVideoPlaybackError(null);
+          console.info("[HomeVideo] autoplay ok", {
+            src: activeVideo.src,
+            currentSrc: element.currentSrc,
+            readyState: element.readyState,
+            networkState: element.networkState,
+          });
+        })
+        .catch((playError) => {
+          console.error("[HomeVideo] autoplay failed", {
+            src: activeVideo.src,
+            currentSrc: element.currentSrc,
+            readyState: element.readyState,
+            networkState: element.networkState,
+            mediaError: describeMediaError(element.error),
+            error: playError instanceof Error ? playError.message : String(playError),
+          });
           setVideoPlaybackError(
             "Não foi possível iniciar a reprodução automática do vídeo.",
           );
         });
     }
+  }, [activeVideo.src]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function runVideoDiagnostics() {
+      try {
+        const response = await fetch(activeVideo.src, {
+          method: "GET",
+          cache: "no-store",
+        });
+        if (isCancelled) {
+          return;
+        }
+
+        console.info("[HomeVideo] fetch diagnostics", {
+          src: activeVideo.src,
+          responseUrl: response.url,
+          status: response.status,
+          ok: response.ok,
+          contentType: response.headers.get("content-type"),
+          contentLength: response.headers.get("content-length"),
+          cacheControl: response.headers.get("cache-control"),
+        });
+      } catch (diagnosticError) {
+        if (isCancelled) {
+          return;
+        }
+
+        console.error("[HomeVideo] fetch diagnostics failed", {
+          src: activeVideo.src,
+          error:
+            diagnosticError instanceof Error
+              ? diagnosticError.message
+              : String(diagnosticError),
+        });
+      }
+    }
+
+    void runVideoDiagnostics();
+    return () => {
+      isCancelled = true;
+    };
   }, [activeVideo.src]);
 
   function updateConsultationField(
@@ -242,12 +316,29 @@ export default function HomePage() {
                   loop
                   playsInline
                   preload="auto"
-                  onCanPlay={() => setVideoPlaybackError(null)}
-                  onError={() =>
+                  onCanPlay={() => {
+                    setVideoPlaybackError(null);
+                    const element = videoRef.current;
+                    console.info("[HomeVideo] canplay", {
+                      src: activeVideo.src,
+                      currentSrc: element?.currentSrc,
+                      readyState: element?.readyState,
+                      networkState: element?.networkState,
+                    });
+                  }}
+                  onError={() => {
+                    const element = videoRef.current;
+                    console.error("[HomeVideo] element error", {
+                      src: activeVideo.src,
+                      currentSrc: element?.currentSrc,
+                      readyState: element?.readyState,
+                      networkState: element?.networkState,
+                      mediaError: describeMediaError(element?.error ?? null),
+                    });
                     setVideoPlaybackError(
                       "Falha ao carregar o vídeo desta seção.",
-                    )
-                  }
+                    );
+                  }}
                 >
                   <source src={activeVideo.src} type="video/mp4" />
                 </video>
