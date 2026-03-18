@@ -293,12 +293,6 @@ export function OrthogonalViewer({
   const activeCineSpeed =
     cineSpeedOptions.find((speed) => speed.intervalMs === cineIntervalMs) ||
     cineSpeedOptions[0];
-  const activeCineSpeedIndex = Math.max(
-    cineSpeedOptions.findIndex(
-      (speed) => speed.intervalMs === activeCineSpeed.intervalMs,
-    ),
-    0,
-  );
 
   useEffect(() => {
     if (presets.length) {
@@ -556,6 +550,21 @@ export function OrthogonalViewer({
       ...current,
       [axisKey]: value,
     }));
+  }
+
+  function stepCineSpeed(step: 1 | -1) {
+    setCineIntervalMs((current) => {
+      const currentIndex = cineSpeedOptions.findIndex(
+        (speed) => speed.intervalMs === current,
+      );
+      const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+      const nextIndex = clamp(
+        safeIndex + step,
+        0,
+        cineSpeedOptions.length - 1,
+      );
+      return cineSpeedOptions[nextIndex]?.intervalMs ?? current;
+    });
   }
 
   function handleSegmentVisibilityToggle(segmentId: number) {
@@ -1217,61 +1226,32 @@ export function OrthogonalViewer({
             )}
           </div>
 
-          <div className="ml-auto flex items-center gap-2 rounded-[8px] border border-white/8 bg-[#26272e] px-2 py-1.5">
-            <div className="flex h-20 items-center">
-              <input
-                type="range"
-                min={0}
-                max={cineSpeedOptions.length - 1}
-                step={1}
-                value={activeCineSpeedIndex}
-                onChange={(event) => {
-                  const nextIndex = Number(event.target.value);
-                  const nextSpeed = cineSpeedOptions[nextIndex];
-                  if (nextSpeed) {
-                    setCineIntervalMs(nextSpeed.intervalMs);
-                  }
-                }}
-                className="h-16 w-4 cursor-pointer accent-sky-400 [appearance:slider-vertical]"
-                style={{ writingMode: "vertical-lr", direction: "rtl" }}
-                aria-label="Cine speed"
-              />
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                Cine
-              </p>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-100">
-                {activeCineSpeed.label}
-              </p>
-              <div className="mt-1 flex items-center justify-end gap-1">
-                {[400, 200, 100].map((intervalMs) => {
-                  const speed = cineSpeedOptions.find(
-                    (option) => option.intervalMs === intervalMs,
-                  );
-                  if (!speed) {
-                    return null;
-                  }
-
-                  const selected = activeCineSpeed.intervalMs === intervalMs;
-                  return (
-                    <button
-                      key={intervalMs}
-                      type="button"
-                      onClick={() => setCineIntervalMs(intervalMs)}
-                      className={cn(
-                        "rounded-[5px] border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] transition",
-                        selected
-                          ? "border-sky-300/35 bg-sky-500/10 text-sky-50"
-                          : "border-white/12 bg-[#1f2128] text-slate-300 hover:border-white/20 hover:text-slate-100",
-                      )}
-                    >
-                      {speed.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+          <div
+            className="ml-auto inline-flex h-8 items-center gap-1 rounded-[8px] border border-white/8 bg-[#26272e] px-1.5"
+            onWheel={(event) => {
+              event.preventDefault();
+              stepCineSpeed(event.deltaY > 0 ? -1 : 1);
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => stepCineSpeed(-1)}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-[6px] border border-white/12 bg-[#20222a] text-[11px] font-semibold text-slate-200 transition hover:border-white/22 hover:text-white"
+              aria-label="Diminuir velocidade do cine"
+              title="Diminuir velocidade"
+            >
+              -
+            </button>
+            <button
+              type="button"
+              onClick={() => stepCineSpeed(1)}
+              className="inline-flex h-6 items-center gap-1 rounded-[6px] border border-white/12 bg-[#20222a] px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-100 transition hover:border-white/22 hover:text-white"
+              aria-label="Aumentar velocidade do cine"
+              title="Aumentar velocidade (role o mouse para ajustar)"
+            >
+              <SlidersHorizontal className="h-3 w-3 text-sky-300/80" />
+              {activeCineSpeed.label}
+            </button>
           </div>
 
           <button
