@@ -37,6 +37,10 @@ class DicomZipToNpzService:
             'brain': {'width': 80.0, 'level': 40.0},
             'bone': {'width': 1800.0, 'level': 400.0},
         }
+        self.last_ingestion_report: dict = {}
+
+    def _set_ingestion_report(self, report: dict | None) -> None:
+        self.last_ingestion_report = dict(report or {})
     
     def convert_zip_to_npz(
         self,
@@ -67,6 +71,7 @@ class DicomZipToNpzService:
         """
         if text_prompts is None:
             text_prompts = {}
+        self._set_ingestion_report(None)
 
         work_dir = os.path.dirname(zip_path)
         extract_path = os.path.join(work_dir, 'extracted')
@@ -89,7 +94,8 @@ class DicomZipToNpzService:
                 if not series_folders:
                     raise ValueError("No series folders found")
 
-                series_path = self._select_best_series_folder(series_folders)
+                selected_probe = self._select_best_series_probe_from_folders(series_folders)
+                series_path = str(selected_probe['path'])
                 logger.info("Using DICOM series folder: %s", os.path.basename(series_path))
 
                 volume, spacing = self._load_series(series_path)
@@ -112,13 +118,69 @@ class DicomZipToNpzService:
                 npz_path = output_npz_path or os.path.join(work_dir, 'file.npz')
                 self._save_npz(npz_path, volume, spacing, text_prompts)
                 logger.info("Saved NPZ from DICOM ZIP: %s", npz_path)
+                self._set_ingestion_report(
+                    {
+                        'source': 'dicom_canonical_layout',
+                        'layout': 'canonical',
+                        'selected_series_label': selected_probe.get('label'),
+                        'selected_series_uid': selected_probe.get('series_uid'),
+                        'candidate_series_count': selected_probe.get('candidate_count'),
+                        'effective_slices': selected_probe.get('effective_slices'),
+                        'matrix': [selected_probe.get('rows'), selected_probe.get('cols')],
+                        'slice_spacing': selected_probe.get('slice_spacing'),
+                    }
+                )
                 return npz_path
             except Exception as dicom_layout_error:
-                # Some clients upload zipped NIfTI/NPZ (e.g. *.nii.zip). Fallback here.
+                # Some clients upload DICOM ZIPs without the canonical `DICOM/<study>/<series>`
+                # structure. Try recursive series discovery before NIfTI/NPZ fallbacks.
                 logger.info(
-                    "ZIP does not match canonical DICOM layout (%s). Attempting NIfTI/NPZ fallback.",
+                    "ZIP does not match canonical DICOM layout (%s). Attempting DICOM discovery fallback.",
                     dicom_layout_error,
                 )
+
+            discovered_probes = self._discover_dicom_series_probes(extract_path)
+            if discovered_probes:
+                selected_probe = self._select_best_series_probe(discovered_probes)
+                selected_files = selected_probe.get('files') or []
+                volume, spacing = self._load_series_from_files(
+                    selected_files,
+                    source_label=selected_probe.get('label') or 'discovered-series',
+                )
+                logger.info(
+                    "Loaded discovered DICOM volume shape: %s (series=%s)",
+                    volume.shape,
+                    selected_probe.get('label'),
+                )
+
+                if output_original_nifti_path:
+                    self._save_volume_as_nifti(
+                        volume=volume,
+                        output_nifti_path=output_original_nifti_path,
+                        spacing_zyx=spacing,
+                    )
+
+                volume = self._preprocess(
+                    volume=volume,
+                    exam_modality=exam_modality,
+                    category_hint=category_hint,
+                )
+                npz_path = output_npz_path or os.path.join(work_dir, 'file.npz')
+                self._save_npz(npz_path, volume, spacing, text_prompts)
+                logger.info("Saved NPZ from discovered DICOM ZIP: %s", npz_path)
+                self._set_ingestion_report(
+                    {
+                        'source': 'dicom_discovered_layout',
+                        'layout': 'discovered',
+                        'selected_series_label': selected_probe.get('label'),
+                        'selected_series_uid': selected_probe.get('series_uid'),
+                        'candidate_series_count': selected_probe.get('candidate_count'),
+                        'effective_slices': selected_probe.get('effective_slices'),
+                        'matrix': [selected_probe.get('rows'), selected_probe.get('cols')],
+                        'slice_spacing': selected_probe.get('slice_spacing'),
+                    }
+                )
+                return npz_path
 
             nifti_inside_zip = self._find_first_file(
                 extract_path,
@@ -156,10 +218,16 @@ class DicomZipToNpzService:
                         npz_path=npz_path,
                         output_nifti_path=output_original_nifti_path,
                     )
+                self._set_ingestion_report(
+                    {
+                        'source': 'npz_zip_fallback',
+                        'layout': 'npz',
+                    }
+                )
                 return npz_path
 
             raise ValueError(
-                "Unsupported ZIP content. Expected canonical DICOM folder layout (DICOM/<study>/<series>/...), "
+                "Unsupported ZIP content. Expected DICOM slices (canonical or non-canonical layout), "
                 "or a .nii/.nii.gz/.npz file inside the ZIP."
             )
 
@@ -233,6 +301,15 @@ class DicomZipToNpzService:
 
             npz_path = output_npz_path or os.path.join(os.path.dirname(nifti_path), 'file.npz')
             self._save_npz(npz_path, volume, spacing_zyx, text_prompts)
+            self._set_ingestion_report(
+                {
+                    'source': 'nifti_input',
+                    'layout': 'nifti',
+                    'effective_slices': int(volume.shape[0]) if volume.ndim >= 1 else None,
+                    'matrix': [int(volume.shape[1]), int(volume.shape[2])] if volume.ndim == 3 else None,
+                    'slice_spacing': float(spacing_zyx[0]) if len(spacing_zyx) >= 1 else None,
+                }
+            )
 
             logger.info("Converted NIfTI to NPZ shape %s -> %s", original_shape, tuple(volume.shape))
             return npz_path
@@ -291,6 +368,14 @@ class DicomZipToNpzService:
 
         out_path = output_npz_path or npz_path
         self._save_npz_payload(out_path, payload)
+        self._set_ingestion_report(
+            {
+                'source': 'npz_input',
+                'layout': 'npz',
+                'effective_slices': int(volume.shape[0]) if volume.ndim >= 1 else None,
+                'matrix': [int(volume.shape[1]), int(volume.shape[2])] if volume.ndim == 3 else None,
+            }
+        )
 
         logger.info("Preprocessed uploaded NPZ shape %s -> %s", original_shape, tuple(volume.shape))
         return out_path
@@ -437,27 +522,15 @@ class DicomZipToNpzService:
         return float(np.median(diffs))
 
     @classmethod
-    def _probe_series(cls, series_path: str) -> dict | None:
-        files = sorted(
-            f
-            for f in os.listdir(series_path)
-            if os.path.isfile(os.path.join(series_path, f))
-        )
-        if not files:
-            return None
-
-        datasets = []
-        for filename in files:
-            full_path = os.path.join(series_path, filename)
-            try:
-                ds = pydicom.dcmread(full_path, stop_before_pixels=True)
-                # Require core image geometry tags to avoid selecting non-image objects.
-                if getattr(ds, 'Rows', None) is None or getattr(ds, 'Columns', None) is None:
-                    continue
-                datasets.append(ds)
-            except Exception:
-                continue
-
+    def _build_probe_from_datasets(
+        cls,
+        datasets: list,
+        *,
+        path: str,
+        label: str,
+        files: list[str],
+        series_uid: str | None = None,
+    ) -> dict | None:
         if not datasets:
             return None
 
@@ -510,7 +583,10 @@ class DicomZipToNpzService:
         )
 
         return {
-            'path': series_path,
+            'path': path,
+            'label': label,
+            'files': sorted(files),
+            'series_uid': series_uid,
             'score': score,
             'effective_slices': effective_slices,
             'count': len(datasets),
@@ -523,7 +599,129 @@ class DicomZipToNpzService:
         }
 
     @classmethod
-    def _select_best_series_folder(cls, series_folders: list[str]) -> str:
+    def _probe_series(cls, series_path: str) -> dict | None:
+        files = sorted(
+            os.path.join(series_path, file_name)
+            for file_name in os.listdir(series_path)
+            if os.path.isfile(os.path.join(series_path, file_name))
+        )
+        if not files:
+            return None
+
+        datasets = []
+        accepted_files: list[str] = []
+        for full_path in files:
+            try:
+                ds = pydicom.dcmread(full_path, stop_before_pixels=True, force=True)
+                # Require core image geometry tags to avoid selecting non-image objects.
+                if getattr(ds, 'Rows', None) is None or getattr(ds, 'Columns', None) is None:
+                    continue
+                datasets.append(ds)
+                accepted_files.append(full_path)
+            except Exception:
+                continue
+
+        series_uid = None
+        if datasets:
+            raw_uid = str(getattr(datasets[0], 'SeriesInstanceUID', '') or '').strip()
+            series_uid = raw_uid or None
+
+        return cls._build_probe_from_datasets(
+            datasets,
+            path=series_path,
+            label=os.path.basename(series_path) or series_path,
+            files=accepted_files,
+            series_uid=series_uid,
+        )
+
+    @classmethod
+    def _discover_dicom_series_probes(cls, base_dir: str) -> list[dict]:
+        grouped: dict[str, dict] = {}
+
+        for root, _dirs, files in os.walk(base_dir):
+            for file_name in files:
+                full_path = os.path.join(root, file_name)
+                try:
+                    ds = pydicom.dcmread(full_path, stop_before_pixels=True, force=True)
+                except Exception:
+                    continue
+
+                if getattr(ds, 'Rows', None) is None or getattr(ds, 'Columns', None) is None:
+                    continue
+
+                series_uid_raw = str(getattr(ds, 'SeriesInstanceUID', '') or '').strip()
+                series_uid = series_uid_raw or None
+                group_key = f"uid:{series_uid}" if series_uid else f"dir:{root}"
+
+                if group_key not in grouped:
+                    relative_root = os.path.relpath(root, base_dir)
+                    label = f"SeriesUID:{series_uid}" if series_uid else relative_root
+                    grouped[group_key] = {
+                        'path': root,
+                        'label': label,
+                        'series_uid': series_uid,
+                        'files': [],
+                        'datasets': [],
+                    }
+
+                grouped[group_key]['files'].append(full_path)
+                grouped[group_key]['datasets'].append(ds)
+
+        probes: list[dict] = []
+        for group in grouped.values():
+            probe = cls._build_probe_from_datasets(
+                group['datasets'],
+                path=group['path'],
+                label=group['label'],
+                files=group['files'],
+                series_uid=group['series_uid'],
+            )
+            if probe is not None:
+                probes.append(probe)
+
+        return probes
+
+    @staticmethod
+    def _log_probe_candidate(probe: dict, *, prefix: str) -> None:
+        logger.info(
+            (
+                "%s %s: slices=%s files=%s matrix=%sx%s "
+                "original=%s mpr_or_derived=%s spacing=%s desc=%s score=%s"
+            ),
+            prefix,
+            str(probe.get('label') or probe.get('path') or '-'),
+            probe.get('effective_slices'),
+            probe.get('count'),
+            probe.get('rows'),
+            probe.get('cols'),
+            probe.get('is_original'),
+            probe.get('is_mpr_or_derived'),
+            probe.get('slice_spacing'),
+            probe.get('description') or '-',
+            probe.get('score'),
+        )
+
+    @classmethod
+    def _select_best_series_probe(cls, probes: list[dict]) -> dict:
+        if not probes:
+            raise ValueError("No valid DICOM image series found")
+
+        for probe in probes:
+            cls._log_probe_candidate(probe, prefix="Series candidate")
+
+        probes_sorted = sorted(probes, key=lambda item: item.get('score', ()), reverse=True)
+        selected = dict(probes_sorted[0])
+        selected['candidate_count'] = len(probes_sorted)
+        logger.info(
+            "Selected series %s (%s slices, desc=%s)",
+            str(selected.get('label') or selected.get('path') or '-'),
+            selected.get('effective_slices'),
+            selected.get('description') or '-',
+        )
+        return selected
+
+    @classmethod
+    def _select_best_series_probe_from_folders(cls, series_folders: list[str]) -> dict:
         probes = []
         for series_path in series_folders:
             probe = cls._probe_series(series_path)
@@ -531,53 +729,38 @@ class DicomZipToNpzService:
                 logger.info("Ignoring non-image series folder: %s", os.path.basename(series_path))
                 continue
             probes.append(probe)
-            logger.info(
-                (
-                    "Series candidate %s: slices=%s files=%s matrix=%sx%s "
-                    "original=%s mpr_or_derived=%s spacing=%s desc=%s score=%s"
-                ),
-                os.path.basename(series_path),
-                probe['effective_slices'],
-                probe['count'],
-                probe['rows'],
-                probe['cols'],
-                probe['is_original'],
-                probe['is_mpr_or_derived'],
-                probe['slice_spacing'],
-                probe['description'] or '-',
-                probe['score'],
-            )
+        return cls._select_best_series_probe(probes)
 
-        if not probes:
-            raise ValueError("No valid DICOM image series found")
-
-        probes.sort(key=lambda item: item['score'], reverse=True)
-        selected = probes[0]
-        logger.info(
-            "Selected series %s (%s slices, desc=%s)",
-            os.path.basename(selected['path']),
-            selected['effective_slices'],
-            selected['description'] or '-',
-        )
+    @classmethod
+    def _select_best_series_folder(cls, series_folders: list[str]) -> str:
+        selected = cls._select_best_series_probe_from_folders(series_folders)
         return str(selected['path'])
     
     @staticmethod
     def _load_series(series_path: str) -> tuple:
         """Load DICOM series and return volume and spacing."""
+        files = [
+            os.path.join(series_path, file_name)
+            for file_name in os.listdir(series_path)
+        ]
+        return DicomZipToNpzService._load_series_from_files(files, source_label=series_path)
+
+    @staticmethod
+    def _load_series_from_files(file_paths: list[str], source_label: str | None = None) -> tuple:
         slices = []
-        
-        for f in os.listdir(series_path):
-            fp = os.path.join(series_path, f)
+
+        for file_path in sorted(file_paths):
             try:
-                ds = pydicom.dcmread(fp)
+                ds = pydicom.dcmread(file_path, force=True)
                 _ = ds.pixel_array
                 slices.append(ds)
             except Exception:
                 continue
-        
+
         if not slices:
-            raise ValueError(f"No DICOM slices found in {series_path}")
-        
+            source = source_label or 'discovered-series'
+            raise ValueError(f"No DICOM slices found in {source}")
+
         # Sort slices by geometric position along the acquisition normal.
         normal = DicomZipToNpzService._get_slice_normal(slices[0])
         if normal is not None:
@@ -622,10 +805,10 @@ class DicomZipToNpzService:
                         0,
                     ) or 0
                 )
-        
+
         # Stack volume
         volume = np.stack([DicomZipToNpzService._extract_slice_pixels(s) for s in slices], axis=0)
-        
+
         # Get spacing
         spacing = None
         try:
@@ -656,7 +839,7 @@ class DicomZipToNpzService:
             spacing = (float(spacing_z), float(spacing_y), float(spacing_x))
         except Exception:
             pass
-        
+
         return volume, spacing
 
     @staticmethod

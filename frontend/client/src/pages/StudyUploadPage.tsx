@@ -17,7 +17,7 @@ import {
   Panel,
 } from "@/components/primitives";
 import { Spinner } from "@/components/ui/spinner";
-import type { CategoriesCatalog } from "@/types/api";
+import type { CategoriesCatalog, StudyIngestionReport } from "@/types/api";
 import { env } from "@/env";
 
 interface UploadFormState {
@@ -77,6 +77,37 @@ function formatTargetGroupLabelWithPrompt(
     return prompts[0];
   }
   return explicit;
+}
+
+function buildDicomIngestionMessage(report: StudyIngestionReport | null | undefined) {
+  if (!report) {
+    return null;
+  }
+
+  const source = String(report.source || "");
+  if (!source.startsWith("dicom_")) {
+    return null;
+  }
+
+  const details: string[] = [];
+  const selectedSeries = String(report.selected_series_label || "").trim();
+  if (selectedSeries) {
+    details.push(`série: ${selectedSeries}`);
+  }
+  if (typeof report.effective_slices === "number" && report.effective_slices > 0) {
+    details.push(`slices: ${report.effective_slices}`);
+  }
+  if (
+    typeof report.candidate_series_count === "number" &&
+    report.candidate_series_count > 1
+  ) {
+    details.push(`candidatas: ${report.candidate_series_count}`);
+  }
+
+  if (!details.length) {
+    return "DICOM processado com seleção automática de série.";
+  }
+  return `DICOM processado (${details.join(" · ")})`;
 }
 
 export default function StudyUploadPage() {
@@ -199,6 +230,10 @@ export default function StudyUploadPage() {
           categoryId: formState.categoryId,
         });
         toast.success("Study submitted");
+        const ingestionMessage = buildDicomIngestionMessage(study.ingestion_report);
+        if (ingestionMessage) {
+          toast.message(ingestionMessage);
+        }
         navigate(`/studies/${study.id}`);
       }
     } catch (requestError) {
@@ -381,8 +416,13 @@ export default function StudyUploadPage() {
               Upload ZIP, NPZ, NIfTI (.nii / .nii.gz)
             </span>
             <p className="mt-2 text-sm leading-7 text-slate-300">
-              O serializer atual não aceita `.dcm` isolado. Para DICOM, compacte
-              a série em `.zip`.
+              Para DICOM, envie `.zip` (não `.dcm` isolado). O backend tenta ler
+              layout canônico e também estrutura de pastas não canônica, com
+              seleção automática da série volumétrica.
+            </p>
+            <p className="mt-2 text-xs leading-6 text-slate-400">
+              Se houver múltiplas fases/séries no mesmo ZIP, compacte apenas a
+              série clínica desejada para evitar seleção automática incorreta.
             </p>
             <input
               type="file"
@@ -397,6 +437,12 @@ export default function StudyUploadPage() {
             />
             {formState.file ? (
               <p className="mt-4 text-sm text-sky-100">{formState.file.name}</p>
+            ) : null}
+            {formState.file?.name.toLowerCase().endsWith(".zip") ? (
+              <p className="mt-2 text-xs leading-6 text-slate-400">
+                ZIP detectado: serão priorizadas séries com maior volume, `ORIGINAL`
+                e menor espaçamento entre slices.
+              </p>
             ) : null}
           </label>
 

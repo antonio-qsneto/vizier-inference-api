@@ -126,6 +126,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
         
         temp_dir = None
         study = None
+        ingestion_report = None
         try:
             upload_file = serializer.validated_data.get('upload_file')
             upload_type = serializer.validated_data.get('upload_type')
@@ -159,6 +160,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                     exam_modality=normalized_modality,
                     category_hint=category_id,
                 )
+                ingestion_report = dict(dicom_service.last_ingestion_report or {})
                 original_nifti_path = generated_original_nifti_path
                 original_nifti_ext = '.nii.gz'
                 logger.info(f"Converted to NPZ: {npz_path} ({os.path.getsize(npz_path)} bytes)")
@@ -192,6 +194,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                     exam_modality=normalized_modality,
                     category_hint=category_id,
                 )
+                ingestion_report = dict(dicom_service.last_ingestion_report or {})
 
                 # Keep inference prompts aligned with the selected modality/category.
                 self._ensure_npz_text_prompts(
@@ -218,6 +221,7 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
                     exam_modality=normalized_modality,
                     category_hint=category_id,
                 )
+                ingestion_report = dict(dicom_service.last_ingestion_report or {})
                 logger.info(f"Converted NIfTI to NPZ: {npz_path} ({os.path.getsize(npz_path)} bytes)")
 
             else:
@@ -309,7 +313,10 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             cleanup_temp_files(temp_dir)
             
             response_serializer = StudySerializer(study)
-            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            response_payload = dict(response_serializer.data)
+            if ingestion_report:
+                response_payload['ingestion_report'] = ingestion_report
+            return Response(response_payload, status=status.HTTP_201_CREATED)
         
         except Exception as e:
             logger.error(f"Failed to upload and process DICOM: {e}", exc_info=True)

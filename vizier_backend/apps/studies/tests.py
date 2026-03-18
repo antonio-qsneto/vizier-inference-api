@@ -768,6 +768,68 @@ class NiftiConversionServiceTest(TestCase):
                 rtol=1e-6,
             )
 
+    @patch.object(DicomZipToNpzService, '_discover_dicom_series_probes')
+    @patch.object(DicomZipToNpzService, '_load_series_from_files')
+    @patch.object(DicomZipToNpzService, '_get_study_folder')
+    @patch.object(DicomZipToNpzService, '_unzip')
+    def test_convert_zip_to_npz_supports_non_canonical_dicom_layout(
+        self,
+        mock_unzip,
+        mock_get_study_folder,
+        mock_load_series_from_files,
+        mock_discover_probes,
+    ):
+        mock_get_study_folder.side_effect = ValueError("DICOM folder not found")
+        mock_discover_probes.return_value = [
+            {
+                'path': '/tmp/discovered-series',
+                'label': 'SeriesUID:1.2.3',
+                'series_uid': '1.2.3',
+                'files': ['/tmp/discovered-series/1.dcm', '/tmp/discovered-series/2.dcm'],
+                'score': (2, 1, 1, 512 * 512, 2, -1.0),
+                'effective_slices': 2,
+                'count': 2,
+                'rows': 512,
+                'cols': 512,
+                'slice_spacing': 1.0,
+                'is_original': True,
+                'is_mpr_or_derived': False,
+                'description': 'AXIAL',
+            }
+        ]
+        mock_load_series_from_files.return_value = (
+            np.arange(2 * 3 * 4, dtype=np.float32).reshape((2, 3, 4)),
+            (1.0, 0.8, 0.8),
+        )
+
+        service = DicomZipToNpzService()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zip_path = os.path.join(tmpdir, 'input.zip')
+            with open(zip_path, 'wb'):
+                pass
+            output_npz = os.path.join(tmpdir, 'file.npz')
+
+            out_path = service.convert_zip_to_npz(
+                zip_path=zip_path,
+                text_prompts={'1': 'brain lesion', 'instance_label': 0},
+                output_npz_path=output_npz,
+                exam_modality='MRI',
+            )
+
+            self.assertEqual(out_path, output_npz)
+            self.assertTrue(os.path.exists(out_path))
+            mock_unzip.assert_called_once()
+            mock_load_series_from_files.assert_called_once()
+
+            with np.load(out_path, allow_pickle=True) as data:
+                self.assertIn('imgs', data.files)
+                self.assertEqual(tuple(data['imgs'].shape), (2, 3, 4))
+                self.assertIn('text_prompts', data.files)
+
+            self.assertEqual(service.last_ingestion_report.get('source'), 'dicom_discovered_layout')
+            self.assertEqual(service.last_ingestion_report.get('candidate_series_count'), 1)
+            self.assertEqual(service.last_ingestion_report.get('effective_slices'), 2)
+
     @patch.object(DicomZipToNpzService, '_probe_series')
     def test_select_best_series_folder_prefers_volumetric_original_series(self, mock_probe):
         derived_mpr_path = '/tmp/series_mpr'

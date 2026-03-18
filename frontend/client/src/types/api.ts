@@ -126,6 +126,17 @@ export interface Job {
   completed_at: string | null;
 }
 
+export interface StudyIngestionReport {
+  source: string;
+  layout?: string | null;
+  selected_series_label?: string | null;
+  selected_series_uid?: string | null;
+  candidate_series_count?: number | null;
+  effective_slices?: number | null;
+  matrix?: number[] | null;
+  slice_spacing?: number | null;
+}
+
 export interface Study {
   id: string;
   category: string;
@@ -141,6 +152,7 @@ export interface Study {
   image_s3_key: string | null;
   mask_s3_key: string | null;
   error_message: string | null;
+  ingestion_report?: StudyIngestionReport | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;

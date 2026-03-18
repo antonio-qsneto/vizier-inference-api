@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import boto3
+    from botocore.config import Config
     from botocore.exceptions import ClientError
 
     BOTO3_AVAILABLE = True
@@ -46,7 +47,15 @@ class S3Utils:
             raise ValueError("S3_BUCKET is not configured")
 
         # Use default AWS credential chain (task role, env, profile, etc.)
-        self.s3_client = boto3.client("s3", region_name=self.region)
+        connect_timeout = int(getattr(settings, "S3_CONNECT_TIMEOUT_SECONDS", 10) or 10)
+        read_timeout = int(getattr(settings, "S3_READ_TIMEOUT_SECONDS", 120) or 120)
+        max_attempts = int(getattr(settings, "S3_MAX_ATTEMPTS", 5) or 5)
+        s3_config = Config(
+            connect_timeout=connect_timeout,
+            read_timeout=read_timeout,
+            retries={"max_attempts": max_attempts, "mode": "standard"},
+        )
+        self.s3_client = boto3.client("s3", region_name=self.region, config=s3_config)
 
     def _local_path(self, key: str) -> Path:
         return self.storage_root / str(key).strip("/")

@@ -225,21 +225,22 @@ class NiftiConverter:
             mask_img = nib.load(mask_nifti_path)
             ref_img = nib.load(reference_nifti_path)
 
-            mask_data = np.asarray(mask_img.get_fdata())
-            ref_data = np.asarray(ref_img.get_fdata())
+            # Avoid eager float64 loads for large volumes. We only need mask
+            # voxels and the reference shape/affine/header.
+            mask_data = np.asanyarray(mask_img.dataobj)
+            ref_shape = tuple(int(v) for v in ref_img.shape[:3])
 
             if mask_data.ndim == 4 and mask_data.shape[0] == 1:
                 mask_data = mask_data[0]
             if mask_data.ndim == 4 and mask_data.shape[-1] == 1:
                 mask_data = mask_data[..., 0]
 
-            if mask_data.ndim != 3 or ref_data.ndim != 3:
+            if mask_data.ndim != 3 or len(ref_shape) != 3:
                 raise ValueError(
-                    f"Expected 3D mask/reference volumes, got mask={mask_data.shape}, ref={ref_data.shape}"
+                    f"Expected 3D mask/reference volumes, got mask={mask_data.shape}, ref={ref_img.shape}"
                 )
 
             mask_shape = tuple(int(v) for v in mask_data.shape)
-            ref_shape = tuple(int(v) for v in ref_data.shape)
             if mask_shape == ref_shape:
                 aligned = np.rint(np.nan_to_num(mask_data, nan=0.0, posinf=0.0, neginf=0.0)).astype(np.uint8, copy=False)
                 aligned_img = nib.Nifti1Image(aligned, ref_img.affine, header=ref_img.header.copy())

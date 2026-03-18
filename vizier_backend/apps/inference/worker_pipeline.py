@@ -66,37 +66,12 @@ class InferenceWorkerPipeline:
             )
             return
 
-        if job.status not in {
-            InferenceJob.STATUS_QUEUED,
-            InferenceJob.STATUS_UPLOADED,
-        }:
-            logger.info(
-                json.dumps(
-                    {
-                        "event": "worker_job_skipped_unexpected_status",
-                        "job_id": str(job.id),
-                        "status": job.status,
-                    }
-                )
-            )
-            return
-
-        input_artifact_id = payload.get("input_artifact_id")
-        input_artifact = None
-        if input_artifact_id:
-            input_artifact = job.input_artifacts.filter(id=input_artifact_id).first()
-
-        if not input_artifact:
-            input_artifact = job.input_artifacts.filter(kind=InputArtifact.KIND_RAW_UPLOAD).first()
-
-        if not input_artifact:
-            raise RuntimeError(f"Job {job.id} has no input artifact")
-
         tenant_id = str(job.tenant_id)
         job_id_text = str(job.id)
         normalized_key = normalized_input_key(tenant_id, job_id_text)
         original_nifti_key = output_original_nifti_key(tenant_id, job_id_text)
         mask_nifti_key = output_mask_nifti_key(tenant_id, job_id_text)
+        mask_npz_key = output_mask_npz_key(tenant_id, job_id_text)
         summary_key = output_summary_key(tenant_id, job_id_text)
 
         # Reconcile idempotently if all final artifacts already exist.
@@ -122,6 +97,37 @@ class InferenceWorkerPipeline:
                 )
             )
             return
+
+        resumable_statuses = {
+            InferenceJob.STATUS_UPLOADED,
+            InferenceJob.STATUS_QUEUED,
+            InferenceJob.STATUS_VALIDATING,
+            InferenceJob.STATUS_PREPROCESSING,
+            InferenceJob.STATUS_RUNNING,
+            InferenceJob.STATUS_POSTPROCESSING,
+        }
+        if job.status not in resumable_statuses:
+            logger.warning(
+                json.dumps(
+                    {
+                        "event": "worker_job_unexpected_status",
+                        "job_id": str(job.id),
+                        "status": job.status,
+                    }
+                )
+            )
+            raise RuntimeError(f"Job {job.id} is not resumable from status={job.status}")
+
+        input_artifact_id = payload.get("input_artifact_id")
+        input_artifact = None
+        if input_artifact_id:
+            input_artifact = job.input_artifacts.filter(id=input_artifact_id).first()
+
+        if not input_artifact:
+            input_artifact = job.input_artifacts.filter(kind=InputArtifact.KIND_RAW_UPLOAD).first()
+
+        if not input_artifact:
+            raise RuntimeError(f"Job {job.id} has no input artifact")
 
         scratch_root = Path(f"/tmp/jobs/{job.id}")
         scratch_root.mkdir(parents=True, exist_ok=True)
@@ -173,32 +179,63 @@ class InferenceWorkerPipeline:
             if not self.s3.upload_file(normalized_npz_local, normalized_key, "application/octet-stream"):
                 raise RuntimeError(f"Failed to upload normalized input key={normalized_key}")
 
-            transition_job(
-                job=job,
-                to_status=InferenceJob.STATUS_RUNNING,
-                reason="worker_running_executor",
-                metadata={},
-                progress_percent=40,
+            can_reuse_gpu_outputs = (
+                job.status in {InferenceJob.STATUS_RUNNING, InferenceJob.STATUS_POSTPROCESSING}
+                and self.s3.object_exists(mask_npz_key)
+                and self.s3.object_exists(summary_key)
             )
+            if can_reuse_gpu_outputs:
+                mask_npz_local = str(Path(scratch_root) / "mask.npz")
+                summary_local = str(Path(scratch_root) / "summary.json")
+                if not self.s3.download_file(mask_npz_key, mask_npz_local):
+                    raise RuntimeError(f"Failed to download existing mask output from {mask_npz_key}")
+                if not self.s3.download_file(summary_key, summary_local):
+                    raise RuntimeError(f"Failed to download existing summary output from {summary_key}")
+                outputs = {
+                    "gpu_task_arn": job.gpu_task_arn,
+                    "mask_npz_key": mask_npz_key,
+                    "summary_key": summary_key,
+                    "mask_npz_local": mask_npz_local,
+                    "summary_json_local": summary_local,
+                }
+                logger.info(
+                    json.dumps(
+                        {
+                            "event": "worker_reused_existing_executor_outputs",
+                            "job_id": job_id_text,
+                            "tenant_id": tenant_id,
+                            "gpu_task_arn": job.gpu_task_arn,
+                        }
+                    )
+                )
+            else:
+                transition_job(
+                    job=job,
+                    to_status=InferenceJob.STATUS_RUNNING,
+                    reason="worker_running_executor",
+                    metadata={},
+                    progress_percent=40,
+                )
 
-            job.attempt_count = int(job.attempt_count or 0) + 1
-            job.save(update_fields=["attempt_count", "updated_at"])
+                job.attempt_count = int(job.attempt_count or 0) + 1
+                job.save(update_fields=["attempt_count", "updated_at"])
 
-            outputs = self.executor.run(
-                job_id=job_id_text,
-                normalized_input_key=normalized_key,
-                work_dir=str(scratch_root),
-                requested_device=(payload.get("requested_device") or job.requested_device or "cuda"),
-                slice_batch_size=(
-                    payload.get("slice_batch_size")
-                    if payload.get("slice_batch_size") is not None
-                    else job.slice_batch_size
-                ),
-                tenant_id=tenant_id,
-                on_poll=visibility_heartbeat,
-            )
-            job.gpu_task_arn = outputs.get("gpu_task_arn")
-            job.save(update_fields=["gpu_task_arn", "updated_at"])
+                outputs = self.executor.run(
+                    job_id=job_id_text,
+                    normalized_input_key=normalized_key,
+                    work_dir=str(scratch_root),
+                    requested_device=(payload.get("requested_device") or job.requested_device or "cuda"),
+                    slice_batch_size=(
+                        payload.get("slice_batch_size")
+                        if payload.get("slice_batch_size") is not None
+                        else job.slice_batch_size
+                    ),
+                    tenant_id=tenant_id,
+                    on_poll=visibility_heartbeat,
+                )
+                if outputs.get("gpu_task_arn"):
+                    job.gpu_task_arn = outputs.get("gpu_task_arn")
+                    job.save(update_fields=["gpu_task_arn", "updated_at"])
 
             transition_job(
                 job=job,
@@ -207,18 +244,79 @@ class InferenceWorkerPipeline:
                 metadata={"gpu_task_arn": outputs.get("gpu_task_arn")},
                 progress_percent=80,
             )
+            if visibility_heartbeat:
+                visibility_heartbeat()
 
             mask_npz_local = outputs["mask_npz_local"]
             summary_local = outputs["summary_json_local"]
             mask_nifti_local = os.path.join(str(scratch_root), "mask.nii.gz")
+            logger.info(
+                json.dumps(
+                    {
+                        "event": "worker_postprocessing_mask_convert_started",
+                        "job_id": job_id_text,
+                        "tenant_id": tenant_id,
+                        "mask_npz_local": mask_npz_local,
+                    }
+                )
+            )
             if not NiftiConverter.segs_npz_to_nifti(mask_npz_local, mask_nifti_local):
                 raise RuntimeError("Failed to convert mask NPZ to NIfTI")
+            if visibility_heartbeat:
+                visibility_heartbeat()
+            transition_job(
+                job=job,
+                to_status=InferenceJob.STATUS_POSTPROCESSING,
+                reason="worker_mask_npz_converted",
+                metadata={},
+                progress_percent=85,
+            )
+            logger.info(
+                json.dumps(
+                    {
+                        "event": "worker_postprocessing_mask_convert_completed",
+                        "job_id": job_id_text,
+                        "tenant_id": tenant_id,
+                        "mask_nifti_local": mask_nifti_local,
+                    }
+                )
+            )
+
+            logger.info(
+                json.dumps(
+                    {
+                        "event": "worker_postprocessing_mask_align_started",
+                        "job_id": job_id_text,
+                        "tenant_id": tenant_id,
+                        "mask_nifti_local": mask_nifti_local,
+                        "reference_nifti_local": original_nifti_local,
+                    }
+                )
+            )
             if not NiftiConverter.align_mask_to_reference(
                 mask_nifti_path=mask_nifti_local,
                 reference_nifti_path=original_nifti_local,
                 output_path=mask_nifti_local,
             ):
                 raise RuntimeError("Failed to align mask NIfTI to original image dimensions")
+            if visibility_heartbeat:
+                visibility_heartbeat()
+            transition_job(
+                job=job,
+                to_status=InferenceJob.STATUS_POSTPROCESSING,
+                reason="worker_mask_aligned",
+                metadata={},
+                progress_percent=90,
+            )
+            logger.info(
+                json.dumps(
+                    {
+                        "event": "worker_postprocessing_mask_align_completed",
+                        "job_id": job_id_text,
+                        "tenant_id": tenant_id,
+                    }
+                )
+            )
 
             output_specs = [
                 (
@@ -249,8 +347,35 @@ class InferenceWorkerPipeline:
 
             with transaction.atomic():
                 for kind, local_path, key, content_type in output_specs:
+                    if visibility_heartbeat:
+                        visibility_heartbeat()
+                    logger.info(
+                        json.dumps(
+                            {
+                                "event": "worker_output_upload_started",
+                                "job_id": job_id_text,
+                                "tenant_id": tenant_id,
+                                "kind": kind,
+                                "key": key,
+                                "local_path": local_path,
+                            }
+                        )
+                    )
                     if not self.s3.upload_file(local_path, key, content_type):
                         raise RuntimeError(f"Failed to upload artifact kind={kind} to key={key}")
+                    if visibility_heartbeat:
+                        visibility_heartbeat()
+                    logger.info(
+                        json.dumps(
+                            {
+                                "event": "worker_output_upload_completed",
+                                "job_id": job_id_text,
+                                "tenant_id": tenant_id,
+                                "kind": kind,
+                                "key": key,
+                            }
+                        )
+                    )
 
                     head = self.s3.head_object(key) or {}
                     OutputArtifact.objects.update_or_create(
@@ -270,6 +395,13 @@ class InferenceWorkerPipeline:
                             },
                         },
                     )
+                transition_job(
+                    job=job,
+                    to_status=InferenceJob.STATUS_POSTPROCESSING,
+                    reason="worker_outputs_uploaded",
+                    metadata={},
+                    progress_percent=95,
+                )
 
                 processing_metadata = {
                     "job_id": job_id_text,

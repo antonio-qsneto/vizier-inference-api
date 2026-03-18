@@ -468,11 +468,37 @@ class InferenceJobStatusView(APIView):
             return Response({"detail": "Async inference API is disabled"}, status=status.HTTP_404_NOT_FOUND)
 
         job = get_object_or_404(
-            InferenceJob.objects.select_related("tenant", "owner").prefetch_related("input_artifacts"),
+            InferenceJob.objects.select_related("tenant", "owner").prefetch_related("input_artifacts", "output_artifacts"),
             id=job_id,
         )
         if not _job_accessible_by_user(job, request.user):
             return Response({"detail": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
+
+        if job.status == InferenceJob.STATUS_POSTPROCESSING:
+            required_output_kinds = {
+                OutputArtifact.KIND_NORMALIZED_INPUT_NPZ,
+                OutputArtifact.KIND_ORIGINAL_NIFTI,
+                OutputArtifact.KIND_MASK_NIFTI,
+                OutputArtifact.KIND_SUMMARY_JSON,
+            }
+            available_output_kinds = set(job.output_artifacts.values_list("kind", flat=True))
+            if required_output_kinds.issubset(available_output_kinds):
+                result = transition_job(
+                    job=job,
+                    to_status=InferenceJob.STATUS_COMPLETED,
+                    actor_user=request.user,
+                    reason="status_endpoint_reconciled_outputs",
+                    metadata={"source": "status_endpoint"},
+                    progress_percent=100,
+                )
+                if result.changed:
+                    _emit_audit_event(
+                        job=job,
+                        action="INFERENCE_JOB_COMPLETED_AUTO_RECONCILED",
+                        user=request.user,
+                        payload={"source": "status_endpoint"},
+                    )
+                job.refresh_from_db()
 
         return Response(InferenceJobStatusSerializer(job).data)
 
