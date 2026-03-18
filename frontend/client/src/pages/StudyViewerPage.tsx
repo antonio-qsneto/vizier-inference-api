@@ -269,6 +269,21 @@ function getAsyncViewerModality(status: InferenceJobStatus) {
   return String(payload.exam_modality || "").trim();
 }
 
+function formatSegmentationTargets(labels: string[]) {
+  const normalized = labels.map((item) => item.trim()).filter(Boolean);
+  if (!normalized.length) {
+    return "Não informado";
+  }
+
+  const maxVisible = 3;
+  const visible = normalized.slice(0, maxVisible).join(", ");
+  if (normalized.length <= maxVisible) {
+    return visible;
+  }
+
+  return `${visible} +${normalized.length - maxVisible}`;
+}
+
 export default function StudyViewerPage({ studyId }: { studyId: string }) {
   const { accessToken } = useAuth();
   const isAsyncFlow = useMemo(() => {
@@ -504,9 +519,11 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     const currentAsyncStatus = asyncStatus.status;
     const asyncPatientName = getAsyncViewerPatientName(asyncStatus);
     const asyncModality = getAsyncViewerModality(asyncStatus);
-    const asyncHeaderTitle = asyncModality
-      ? `${asyncPatientName} · ${asyncModality}`
-      : asyncPatientName;
+    const asyncSegmentationTargets = formatSegmentationTargets(
+      asyncAssets?.segmentsLegend?.length
+        ? asyncAssets.segmentsLegend.map((segment) => segment.label)
+        : asyncAssets?.fallbackSegmentNames || [],
+    );
 
     return (
       <motion.section
@@ -518,8 +535,14 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
         <div className="flex flex-col gap-3 rounded-[10px] border border-white/8 bg-[#23252d] px-4 py-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
             <h1 className="mt-1 truncate text-xl font-semibold tracking-tight text-white">
-              {asyncHeaderTitle}
+              {asyncPatientName}
             </h1>
+            <p className="mt-1 text-sm text-slate-300">
+              {asyncModality || "Modalidade não informada"}
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Segmentation targets: {asyncSegmentationTargets}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -591,6 +614,10 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
   }
 
   const currentStatus = statusSnapshot?.status || study.status;
+  const legacySegmentationTargets = formatSegmentationTargets(
+    result?.segments_legend?.map((segment) => segment.label) ||
+      [study.category || ""],
+  );
 
   return (
     <motion.section
@@ -611,7 +638,10 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
             {study.case_identification || study.patient_name || "Estudo clínico"}
           </h1>
           <p className="mt-1 text-sm text-slate-300">
-            {study.exam_modality || "Unknown"} · {study.category}
+            {study.exam_modality || "Unknown"}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Segmentation targets: {legacySegmentationTargets}
           </p>
         </div>
 

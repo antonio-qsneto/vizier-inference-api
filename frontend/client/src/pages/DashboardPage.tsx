@@ -141,7 +141,7 @@ export default function DashboardPage() {
         modality: modality || "Unknown",
         status: mapAsyncStatusToCaseStatus(job.status),
         createdAt: job.created_at,
-        href: `/studies/${job.id}?async=1`,
+        href: `/studies/${job.id}/viewer?async=1`,
       };
     }),
     ...studies.map((study) => ({
@@ -152,7 +152,7 @@ export default function DashboardPage() {
       modality: study.exam_modality || "Unknown",
       status: study.status || "SUBMITTED",
       createdAt: study.created_at,
-      href: `/studies/${study.id}`,
+      href: `/studies/${study.id}/viewer`,
     })),
   ]
     .sort((left, right) => (right.createdAt || "").localeCompare(left.createdAt || ""))

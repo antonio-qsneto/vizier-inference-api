@@ -168,7 +168,15 @@ export default function StudiesPage() {
     });
   }, [caseRows, search, statusFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const shouldApplyClientPaginationFallback =
+    caseRows.length > pageSize && totalCount === caseRows.length;
+  const effectiveTotalCount = shouldApplyClientPaginationFallback
+    ? visibleStudies.length
+    : totalCount;
+  const totalPages = Math.max(1, Math.ceil(effectiveTotalCount / pageSize));
+  const displayedStudies = shouldApplyClientPaginationFallback
+    ? visibleStudies.slice((page - 1) * pageSize, page * pageSize)
+    : visibleStudies;
 
   useEffect(() => {
     if (page > totalPages) {
@@ -255,7 +263,7 @@ export default function StudiesPage() {
         </div>
         <div className="flex items-center justify-between gap-3 text-sm text-slate-300">
           <p>
-            Página {page} de {totalPages} · {totalCount} estudos
+            Página {page} de {totalPages} · {effectiveTotalCount} estudos
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -280,7 +288,7 @@ export default function StudiesPage() {
         </div>
       </Panel>
 
-      {visibleStudies.length ? (
+      {displayedStudies.length ? (
         <Panel className="overflow-hidden p-0">
           <div className="overflow-x-auto">
             <div className="min-w-[980px]">
@@ -294,7 +302,7 @@ export default function StudiesPage() {
               </div>
 
               <div className="divide-y divide-white/6">
-                {visibleStudies.map((study) => (
+                {displayedStudies.map((study) => (
                   <div
                     key={study.id}
                     className="grid grid-cols-[1.1fr_1fr_0.7fr_0.9fr_0.9fr_0.65fr] gap-4 px-6 py-4 transition hover:bg-white/4"
