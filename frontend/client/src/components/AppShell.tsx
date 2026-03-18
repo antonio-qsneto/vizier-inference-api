@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   LogOut,
   PanelLeft,
-  ScanEye,
   UserCog,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -240,11 +239,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <>
               <div className="flex items-center justify-between gap-3 border-b border-white/6 px-4 py-4">
                 <div className="flex items-center gap-3">
-                  <div className="inline-flex h-9 w-9 items-center justify-center rounded-[12px] bg-sky-500/20 text-sky-200">
-                    <ScanEye className="h-5 w-5" />
+                  <div className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-[12px] bg-sky-500/20">
+                    <img src="/favcon.png" alt="Vizier icon" className="h-5 w-5 object-contain" />
                   </div>
-                  <div>
-                    <p className="text-base font-semibold text-white">Vizier Med</p>
+                  <div className="min-w-0">
+                    <img src="/site/vizier_white.svg" alt="Vizier Med" className="h-6 w-auto" />
                     <p className="text-xs text-slate-400">Medical Assistance AI</p>
                   </div>
                 </div>
