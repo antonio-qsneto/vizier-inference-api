@@ -342,7 +342,7 @@ class NiftiConverter:
                     spacing = data['spacing'] if 'spacing' in data.files else None
                 spacing_tuple = NiftiConverter._normalize_spacing(spacing)
 
-            logger.info("Original image shape: %s", tuple(imgs.shape))
+            logger.info("Original image shape (expected Z,Y,X): %s", tuple(imgs.shape))
 
             # Remove singleton channel dimension if present (e.g., (1, Z, Y, X) -> (Z, Y, X))
             if imgs.ndim == 4 and imgs.shape[0] == 1:
@@ -362,23 +362,34 @@ class NiftiConverter:
             # Rescale for visualization (apply only to image channel)
             imgs = NiftiConverter._maybe_rescale_for_visualization(imgs)
             NiftiConverter._log_array_stats("image_final", imgs)
+
+            # Internal NPZ convention is depth-first (Z,Y,X); viewer-friendly
+            # NIfTI should be exported as canonical (X,Y,Z).
+            imgs_xyz = np.transpose(imgs, (2, 1, 0))
+            spacing_xyz = None
+            if spacing_tuple is not None:
+                spacing_xyz = (spacing_tuple[2], spacing_tuple[1], spacing_tuple[0])
             
             # Create affine matrix (match spacing order to data axes)
             affine = np.eye(4)
-            if spacing_tuple is not None:
-                affine[0, 0] = spacing_tuple[0]
-                affine[1, 1] = spacing_tuple[1]
-                affine[2, 2] = spacing_tuple[2]
+            if spacing_xyz is not None:
+                affine[0, 0] = spacing_xyz[0]
+                affine[1, 1] = spacing_xyz[1]
+                affine[2, 2] = spacing_xyz[2]
             
             # Create NIfTI image
-            logger.info(f"Creating NIfTI image with shape: {imgs.shape}")
-            nifti_img = nib.Nifti1Image(imgs, affine)
+            logger.info(
+                "Creating NIfTI image with shape_xyz=%s from source_zyx=%s",
+                tuple(imgs_xyz.shape),
+                tuple(imgs.shape),
+            )
+            nifti_img = nib.Nifti1Image(imgs_xyz, affine)
 
             # Preserve spacing in header
-            if spacing_tuple is not None:
-                zooms = list(spacing_tuple[:3])
-                if imgs.ndim > 3:
-                    zooms += [1.0] * (imgs.ndim - 3)
+            if spacing_xyz is not None:
+                zooms = list(spacing_xyz[:3])
+                if imgs_xyz.ndim > 3:
+                    zooms += [1.0] * (imgs_xyz.ndim - 3)
                 try:
                     nifti_img.header.set_zooms(tuple(zooms))
                 except Exception:

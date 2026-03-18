@@ -7,6 +7,7 @@ import os
 import shutil
 import tempfile
 import zipfile
+import math
 import numpy as np
 import pydicom
 import nibabel as nib
@@ -88,7 +89,7 @@ class DicomZipToNpzService:
                 if not series_folders:
                     raise ValueError("No series folders found")
 
-                series_path = series_folders[0]
+                series_path = self._select_best_series_folder(series_folders)
                 logger.info("Using DICOM series folder: %s", os.path.basename(series_path))
 
                 volume, spacing = self._load_series(series_path)
@@ -204,11 +205,8 @@ class DicomZipToNpzService:
         Convert NIfTI (.nii/.nii.gz) to a BiomedParse v2-compatible NPZ.
 
         The resulting NPZ matches the inference contract (`imgs`, `spacing`,
-        `text_prompts`) with depth-first layout (D,H,W) aligned to the
-        reference BiomedParse inference examples.
-
-        BiomedParse examples transpose NIfTI arrays from (X,Y,Z) to
-        `np.transpose(..., (2, 0, 1))` before `process_input(...)`.
+        `text_prompts`) with depth-first layout (Z,Y,X), consistent with ZIP
+        DICOM uploads in this service.
         """
         if text_prompts is None:
             text_prompts = {}
@@ -219,12 +217,12 @@ class DicomZipToNpzService:
             volume_xyz = np.asanyarray(nifti_img.dataobj)
             volume_xyz = self._coerce_3d_volume(volume_xyz)
 
-            # Align with BiomedParse reference examples: (X,Y,Z) -> (Z,X,Y).
-            volume = np.transpose(volume_xyz, (2, 0, 1))
+            # Canonicalize to depth-first layout used by DICOM path: (X,Y,Z) -> (Z,Y,X).
+            volume = np.transpose(volume_xyz, (2, 1, 0))
             original_shape = tuple(volume.shape)
 
             spacing_xyz = tuple(float(v) for v in nifti_img.header.get_zooms()[:3])
-            spacing_zxy = (spacing_xyz[2], spacing_xyz[0], spacing_xyz[1])
+            spacing_zyx = (spacing_xyz[2], spacing_xyz[1], spacing_xyz[0])
 
             volume = volume.astype(np.float32, copy=False)
             volume = self._normalize_intensity(
@@ -234,7 +232,7 @@ class DicomZipToNpzService:
             )
 
             npz_path = output_npz_path or os.path.join(os.path.dirname(nifti_path), 'file.npz')
-            self._save_npz(npz_path, volume, spacing_zxy, text_prompts)
+            self._save_npz(npz_path, volume, spacing_zyx, text_prompts)
 
             logger.info("Converted NIfTI to NPZ shape %s -> %s", original_shape, tuple(volume.shape))
             return npz_path
@@ -377,11 +375,191 @@ class DicomZipToNpzService:
     @staticmethod
     def _get_series_folders(study_path: str) -> list:
         """Get series folders from study."""
-        return [
-            os.path.join(study_path, d)
-            for d in os.listdir(study_path)
-            if os.path.isdir(os.path.join(study_path, d))
+        return sorted(
+            [
+                os.path.join(study_path, d)
+                for d in os.listdir(study_path)
+                if os.path.isdir(os.path.join(study_path, d))
+            ]
+        )
+
+    @staticmethod
+    def _safe_float(value, default: float | None = None) -> float | None:
+        try:
+            return float(value)
+        except Exception:
+            return default
+
+    @staticmethod
+    def _safe_int(value, default: int | None = None) -> int | None:
+        try:
+            return int(value)
+        except Exception:
+            return default
+
+    @staticmethod
+    def _get_slice_normal(ds) -> np.ndarray | None:
+        iop = getattr(ds, 'ImageOrientationPatient', None)
+        if iop is None or len(iop) < 6:
+            return None
+        try:
+            row = np.array([float(iop[0]), float(iop[1]), float(iop[2])], dtype=np.float64)
+            col = np.array([float(iop[3]), float(iop[4]), float(iop[5])], dtype=np.float64)
+        except Exception:
+            return None
+
+        normal = np.cross(row, col)
+        norm = float(np.linalg.norm(normal))
+        if norm <= 1e-8:
+            return None
+        return normal / norm
+
+    @staticmethod
+    def _slice_position_along_normal(ds, normal: np.ndarray | None) -> float | None:
+        ipp = getattr(ds, 'ImagePositionPatient', None)
+        if ipp is None or len(ipp) < 3 or normal is None:
+            return None
+        try:
+            ipp_vec = np.array([float(ipp[0]), float(ipp[1]), float(ipp[2])], dtype=np.float64)
+        except Exception:
+            return None
+        return float(np.dot(ipp_vec, normal))
+
+    @staticmethod
+    def _estimate_slice_spacing_from_positions(positions: list[float]) -> float | None:
+        if len(positions) < 2:
+            return None
+        ordered = np.sort(np.array(positions, dtype=np.float64))
+        diffs = np.diff(ordered)
+        diffs = np.abs(diffs[np.abs(diffs) > 1e-6])
+        if diffs.size == 0:
+            return None
+        return float(np.median(diffs))
+
+    @classmethod
+    def _probe_series(cls, series_path: str) -> dict | None:
+        files = sorted(
+            f
+            for f in os.listdir(series_path)
+            if os.path.isfile(os.path.join(series_path, f))
+        )
+        if not files:
+            return None
+
+        datasets = []
+        for filename in files:
+            full_path = os.path.join(series_path, filename)
+            try:
+                ds = pydicom.dcmread(full_path, stop_before_pixels=True)
+                # Require core image geometry tags to avoid selecting non-image objects.
+                if getattr(ds, 'Rows', None) is None or getattr(ds, 'Columns', None) is None:
+                    continue
+                datasets.append(ds)
+            except Exception:
+                continue
+
+        if not datasets:
+            return None
+
+        first = datasets[0]
+        normal = cls._get_slice_normal(first)
+        positions: list[float] = []
+        for ds in datasets:
+            position = cls._slice_position_along_normal(ds, normal)
+            if position is not None:
+                positions.append(position)
+
+        unique_positions = len({round(v, 4) for v in positions}) if positions else 0
+        instance_numbers = [
+            cls._safe_int(getattr(ds, 'InstanceNumber', None))
+            for ds in datasets
         ]
+        unique_instances = len({v for v in instance_numbers if v is not None})
+        effective_slices = unique_positions or unique_instances or len(datasets)
+
+        image_type_tokens = {
+            str(token).strip().lower()
+            for token in (getattr(first, 'ImageType', None) or [])
+            if str(token).strip()
+        }
+        is_original = 'original' in image_type_tokens
+        is_mpr_or_derived = 'mpr' in image_type_tokens or 'derived' in image_type_tokens
+
+        rows = cls._safe_int(getattr(first, 'Rows', None), 0) or 0
+        cols = cls._safe_int(getattr(first, 'Columns', None), 0) or 0
+        slice_spacing = cls._estimate_slice_spacing_from_positions(positions)
+        if slice_spacing is None:
+            slice_spacing = cls._safe_float(getattr(first, 'SpacingBetweenSlices', None), None)
+        if slice_spacing is None:
+            slice_spacing = cls._safe_float(getattr(first, 'SliceThickness', None), None)
+
+        series_description = str(getattr(first, 'SeriesDescription', '') or '').strip()
+
+        # Prefer a volumetric series with many unique slice positions.
+        # In ties, prefer ORIGINAL over DERIVED/MPR and finer slice spacing.
+        spacing_score = 0.0
+        if slice_spacing is not None and math.isfinite(slice_spacing) and slice_spacing > 0:
+            spacing_score = -slice_spacing
+        score = (
+            effective_slices,
+            1 if is_original else 0,
+            0 if is_mpr_or_derived else 1,
+            rows * cols,
+            len(datasets),
+            spacing_score,
+        )
+
+        return {
+            'path': series_path,
+            'score': score,
+            'effective_slices': effective_slices,
+            'count': len(datasets),
+            'rows': rows,
+            'cols': cols,
+            'slice_spacing': slice_spacing,
+            'is_original': is_original,
+            'is_mpr_or_derived': is_mpr_or_derived,
+            'description': series_description,
+        }
+
+    @classmethod
+    def _select_best_series_folder(cls, series_folders: list[str]) -> str:
+        probes = []
+        for series_path in series_folders:
+            probe = cls._probe_series(series_path)
+            if probe is None:
+                logger.info("Ignoring non-image series folder: %s", os.path.basename(series_path))
+                continue
+            probes.append(probe)
+            logger.info(
+                (
+                    "Series candidate %s: slices=%s files=%s matrix=%sx%s "
+                    "original=%s mpr_or_derived=%s spacing=%s desc=%s score=%s"
+                ),
+                os.path.basename(series_path),
+                probe['effective_slices'],
+                probe['count'],
+                probe['rows'],
+                probe['cols'],
+                probe['is_original'],
+                probe['is_mpr_or_derived'],
+                probe['slice_spacing'],
+                probe['description'] or '-',
+                probe['score'],
+            )
+
+        if not probes:
+            raise ValueError("No valid DICOM image series found")
+
+        probes.sort(key=lambda item: item['score'], reverse=True)
+        selected = probes[0]
+        logger.info(
+            "Selected series %s (%s slices, desc=%s)",
+            os.path.basename(selected['path']),
+            selected['effective_slices'],
+            selected['description'] or '-',
+        )
+        return str(selected['path'])
     
     @staticmethod
     def _load_series(series_path: str) -> tuple:
@@ -400,14 +578,50 @@ class DicomZipToNpzService:
         if not slices:
             raise ValueError(f"No DICOM slices found in {series_path}")
         
-        # Sort slices
-        try:
-            slices.sort(key=lambda s: float(s.ImagePositionPatient[2]))
-        except Exception:
+        # Sort slices by geometric position along the acquisition normal.
+        normal = DicomZipToNpzService._get_slice_normal(slices[0])
+        if normal is not None:
+            slices_with_pos = []
+            missing_pos = []
+            for ds in slices:
+                pos = DicomZipToNpzService._slice_position_along_normal(ds, normal)
+                if pos is None:
+                    missing_pos.append(ds)
+                else:
+                    slices_with_pos.append((pos, ds))
+
+            if slices_with_pos:
+                slices_with_pos.sort(key=lambda item: item[0])
+                ordered = [ds for _, ds in slices_with_pos]
+                if missing_pos:
+                    missing_pos.sort(
+                        key=lambda ds: DicomZipToNpzService._safe_int(
+                            getattr(ds, 'InstanceNumber', 0),
+                            0,
+                        ) or 0
+                    )
+                    ordered.extend(missing_pos)
+                slices = ordered
+            else:
+                try:
+                    slices.sort(key=lambda ds: float(ds.ImagePositionPatient[2]))
+                except Exception:
+                    slices.sort(
+                        key=lambda ds: DicomZipToNpzService._safe_int(
+                            getattr(ds, 'InstanceNumber', 0),
+                            0,
+                        ) or 0
+                    )
+        else:
             try:
-                slices.sort(key=lambda s: int(s.InstanceNumber))
+                slices.sort(key=lambda ds: float(ds.ImagePositionPatient[2]))
             except Exception:
-                pass
+                slices.sort(
+                    key=lambda ds: DicomZipToNpzService._safe_int(
+                        getattr(ds, 'InstanceNumber', 0),
+                        0,
+                    ) or 0
+                )
         
         # Stack volume
         volume = np.stack([DicomZipToNpzService._extract_slice_pixels(s) for s in slices], axis=0)
@@ -416,8 +630,30 @@ class DicomZipToNpzService:
         spacing = None
         try:
             px = slices[0].PixelSpacing
-            th = slices[0].SliceThickness
-            spacing = (float(th), float(px[0]), float(px[1]))
+            spacing_y = float(px[0])
+            spacing_x = float(px[1])
+
+            positions = []
+            if normal is not None:
+                for ds in slices:
+                    pos = DicomZipToNpzService._slice_position_along_normal(ds, normal)
+                    if pos is not None:
+                        positions.append(pos)
+            spacing_z = DicomZipToNpzService._estimate_slice_spacing_from_positions(positions)
+            if spacing_z is None:
+                spacing_z = DicomZipToNpzService._safe_float(
+                    getattr(slices[0], 'SpacingBetweenSlices', None),
+                    None,
+                )
+            if spacing_z is None:
+                spacing_z = DicomZipToNpzService._safe_float(
+                    getattr(slices[0], 'SliceThickness', None),
+                    None,
+                )
+            if spacing_z is None or spacing_z <= 0:
+                spacing_z = 1.0
+
+            spacing = (float(spacing_z), float(spacing_y), float(spacing_x))
         except Exception:
             pass
         
@@ -568,38 +804,46 @@ class DicomZipToNpzService:
         spacing_zyx=None,
     ) -> None:
         """
-        Save a 3D volume as NIfTI preserving original matrix size.
+        Save a 3D volume as NIfTI with canonical axis order (X,Y,Z).
 
-        The data layout is preserved as-is (commonly Z,Y,X in this pipeline).
+        Internal pipeline stores volumes in (Z,Y,X). Viewer-oriented NIfTI
+        should be exported as (X,Y,Z) to avoid distorted orthogonal views.
         """
         volume_3d = DicomZipToNpzService._coerce_3d_volume(np.asarray(volume))
         volume_3d = volume_3d.astype(np.float32, copy=False)
+        volume_xyz = np.transpose(volume_3d, (2, 1, 0))
 
-        spacing_tuple = None
+        spacing_xyz = None
         if spacing_zyx is not None:
             spacing_arr = np.asarray(spacing_zyx).reshape(-1)
             if spacing_arr.size >= 3:
-                spacing_tuple = (
-                    float(spacing_arr[0]),
-                    float(spacing_arr[1]),
+                spacing_xyz = (
                     float(spacing_arr[2]),
+                    float(spacing_arr[1]),
+                    float(spacing_arr[0]),
                 )
 
         affine = np.eye(4, dtype=np.float32)
-        if spacing_tuple is not None:
-            affine[0, 0] = spacing_tuple[0]
-            affine[1, 1] = spacing_tuple[1]
-            affine[2, 2] = spacing_tuple[2]
+        if spacing_xyz is not None:
+            affine[0, 0] = spacing_xyz[0]
+            affine[1, 1] = spacing_xyz[1]
+            affine[2, 2] = spacing_xyz[2]
 
-        nii = nib.Nifti1Image(volume_3d, affine)
-        if spacing_tuple is not None:
+        nii = nib.Nifti1Image(volume_xyz, affine)
+        if spacing_xyz is not None:
             try:
-                nii.header.set_zooms(spacing_tuple)
+                nii.header.set_zooms(spacing_xyz)
             except Exception:
                 logger.warning("Failed to set NIfTI zooms for original volume", exc_info=True)
 
         nib.save(nii, output_nifti_path)
-        logger.info("Saved original-resolution NIfTI: %s", output_nifti_path)
+        logger.info(
+            "Saved original-resolution NIfTI: %s shape_zyx=%s shape_xyz=%s spacing_xyz=%s",
+            output_nifti_path,
+            tuple(volume_3d.shape),
+            tuple(volume_xyz.shape),
+            spacing_xyz,
+        )
 
     @staticmethod
     def _coerce_3d_volume(volume: np.ndarray) -> np.ndarray:

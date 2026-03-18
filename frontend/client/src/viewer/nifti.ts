@@ -8,6 +8,24 @@ export interface VolumeData {
   sourceUrl: string;
   dims: [number, number, number];
   spacing: [number, number, number];
+  affine: [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
   data: Float32Array;
   min: number;
   max: number;
@@ -71,31 +89,371 @@ const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const planeConfig = {
   axial: {
     axes: ["x", "y", "z"] as const,
-    flipX: true,
-    flipY: true,
-    orientation: { left: "R", right: "L", top: "A", bottom: "P" },
+    defaultFlipX: true,
+    defaultFlipY: true,
+    preferredOrientation: { left: "R", right: "L", top: "A", bottom: "P" },
   },
   coronal: {
     axes: ["x", "z", "y"] as const,
-    flipX: true,
-    flipY: true,
-    orientation: { left: "R", right: "L", top: "S", bottom: "I" },
+    defaultFlipX: true,
+    defaultFlipY: true,
+    preferredOrientation: { left: "R", right: "L", top: "S", bottom: "I" },
   },
   sagittal: {
     axes: ["y", "z", "x"] as const,
-    flipX: false,
-    flipY: true,
-    orientation: { left: "A", right: "P", top: "S", bottom: "I" },
+    defaultFlipX: false,
+    defaultFlipY: true,
+    preferredOrientation: { left: "A", right: "P", top: "S", bottom: "I" },
   },
 } satisfies Record<
   Plane,
   {
     axes: readonly ["x" | "y", "y" | "z", "x" | "y" | "z"];
+    defaultFlipX: boolean;
+    defaultFlipY: boolean;
+    preferredOrientation: {
+      left: string;
+      right: string;
+      top: string;
+      bottom: string;
+    };
+  }
+>;
+
+const orientationOpposites: Record<string, string> = {
+  R: "L",
+  L: "R",
+  A: "P",
+  P: "A",
+  S: "I",
+  I: "S",
+};
+
+type PlaneDisplayConfig = {
+  flipX: boolean;
+  flipY: boolean;
+  orientation: { left: string; right: string; top: string; bottom: string };
+};
+
+type AxisKey = "x" | "y" | "z";
+
+function buildFallbackAffine(
+  spacingX: number,
+  spacingY: number,
+  spacingZ: number,
+): VolumeData["affine"] {
+  return [
+    spacingX,
+    0,
+    0,
+    0,
+    0,
+    spacingY,
+    0,
+    0,
+    0,
+    0,
+    spacingZ,
+    0,
+    0,
+    0,
+    0,
+    1,
+  ];
+}
+
+function readSformAffine(
+  view: DataView,
+  littleEndian: boolean,
+): VolumeData["affine"] | null {
+  const sformCode = view.getInt16(254, littleEndian);
+  if (sformCode <= 0) {
+    return null;
+  }
+
+  const raw = [
+    view.getFloat32(280, littleEndian),
+    view.getFloat32(284, littleEndian),
+    view.getFloat32(288, littleEndian),
+    view.getFloat32(292, littleEndian),
+    view.getFloat32(296, littleEndian),
+    view.getFloat32(300, littleEndian),
+    view.getFloat32(304, littleEndian),
+    view.getFloat32(308, littleEndian),
+    view.getFloat32(312, littleEndian),
+    view.getFloat32(316, littleEndian),
+    view.getFloat32(320, littleEndian),
+    view.getFloat32(324, littleEndian),
+  ];
+
+  if (!raw.every((value) => Number.isFinite(value))) {
+    return null;
+  }
+
+  return [
+    raw[0],
+    raw[1],
+    raw[2],
+    raw[3],
+    raw[4],
+    raw[5],
+    raw[6],
+    raw[7],
+    raw[8],
+    raw[9],
+    raw[10],
+    raw[11],
+    0,
+    0,
+    0,
+    1,
+  ];
+}
+
+function readQformAffine(
+  view: DataView,
+  littleEndian: boolean,
+  spacingX: number,
+  spacingY: number,
+  spacingZ: number,
+): VolumeData["affine"] | null {
+  const qformCode = view.getInt16(252, littleEndian);
+  if (qformCode <= 0) {
+    return null;
+  }
+
+  let b = view.getFloat32(256, littleEndian);
+  let c = view.getFloat32(260, littleEndian);
+  let d = view.getFloat32(264, littleEndian);
+  if (![b, c, d].every((value) => Number.isFinite(value))) {
+    return null;
+  }
+
+  const xOffset = view.getFloat32(268, littleEndian);
+  const yOffset = view.getFloat32(272, littleEndian);
+  const zOffset = view.getFloat32(276, littleEndian);
+  if (![xOffset, yOffset, zOffset].every((value) => Number.isFinite(value))) {
+    return null;
+  }
+
+  const qfacRaw = view.getFloat32(76, littleEndian);
+  const qfac = Number.isFinite(qfacRaw) && qfacRaw < 0 ? -1 : 1;
+
+  let aSquared = 1.0 - (b * b + c * c + d * d);
+  let a = aSquared > 1e-7 ? Math.sqrt(aSquared) : 0;
+  if (a === 0) {
+    const magnitude = Math.sqrt(b * b + c * c + d * d);
+    if (magnitude > 1e-8) {
+      b /= magnitude;
+      c /= magnitude;
+      d /= magnitude;
+      aSquared = 0;
+    } else {
+      b = 0;
+      c = 0;
+      d = 0;
+      aSquared = 1;
+    }
+    a = Math.sqrt(Math.max(aSquared, 0));
+  }
+
+  const r11 = a * a + b * b - c * c - d * d;
+  const r12 = 2 * (b * c - a * d);
+  const r13 = 2 * (b * d + a * c);
+  const r21 = 2 * (b * c + a * d);
+  const r22 = a * a + c * c - b * b - d * d;
+  const r23 = 2 * (c * d - a * b);
+  const r31 = 2 * (b * d - a * c);
+  const r32 = 2 * (c * d + a * b);
+  const r33 = a * a + d * d - b * b - c * c;
+
+  const dz = spacingZ * qfac;
+  const raw = [
+    r11 * spacingX,
+    r12 * spacingY,
+    r13 * dz,
+    xOffset,
+    r21 * spacingX,
+    r22 * spacingY,
+    r23 * dz,
+    yOffset,
+    r31 * spacingX,
+    r32 * spacingY,
+    r33 * dz,
+    zOffset,
+  ];
+  if (!raw.every((value) => Number.isFinite(value))) {
+    return null;
+  }
+
+  return [
+    raw[0],
+    raw[1],
+    raw[2],
+    raw[3],
+    raw[4],
+    raw[5],
+    raw[6],
+    raw[7],
+    raw[8],
+    raw[9],
+    raw[10],
+    raw[11],
+    0,
+    0,
+    0,
+    1,
+  ];
+}
+
+function readNiftiAffine(
+  view: DataView,
+  littleEndian: boolean,
+  spacingX: number,
+  spacingY: number,
+  spacingZ: number,
+): VolumeData["affine"] {
+  return (
+    readSformAffine(view, littleEndian) ||
+    readQformAffine(view, littleEndian, spacingX, spacingY, spacingZ) ||
+    buildFallbackAffine(spacingX, spacingY, spacingZ)
+  );
+}
+
+function getVolumeAxisVector(volume: VolumeData, axis: AxisKey) {
+  const axisIndex = axis === "x" ? 0 : axis === "y" ? 1 : 2;
+  return [
+    volume.affine[axisIndex],
+    volume.affine[4 + axisIndex],
+    volume.affine[8 + axisIndex],
+  ] as [number, number, number];
+}
+
+function negateVector3(vector: [number, number, number]): [number, number, number] {
+  return [-vector[0], -vector[1], -vector[2]];
+}
+
+function orientationLabelForVector(vector: [number, number, number]) {
+  const [x, y, z] = vector;
+  if (![x, y, z].every((value) => Number.isFinite(value))) {
+    return "?";
+  }
+
+  const absX = Math.abs(x);
+  const absY = Math.abs(y);
+  const absZ = Math.abs(z);
+  if (absX >= absY && absX >= absZ) {
+    return x >= 0 ? "R" : "L";
+  }
+  if (absY >= absX && absY >= absZ) {
+    return y >= 0 ? "A" : "P";
+  }
+  return z >= 0 ? "S" : "I";
+}
+
+function oppositeOrientationLabel(label: string) {
+  return orientationOpposites[label] || label;
+}
+
+function computeOrientationLabels(
+  horizontalAxis: [number, number, number],
+  verticalAxis: [number, number, number],
+  flipX: boolean,
+  flipY: boolean,
+) {
+  const rightLabel = orientationLabelForVector(
+    flipX ? negateVector3(horizontalAxis) : horizontalAxis,
+  );
+  const bottomLabel = orientationLabelForVector(
+    flipY ? negateVector3(verticalAxis) : verticalAxis,
+  );
+  return {
+    left: oppositeOrientationLabel(rightLabel),
+    right: rightLabel,
+    top: oppositeOrientationLabel(bottomLabel),
+    bottom: bottomLabel,
+  };
+}
+
+function scoreOrientation(
+  candidate: { left: string; right: string; top: string; bottom: string },
+  preferred: { left: string; right: string; top: string; bottom: string },
+) {
+  let score = 0;
+  if (candidate.left === preferred.left) {
+    score += 1;
+  }
+  if (candidate.right === preferred.right) {
+    score += 1;
+  }
+  if (candidate.top === preferred.top) {
+    score += 1;
+  }
+  if (candidate.bottom === preferred.bottom) {
+    score += 1;
+  }
+  return score;
+}
+
+function getPlaneDisplayConfig(
+  volume: VolumeData,
+  plane: Plane,
+): PlaneDisplayConfig {
+  const config = planeConfig[plane];
+  const horizontalAxis = getVolumeAxisVector(volume, config.axes[0]);
+  const verticalAxis = getVolumeAxisVector(volume, config.axes[1]);
+
+  let best: {
     flipX: boolean;
     flipY: boolean;
     orientation: { left: string; right: string; top: string; bottom: string };
+    score: number;
+    defaultDistance: number;
+  } | null = null;
+
+  for (const flipX of [false, true]) {
+    for (const flipY of [false, true]) {
+      const orientation = computeOrientationLabels(
+        horizontalAxis,
+        verticalAxis,
+        flipX,
+        flipY,
+      );
+      const score = scoreOrientation(orientation, config.preferredOrientation);
+      const defaultDistance =
+        (flipX === config.defaultFlipX ? 0 : 1) +
+        (flipY === config.defaultFlipY ? 0 : 1);
+
+      if (!best) {
+        best = { flipX, flipY, orientation, score, defaultDistance };
+        continue;
+      }
+
+      if (score > best.score) {
+        best = { flipX, flipY, orientation, score, defaultDistance };
+        continue;
+      }
+
+      if (score === best.score && defaultDistance < best.defaultDistance) {
+        best = { flipX, flipY, orientation, score, defaultDistance };
+      }
+    }
   }
->;
+
+  if (!best) {
+    return {
+      flipX: config.defaultFlipX,
+      flipY: config.defaultFlipY,
+      orientation: config.preferredOrientation,
+    };
+  }
+
+  return {
+    flipX: best.flipX,
+    flipY: best.flipY,
+    orientation: best.orientation,
+  };
+}
 
 export function axisForPlane(plane: Plane) {
   return planeConfig[plane].axes[2];
@@ -147,8 +505,8 @@ function getPlaneDisplayDimensions(volume: VolumeData, plane: Plane) {
   };
 }
 
-export function getPlaneOrientation(plane: Plane) {
-  return planeConfig[plane].orientation;
+export function getPlaneOrientation(volume: VolumeData, plane: Plane) {
+  return getPlaneDisplayConfig(volume, plane).orientation;
 }
 
 export function clamp(value: number, min: number, max: number) {
@@ -286,6 +644,13 @@ export async function loadNiftiVolume(assetUrl: string) {
   const spacingX = Math.abs(view.getFloat32(80, littleEndian)) || 1;
   const spacingY = Math.abs(view.getFloat32(84, littleEndian)) || 1;
   const spacingZ = Math.abs(view.getFloat32(88, littleEndian)) || 1;
+  const affine = readNiftiAffine(
+    view,
+    littleEndian,
+    spacingX,
+    spacingY,
+    spacingZ,
+  );
 
   const reader = getReader(datatype);
   const voxelCount = dimX * dimY * dimZ;
@@ -311,6 +676,7 @@ export async function loadNiftiVolume(assetUrl: string) {
     sourceUrl: assetUrl,
     dims: [dimX, dimY, dimZ],
     spacing: [spacingX, spacingY, spacingZ],
+    affine,
     data,
     min,
     max,
@@ -365,6 +731,7 @@ export function resampleMaskVolumeToDims(
     sourceUrl: `${maskVolume.sourceUrl}#resampled`,
     dims: [dstX, dstY, dstZ],
     spacing: maskVolume.spacing,
+    affine: maskVolume.affine,
     data: nextData,
     min,
     max,
@@ -706,7 +1073,7 @@ export function renderSliceToCanvas(options: {
   } = options;
   const { width, height } = getPlaneDimensions(imageVolume, plane);
   const displaySize = getPlaneDisplayDimensions(imageVolume, plane);
-  const config = planeConfig[plane];
+  const config = getPlaneDisplayConfig(imageVolume, plane);
   const offscreen = document.createElement("canvas");
   offscreen.width = width;
   offscreen.height = height;
@@ -915,7 +1282,7 @@ export function renderSliceToCanvas(options: {
     34,
   );
 
-  const orientation = getPlaneOrientation(plane);
+  const orientation = getPlaneOrientation(imageVolume, plane);
   context.font = "600 13px IBM Plex Sans, sans-serif";
   context.fillStyle = "#e2e8f0";
   context.fillText(orientation.left, 14, canvas.height / 2);
@@ -954,7 +1321,7 @@ export function pointerToVoxel(options: {
     options;
   const { width, height } = getPlaneDimensions(imageVolume, plane);
   const displaySize = getPlaneDisplayDimensions(imageVolume, plane);
-  const config = planeConfig[plane];
+  const config = getPlaneDisplayConfig(imageVolume, plane);
   const rect = canvas.getBoundingClientRect();
   const canvasX = ((clientX - rect.left) / rect.width) * canvas.width;
   const canvasY = ((clientY - rect.top) / rect.height) * canvas.height;

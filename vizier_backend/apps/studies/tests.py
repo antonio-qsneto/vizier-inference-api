@@ -749,7 +749,7 @@ class NiftiConversionServiceTest(TestCase):
                 self.assertEqual(data['imgs'].dtype, np.float32)
                 np.testing.assert_allclose(data['spacing'], np.array([2.5, 1.2, 1.0]), rtol=1e-6)
 
-    def test_convert_npz_to_nifti_keeps_original_shape(self):
+    def test_convert_npz_to_nifti_exports_canonical_xyz_shape(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             npz_path = os.path.join(tmpdir, 'input.npz')
             nifti_path = os.path.join(tmpdir, 'original.nii.gz')
@@ -761,7 +761,50 @@ class NiftiConversionServiceTest(TestCase):
             service.convert_npz_to_nifti(npz_path=npz_path, output_nifti_path=nifti_path)
 
             nii = nib.load(nifti_path)
-            self.assertEqual(tuple(nii.shape), (25, 90, 70))
+            self.assertEqual(tuple(nii.shape), (70, 90, 25))
+            np.testing.assert_allclose(
+                np.array(nii.header.get_zooms()[:3]),
+                np.array([0.8, 0.8, 1.5]),
+                rtol=1e-6,
+            )
+
+    @patch.object(DicomZipToNpzService, '_probe_series')
+    def test_select_best_series_folder_prefers_volumetric_original_series(self, mock_probe):
+        derived_mpr_path = '/tmp/series_mpr'
+        original_path = '/tmp/series_original'
+
+        mock_probe.side_effect = [
+            {
+                'path': derived_mpr_path,
+                'score': (40, 0, 0, 512 * 512, 40, -2.0),
+                'effective_slices': 40,
+                'count': 40,
+                'rows': 512,
+                'cols': 512,
+                'slice_spacing': 2.0,
+                'is_original': False,
+                'is_mpr_or_derived': True,
+                'description': 'Head 2.0 Coronal.40',
+            },
+            {
+                'path': original_path,
+                'score': (246, 1, 1, 512 * 512, 246, -0.8),
+                'effective_slices': 246,
+                'count': 246,
+                'rows': 512,
+                'cols': 512,
+                'slice_spacing': 0.8,
+                'is_original': True,
+                'is_mpr_or_derived': False,
+                'description': 'Head 1.0',
+            },
+        ]
+
+        selected = DicomZipToNpzService._select_best_series_folder(
+            [derived_mpr_path, original_path]
+        )
+
+        self.assertEqual(selected, original_path)
 
 
 class StudyCreateSerializerValidationTest(TestCase):
