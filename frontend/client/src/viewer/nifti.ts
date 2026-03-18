@@ -525,14 +525,12 @@ function getPlaneDisplayDimensions(
     displayHeight = height * spacingZ;
   }
 
-  // Metadata-poor NIfTI files (qform/sform absent, unit spacing) often render
-  // as near-line coronal/sagittal panels. Apply a small display-only boost so
-  // slices remain readable while keeping voxel indexing unchanged.
-  const hasUnitSpacing = volume.spacing.every((value) => Math.abs(value - 1) < 1e-3);
-  if (aspectMode === "anatomical" && !volume.hasSpatialTransform && hasUnitSpacing) {
+  // Anatomical mode is display-only: it expands very thin non-axial planes to
+  // improve readability while preserving voxel mapping and interactions.
+  if (aspectMode === "anatomical" && plane !== "axial") {
     const major = Math.max(displayWidth, displayHeight);
     const minor = Math.min(displayWidth, displayHeight);
-    const minAspectRatio = 0.2;
+    const minAspectRatio = 0.55;
     if (major > 0 && minor / major < minAspectRatio) {
       const boostedMinor = major * minAspectRatio;
       if (displayWidth >= displayHeight) {
@@ -547,6 +545,15 @@ function getPlaneDisplayDimensions(
     width: displayWidth,
     height: displayHeight,
   };
+}
+
+export function getPlaneDisplayAspectRatio(
+  volume: VolumeData,
+  plane: Plane,
+  aspectMode: DisplayAspectMode = "anatomical",
+) {
+  const { width, height } = getPlaneDisplayDimensions(volume, plane, aspectMode);
+  return width / Math.max(height, 1e-6);
 }
 
 export function getPlaneOrientation(volume: VolumeData, plane: Plane) {
@@ -1127,6 +1134,21 @@ export function renderSliceToCanvas(options: {
   const { width, height } = getPlaneDimensions(imageVolume, plane);
   const displaySize = getPlaneDisplayDimensions(imageVolume, plane, aspectMode);
   const config = getPlaneDisplayConfig(imageVolume, plane);
+
+  const rect = canvas.getBoundingClientRect();
+  const dpr =
+    typeof window !== "undefined" ? Math.max(window.devicePixelRatio || 1, 1) : 1;
+  const targetCanvasWidth = Math.max(1, Math.round(rect.width * dpr));
+  const targetCanvasHeight = Math.max(1, Math.round(rect.height * dpr));
+  if (
+    targetCanvasWidth > 0 &&
+    targetCanvasHeight > 0 &&
+    (canvas.width !== targetCanvasWidth || canvas.height !== targetCanvasHeight)
+  ) {
+    canvas.width = targetCanvasWidth;
+    canvas.height = targetCanvasHeight;
+  }
+
   const offscreen = document.createElement("canvas");
   offscreen.width = width;
   offscreen.height = height;

@@ -30,6 +30,7 @@ import {
   buildWindowPresets,
   clamp,
   deriveMaskLabels,
+  getPlaneDisplayAspectRatio,
   getPlaneDimensions,
   getLabelColor,
   getSliceCount,
@@ -64,29 +65,25 @@ const viewModeOptions: Array<{
 const panelVariantConfig: Record<
   PanelVariant,
   {
-    canvasWidth: number;
-    canvasHeight: number;
     canvasClassName: string;
     bodyClassName: string;
+    viewportClassName: string;
   }
 > = {
   hero: {
-    canvasWidth: 1440,
-    canvasHeight: 900,
-    canvasClassName: "block h-auto w-full max-h-[72vh]",
+    canvasClassName: "block h-full w-full",
     bodyClassName: "flex-1 p-2 md:p-3",
+    viewportClassName: "mx-auto w-full max-h-[72vh]",
   },
   standard: {
-    canvasWidth: 720,
-    canvasHeight: 720,
-    canvasClassName: "block h-auto w-full",
+    canvasClassName: "block h-full w-full",
     bodyClassName: "p-2",
+    viewportClassName: "mx-auto w-full",
   },
   rail: {
-    canvasWidth: 420,
-    canvasHeight: 320,
-    canvasClassName: "block h-auto w-full",
+    canvasClassName: "block h-full w-full",
     bodyClassName: "p-2",
+    viewportClassName: "mx-auto w-full",
   },
 };
 
@@ -244,6 +241,10 @@ export function OrthogonalViewer({
   useEffect(() => {
     void loadVolumes();
   }, [imageUrl, loadVolumes, maskUrl]);
+
+  useEffect(() => {
+    setDisplayAspectMode("anatomical");
+  }, [imageUrl, maskUrl]);
 
   useEffect(() => {
     const handleNativeWheel = (event: WheelEvent) => {
@@ -678,6 +679,10 @@ export function OrthogonalViewer({
     }
 
     const variantConfig = panelVariantConfig[variant];
+    const aspectRatio = imageVolume
+      ? getPlaneDisplayAspectRatio(imageVolume, plane, displayAspectMode)
+      : metrics.width / Math.max(metrics.height, 1);
+    const safeAspectRatio = clamp(aspectRatio, 0.45, 2.25);
 
     return (
       <section
@@ -757,30 +762,33 @@ export function OrthogonalViewer({
         </div>
 
         <div className={cn("bg-black", variantConfig.bodyClassName)}>
-          <canvas
-            ref={(node) => {
-              canvasRefs[plane].current = node;
-            }}
-            data-viewer-canvas={interactive ? "true" : undefined}
-            width={variantConfig.canvasWidth}
-            height={variantConfig.canvasHeight}
-            onWheel={
-              interactive ? (event) => handleWheel(plane, event) : undefined
-            }
-            onMouseDown={
-              interactive ? (event) => handleMouseDown(plane, event) : undefined
-            }
-            onMouseMove={
-              interactive ? (event) => handleMouseMove(plane, event) : undefined
-            }
-            onMouseUp={interactive ? handlePointerRelease : undefined}
-            onMouseLeave={interactive ? handlePointerRelease : undefined}
-            className={cn(
-              "mx-auto rounded-[8px] border border-white/8 bg-black",
-              variantConfig.canvasClassName,
-              !interactive && "pointer-events-none opacity-90",
-            )}
-          />
+          <div
+            className={variantConfig.viewportClassName}
+            style={{ aspectRatio: String(safeAspectRatio) }}
+          >
+            <canvas
+              ref={(node) => {
+                canvasRefs[plane].current = node;
+              }}
+              data-viewer-canvas={interactive ? "true" : undefined}
+              onWheel={
+                interactive ? (event) => handleWheel(plane, event) : undefined
+              }
+              onMouseDown={
+                interactive ? (event) => handleMouseDown(plane, event) : undefined
+              }
+              onMouseMove={
+                interactive ? (event) => handleMouseMove(plane, event) : undefined
+              }
+              onMouseUp={interactive ? handlePointerRelease : undefined}
+              onMouseLeave={interactive ? handlePointerRelease : undefined}
+              className={cn(
+                "rounded-[8px] border border-white/8 bg-black",
+                variantConfig.canvasClassName,
+                !interactive && "pointer-events-none opacity-90",
+              )}
+            />
+          </div>
         </div>
 
         <div className="border-t border-white/6 bg-[#23252d] px-3 py-2">
