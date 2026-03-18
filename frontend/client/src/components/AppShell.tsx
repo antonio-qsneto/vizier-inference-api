@@ -11,7 +11,6 @@ import {
   PanelLeft,
   ScanEye,
   UserCog,
-  UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { acknowledgeNotices } from "@/api/services";
@@ -65,8 +64,6 @@ function buildNavItems(params: {
   if (canAccessClinicMenu) {
     items.push({ href: "/clinic", label: "Clinic", icon: Building2 });
   }
-
-  items.push({ href: "/invitations", label: "Invitations", icon: UserPlus });
 
   const canSeeIndividualBilling = effectiveRole === "individual" && !hasClinic;
   if (canSeeIndividualBilling) {

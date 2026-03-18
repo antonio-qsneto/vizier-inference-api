@@ -226,7 +226,7 @@ export default function StudyUploadPage() {
       <PageIntro
         eyebrow="Upload"
         title="Submit a study to the inference pipeline"
-        description="O payload segue exatamente o serializer do backend: arquivo + `case_identification`, `patient_name`, `age`, `exam_source`, `exam_modality` e `category_id`."
+        description="Envie um estudo para processamento assíncrono."
       />
 
       {isClinicAdmin ? (
@@ -413,19 +413,6 @@ export default function StudyUploadPage() {
         <div className="space-y-6">
           <Panel className="space-y-4">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-              Payload preview
-            </p>
-            <div className="space-y-2 rounded-3xl border border-white/10 bg-white/5 p-4 font-mono text-sm text-slate-200">
-              <p>exam_modality = {formState.examModality || "..."}</p>
-              <p>category_id = {formState.categoryId || "..."}</p>
-            </div>
-            <p className="text-sm leading-7 text-slate-300">
-              O frontend envia o grupo selecionado, não um alvo individual.
-            </p>
-          </Panel>
-
-          <Panel className="space-y-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
               Included segmentation targets
             </p>
             {includedTargets.length ? (
@@ -441,8 +428,7 @@ export default function StudyUploadPage() {
               </div>
             ) : (
               <p className="text-sm leading-7 text-slate-300">
-                Selecione modalidade e target group para visualizar os targets
-                expandidos pelo backend.
+                Selecione modalidade e grupo para visualizar os alvos de segmentação.
               </p>
             )}
           </Panel>

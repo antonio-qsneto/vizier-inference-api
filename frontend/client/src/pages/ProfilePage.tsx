@@ -105,7 +105,7 @@ export default function ProfilePage() {
       });
       toast.success(response.detail);
       logout(false);
-      navigate("/login");
+      navigate("/");
     } catch (requestError) {
       toast.error(
         requestError instanceof Error ? requestError.message : "Falha ao excluir conta",

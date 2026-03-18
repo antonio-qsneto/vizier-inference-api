@@ -62,7 +62,7 @@ const redirectUri =
   `${fallbackOrigin}/auth/callback`;
 
 const logoutUri =
-  import.meta.env.VITE_COGNITO_LOGOUT_URI || `${fallbackOrigin}/login`;
+  import.meta.env.VITE_COGNITO_LOGOUT_URI || `${fallbackOrigin}/`;
 
 const defaultBillingCheckoutEndpoint = `${apiBaseUrl}/api/auth/billing/checkout/`;
 const defaultBillingPortalEndpoint = `${apiBaseUrl}/api/auth/billing/portal/`;

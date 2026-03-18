@@ -33,7 +33,7 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        navigate("/login");
+        navigate("/");
       } catch (callbackError) {
         if (!isActive) {
           return;
@@ -64,10 +64,10 @@ export default function AuthCallbackPage() {
             <h1 className="text-2xl font-semibold text-white">{error}</h1>
             <button
               type="button"
-              onClick={() => navigate("/login")}
+              onClick={() => navigate("/")}
               className="rounded-full bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400"
             >
-              Voltar ao login
+              Voltar ao início
             </button>
           </>
         ) : (

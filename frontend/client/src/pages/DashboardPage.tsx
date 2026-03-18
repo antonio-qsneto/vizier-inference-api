@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import {
-  Building2,
   CheckCircle2,
   Clock3,
   Eye,
@@ -11,9 +10,8 @@ import {
   UserRound,
 } from "lucide-react";
 import {
-  fetchClinics,
   fetchHealth,
-  fetchMyInvitations,
+  fetchInferenceJobs,
   fetchStudies,
   getPageResults,
 } from "@/api/services";
@@ -27,21 +25,45 @@ import {
   StatusPill,
 } from "@/components/primitives";
 import { formatDateTime } from "@/lib/format";
+import { env } from "@/env";
 import type {
-  Clinic,
-  DoctorInvitation,
   HealthStatus,
+  InferenceJobListItem,
   Study,
 } from "@/types/api";
+
+interface RecentCaseRow {
+  id: string;
+  title: string;
+  patient: string;
+  category: string;
+  modality: string;
+  status: string;
+  createdAt: string;
+  href: string;
+}
+
+function mapAsyncStatusToCaseStatus(status: string) {
+  const normalized = (status || "").toUpperCase();
+  if (normalized === "COMPLETED") {
+    return "COMPLETED";
+  }
+  if (normalized === "FAILED") {
+    return "FAILED";
+  }
+  if (normalized === "CREATED" || normalized === "UPLOAD_PENDING" || normalized === "UPLOADED") {
+    return "SUBMITTED";
+  }
+  return "PROCESSING";
+}
 
 export default function DashboardPage() {
   const { accessToken, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [clinic, setClinic] = useState<Clinic | null>(null);
   const [studies, setStudies] = useState<Study[]>([]);
-  const [invitations, setInvitations] = useState<DoctorInvitation[]>([]);
+  const [inferenceJobs, setInferenceJobs] = useState<InferenceJobListItem[]>([]);
 
   const loadDashboard = useCallback(async () => {
     if (!accessToken) {
@@ -50,23 +72,36 @@ export default function DashboardPage() {
 
     setLoading(true);
     try {
-      const [
-        healthResponse,
-        clinicsResponse,
-        studiesResponse,
-        invitationsResponse,
-      ] = await Promise.all([
+      const [healthResponse, studiesResponse, inferenceResponse] =
+        await Promise.allSettled([
         fetchHealth(),
-        fetchClinics(accessToken),
         fetchStudies(accessToken),
-        fetchMyInvitations(accessToken),
+        env.useAsyncS3Upload ? fetchInferenceJobs(accessToken) : Promise.resolve(null),
       ]);
 
-      setHealth(healthResponse);
-      setClinic(getPageResults<Clinic>(clinicsResponse)[0] ?? null);
-      setStudies(getPageResults<Study>(studiesResponse));
-      setInvitations(getPageResults<DoctorInvitation>(invitationsResponse));
-      setError(null);
+      setHealth(healthResponse.status === "fulfilled" ? healthResponse.value : null);
+      setStudies(
+        studiesResponse.status === "fulfilled"
+          ? getPageResults<Study>(studiesResponse.value)
+          : [],
+      );
+      setInferenceJobs(
+        inferenceResponse.status === "fulfilled" &&
+          inferenceResponse.value &&
+          typeof inferenceResponse.value === "object" &&
+          Array.isArray((inferenceResponse.value as { results?: unknown }).results)
+          ? ((inferenceResponse.value as { results: InferenceJobListItem[] }).results || [])
+          : [],
+      );
+
+      const failures = [healthResponse, studiesResponse, inferenceResponse]
+        .filter((result) => result.status === "rejected")
+        .map((result) => {
+          const reason = (result as PromiseRejectedResult).reason;
+          return reason instanceof Error ? reason.message : "Falha ao carregar painel";
+        });
+
+      setError(failures.length ? failures[0] : null);
     } catch (requestError) {
       if (requestError instanceof Error) {
         setError(requestError.message);
@@ -91,13 +126,37 @@ export default function DashboardPage() {
   const processingStudies = studies.filter(
     (study) => study.status === "PROCESSING" || study.status === "SUBMITTED",
   );
-  const effectiveRole =
-    user?.effective_role ||
-    (user?.role === "CLINIC_ADMIN"
-      ? "clinic_admin"
-      : user?.role === "CLINIC_DOCTOR"
-        ? "clinic_doctor"
-        : "individual");
+  const recentCases: RecentCaseRow[] = [
+    ...inferenceJobs.map((job) => {
+      const payload = (job.request_payload || {}) as Record<string, unknown>;
+      const caseIdentification = String(payload.case_identification || "").trim();
+      const patientName = String(payload.patient_name || "").trim();
+      const category = String(payload.category_id || "").trim();
+      const modality = String(payload.exam_modality || "").trim();
+      return {
+        id: job.id,
+        title: caseIdentification || patientName || "Estudo assíncrono",
+        patient: patientName || "Paciente sem nome",
+        category: category || "Inferência assíncrona",
+        modality: modality || "Unknown",
+        status: mapAsyncStatusToCaseStatus(job.status),
+        createdAt: job.created_at,
+        href: `/studies/${job.id}?async=1`,
+      };
+    }),
+    ...studies.map((study) => ({
+      id: study.id,
+      title: study.case_identification || study.patient_name || "Estudo sem identificação",
+      patient: study.patient_name || "Paciente sem nome",
+      category: study.category || "--",
+      modality: study.exam_modality || "Unknown",
+      status: study.status || "SUBMITTED",
+      createdAt: study.created_at,
+      href: `/studies/${study.id}`,
+    })),
+  ]
+    .sort((left, right) => (right.createdAt || "").localeCompare(left.createdAt || ""))
+    .slice(0, 5);
 
   return (
     <motion.section
@@ -153,7 +212,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+      <div className="space-y-6">
         <Panel className="space-y-5">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -183,104 +242,74 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="divide-y divide-white/6">
-                  {studies.slice(0, 5).map((study) => (
-                    <Link key={study.id} href={`/studies/${study.id}`}>
+                  {recentCases.length ? (
+                    recentCases.map((study) => (
+                    <Link key={study.id} href={study.href}>
                       <a className="grid grid-cols-[1.3fr_1fr_0.8fr_0.9fr] gap-4 px-6 py-4 transition hover:bg-white/4">
                         <div className="space-y-1">
                           <p className="font-medium text-white">
-                            {study.case_identification ||
-                              study.patient_name ||
-                              "Estudo sem identificação"}
+                            {study.title}
                           </p>
                           <p className="text-sm text-slate-500">
-                            {formatDateTime(study.created_at)}
+                            {formatDateTime(study.createdAt)}
                           </p>
                         </div>
                         <div className="space-y-1">
                           <p className="font-medium text-slate-100">
-                            {study.patient_name || "Unnamed patient"}
+                            {study.patient}
                           </p>
                           <p className="text-sm text-slate-500">
                             {study.category}
                           </p>
                         </div>
                         <div className="flex items-center text-slate-300">
-                          {study.exam_modality || "Unknown"}
+                          {study.modality}
                         </div>
                         <div className="flex items-center">
-                          <StatusPill status={study.status} />
+                          <StatusPill status={study.status || "SUBMITTED"} />
                         </div>
                       </a>
                     </Link>
-                  ))}
+                  ))
+                  ) : (
+                    <div className="px-6 py-8 text-sm text-slate-400">
+                      Nenhum estudo disponível ainda.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
         </Panel>
-
-        <div className="space-y-6">
-          <Panel className="space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Workspace
-                </p>
-                <h2 className="mt-2 text-2xl font-semibold text-white">
-                  {clinic?.name || user?.clinic_name || "Individual workspace"}
-                </h2>
-              </div>
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-[14px] border border-sky-400/20 bg-sky-500/12 text-sky-300">
-                <Building2 className="h-5 w-5" />
-              </div>
-            </div>
-            <div className="space-y-3 text-sm text-slate-400">
-              <p>
-                {clinic && effectiveRole === "clinic_admin"
-                  ? `${clinic.active_doctors_count ?? 0} active doctors and seat limit ${clinic.seat_limit ?? 0}.`
-                  : clinic
-                    ? "You are linked to a clinic workspace."
-                    : "No clinic linked yet. You can complete onboarding from the Clinic page."}
+        <Panel className="space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Account
               </p>
-              <div className="flex items-center justify-between rounded-[12px] border border-white/8 bg-[#25262d] px-4 py-3">
-                <span>Pending invitations</span>
-                <span className="font-semibold text-white">
-                  {invitations.length}
-                </span>
-              </div>
+              <h2 className="mt-2 text-2xl font-semibold text-white">
+                {user?.full_name || "Authenticated user"}
+              </h2>
             </div>
-          </Panel>
-
-          <Panel className="space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Account
-                </p>
-                <h2 className="mt-2 text-2xl font-semibold text-white">
-                  {user?.full_name || "Authenticated user"}
-                </h2>
-              </div>
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-[14px] border border-sky-400/20 bg-sky-500/12 text-sky-300">
-                <UserRound className="h-5 w-5" />
-              </div>
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-[14px] border border-sky-400/20 bg-sky-500/12 text-sky-300">
+              <UserRound className="h-5 w-5" />
             </div>
-            <div className="space-y-3 text-sm text-slate-400">
-              <div className="flex items-center justify-between rounded-[12px] border border-white/8 bg-[#25262d] px-4 py-3">
-                <span>Email</span>
-                <span className="font-medium text-slate-200">
-                  {user?.email || "--"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between rounded-[12px] border border-white/8 bg-[#25262d] px-4 py-3">
-                <span>Plan</span>
-                <span className="font-medium text-slate-200">
-                  {user?.subscription_plan || "free"}
-                </span>
-              </div>
+          </div>
+          <div className="space-y-3 text-sm text-slate-400">
+            <div className="flex items-center justify-between rounded-[12px] border border-white/8 bg-[#25262d] px-4 py-3">
+              <span>Email</span>
+              <span className="font-medium text-slate-200">
+                {user?.email || "--"}
+              </span>
             </div>
-          </Panel>
-        </div>
+            <div className="flex items-center justify-between rounded-[12px] border border-white/8 bg-[#25262d] px-4 py-3">
+              <span>Plan</span>
+              <span className="font-medium text-slate-200">
+                {user?.subscription_plan || "free"}
+              </span>
+            </div>
+          </div>
+        </Panel>
       </div>
     </motion.section>
   );

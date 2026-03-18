@@ -364,8 +364,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStatus("guest");
 
       if (shouldLogoutFromCognito) {
-        window.location.assign(buildCognitoLogoutUrl());
+        try {
+          const url = new URL(buildCognitoLogoutUrl());
+          url.searchParams.set("logout_uri", `${window.location.origin}/`);
+          window.location.assign(url.toString());
+          return;
+        } catch {
+          window.location.assign(buildCognitoLogoutUrl());
+          return;
+        }
       }
+
+      window.location.assign("/");
     },
     [session],
   );

@@ -180,7 +180,7 @@ export default function HomePage() {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => navigate("/login")}
+                    onClick={() => void signIn("login")}
                     className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-4 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 md:text-sm"
                   >
                     <LogIn className="h-4 w-4" />

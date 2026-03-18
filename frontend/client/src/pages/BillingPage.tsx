@@ -176,11 +176,6 @@ export default function BillingPage() {
         description="Usuário individual começa no plano free (sem upload). Para habilitar upload, assine o plano mensal ou anual."
       />
 
-      <InlineNotice title="Integration note">
-        O checkout abre no Stripe e o backend atualiza o plano via webhook em
-        `/api/auth/billing/webhook/`.
-      </InlineNotice>
-
       {!isIndividualUser ? (
         <InlineNotice title="Plano individual">
           Esta tela de assinatura Stripe está habilitada apenas para usuários
