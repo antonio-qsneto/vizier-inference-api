@@ -178,6 +178,7 @@ class NiftiConverter:
     def _infer_axis_permutation(
         source_shape: tuple[int, int, int],
         target_shape: tuple[int, int, int],
+        preferred: tuple[int, int, int] | None = None,
     ) -> tuple[int, int, int] | None:
         """
         Infer a source->target transpose permutation when shapes are axis permutations.
@@ -188,24 +189,27 @@ class NiftiConverter:
         if len(source_shape) != 3 or len(target_shape) != 3:
             return None
 
-        used_axes: set[int] = set()
-        permutation: list[int] = []
-        for target_dim in target_shape:
-            candidates = [
-                axis
-                for axis, size in enumerate(source_shape)
-                if axis not in used_axes and int(size) == int(target_dim)
-            ]
-            if not candidates:
-                return None
-            selected_axis = candidates[0]
-            used_axes.add(selected_axis)
-            permutation.append(selected_axis)
+        candidate_permutations = (
+            (0, 1, 2),
+            (0, 2, 1),
+            (1, 0, 2),
+            (1, 2, 0),
+            (2, 0, 1),
+            (2, 1, 0),
+        )
 
-        perm_tuple = tuple(permutation)
-        if tuple(source_shape[idx] for idx in perm_tuple) != tuple(target_shape):
+        matching: list[tuple[int, int, int]] = []
+        for permutation in candidate_permutations:
+            if tuple(source_shape[idx] for idx in permutation) == tuple(target_shape):
+                matching.append(permutation)
+
+        if not matching:
             return None
-        return perm_tuple  # type: ignore[return-value]
+
+        if preferred is not None and preferred in matching:
+            return preferred
+
+        return matching[0]
 
     @staticmethod
     def align_mask_to_reference(
@@ -254,7 +258,30 @@ class NiftiConverter:
             # Common case for NIfTI uploads: preprocessing converts image XYZ->ZYX,
             # so model output mask comes back in ZYX while reference original NIfTI
             # remains XYZ. In this case we must transpose axes, not resize.
-            permutation = NiftiConverter._infer_axis_permutation(mask_shape, ref_shape)
+            preferred_inverse_transpose = (2, 1, 0)
+            permutation: tuple[int, int, int] | None = None
+
+            # Canonical NIfTI upload path: image is converted XYZ -> ZYX for the
+            # model, so mask returns in ZYX and must be restored with (2,1,0).
+            if (
+                mask_shape != ref_shape
+                and tuple(mask_shape[idx] for idx in preferred_inverse_transpose) == ref_shape
+            ):
+                permutation = preferred_inverse_transpose
+                logger.warning(
+                    "Mask/reference reverse-axis match detected. Applying deterministic transpose %s "
+                    "from %s to %s.",
+                    preferred_inverse_transpose,
+                    mask_shape,
+                    ref_shape,
+                )
+            else:
+                permutation = NiftiConverter._infer_axis_permutation(
+                    mask_shape,
+                    ref_shape,
+                    preferred=preferred_inverse_transpose,
+                )
+
             if permutation is not None and permutation != (0, 1, 2):
                 logger.warning(
                     "Mask/reference axis permutation detected. Transposing mask from %s to %s using permutation %s.",

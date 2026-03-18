@@ -23,6 +23,7 @@ import type { SegmentLegendItem } from "@/types/api";
 import {
   Plane,
   PaletteId,
+  type DisplayAspectMode,
   axisForPlane,
   buildLegendColorMap,
   buildWindowPresets,
@@ -138,6 +139,8 @@ export function OrthogonalViewer({
   const [error, setError] = useState<string | null>(null);
   const [overlayOpacity, setOverlayOpacity] = useState(0.45);
   const [paletteId, setPaletteId] = useState<PaletteId>("legend");
+  const [displayAspectMode, setDisplayAspectMode] =
+    useState<DisplayAspectMode>("anatomical");
   const [interactionMode, setInteractionMode] = useState<"crosshair" | "pan">(
     "crosshair",
   );
@@ -331,6 +334,7 @@ export function OrthogonalViewer({
         maskVolume,
         visibleSegmentIds,
         plane,
+        aspectMode: displayAspectMode,
         slices,
         windowRange: activePreset,
         overlayOpacity,
@@ -346,6 +350,7 @@ export function OrthogonalViewer({
     maskVolume,
     overlayOpacity,
     paletteId,
+    displayAspectMode,
     slices,
     visibleSegmentIds,
     viewportState,
@@ -435,6 +440,7 @@ export function OrthogonalViewer({
       canvas,
       plane,
       imageVolume,
+      aspectMode: displayAspectMode,
       slices,
       viewport: viewportState[plane],
       clientX,
@@ -1138,6 +1144,20 @@ export function OrthogonalViewer({
           </div>
 
           <div className="h-6 w-px bg-white/10" />
+
+          <div className="flex items-center gap-px">
+            {[
+              { id: "physical", label: "Fisico" },
+              { id: "anatomical", label: "Anatomico" },
+            ].map((mode) =>
+              renderToolbarButton({
+                active: displayAspectMode === mode.id,
+                label: mode.label,
+                onClick: () =>
+                  setDisplayAspectMode(mode.id as DisplayAspectMode),
+              }),
+            )}
+          </div>
 
           <div className="flex items-center gap-px">
             {[

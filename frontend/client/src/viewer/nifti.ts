@@ -3,11 +3,13 @@ import type { SegmentLegendItem } from "@/types/api";
 
 export type Plane = "axial" | "coronal" | "sagittal";
 export type PaletteId = "legend" | "teal" | "warm" | "contrast";
+export type DisplayAspectMode = "physical" | "anatomical";
 
 export interface VolumeData {
   sourceUrl: string;
   dims: [number, number, number];
   spacing: [number, number, number];
+  hasSpatialTransform: boolean;
   affine: [
     number,
     number,
@@ -138,23 +140,31 @@ type PlaneDisplayConfig = {
 type AxisKey = "x" | "y" | "z";
 
 function buildFallbackAffine(
+  dimX: number,
+  dimY: number,
+  dimZ: number,
   spacingX: number,
   spacingY: number,
   spacingZ: number,
 ): VolumeData["affine"] {
+  // Mirror nibabel's best-effort fallback for files without qform/sform:
+  // centered LAS orientation using pixdim spacing.
+  const centerX = ((Math.max(dimX, 1) - 1) * spacingX) / 2;
+  const centerY = ((Math.max(dimY, 1) - 1) * spacingY) / 2;
+  const centerZ = ((Math.max(dimZ, 1) - 1) * spacingZ) / 2;
   return [
-    spacingX,
+    -spacingX,
     0,
     0,
-    0,
+    centerX,
     0,
     spacingY,
     0,
-    0,
+    -centerY,
     0,
     0,
     spacingZ,
-    0,
+    -centerZ,
     0,
     0,
     0,
@@ -309,15 +319,27 @@ function readQformAffine(
 function readNiftiAffine(
   view: DataView,
   littleEndian: boolean,
+  dimX: number,
+  dimY: number,
+  dimZ: number,
   spacingX: number,
   spacingY: number,
   spacingZ: number,
-): VolumeData["affine"] {
-  return (
-    readSformAffine(view, littleEndian) ||
-    readQformAffine(view, littleEndian, spacingX, spacingY, spacingZ) ||
-    buildFallbackAffine(spacingX, spacingY, spacingZ)
-  );
+): { affine: VolumeData["affine"]; hasSpatialTransform: boolean } {
+  const sform = readSformAffine(view, littleEndian);
+  if (sform) {
+    return { affine: sform, hasSpatialTransform: true };
+  }
+
+  const qform = readQformAffine(view, littleEndian, spacingX, spacingY, spacingZ);
+  if (qform) {
+    return { affine: qform, hasSpatialTransform: true };
+  }
+
+  return {
+    affine: buildFallbackAffine(dimX, dimY, dimZ, spacingX, spacingY, spacingZ),
+    hasSpatialTransform: false,
+  };
 }
 
 function getVolumeAxisVector(volume: VolumeData, axis: AxisKey) {
@@ -481,27 +503,48 @@ export function getPlaneDimensions(volume: VolumeData, plane: Plane) {
   return { width: y, height: z };
 }
 
-function getPlaneDisplayDimensions(volume: VolumeData, plane: Plane) {
+function getPlaneDisplayDimensions(
+  volume: VolumeData,
+  plane: Plane,
+  aspectMode: DisplayAspectMode = "anatomical",
+) {
   const { width, height } = getPlaneDimensions(volume, plane);
   const [spacingX, spacingY, spacingZ] = volume.spacing;
+  let displayWidth = width;
+  let displayHeight = height;
 
   if (plane === "axial") {
-    return {
-      width: width * spacingX,
-      height: height * spacingY,
-    };
+    displayWidth = width * spacingX;
+    displayHeight = height * spacingY;
+  } else if (plane === "coronal") {
+    displayWidth = width * spacingX;
+    displayHeight = height * spacingZ;
+  } else {
+    displayWidth = width * spacingY;
+    displayHeight = height * spacingZ;
   }
 
-  if (plane === "coronal") {
-    return {
-      width: width * spacingX,
-      height: height * spacingZ,
-    };
+  // Metadata-poor NIfTI files (qform/sform absent, unit spacing) often render
+  // as near-line coronal/sagittal panels. Apply a small display-only boost so
+  // slices remain readable while keeping voxel indexing unchanged.
+  const hasUnitSpacing = volume.spacing.every((value) => Math.abs(value - 1) < 1e-3);
+  if (aspectMode === "anatomical" && !volume.hasSpatialTransform && hasUnitSpacing) {
+    const major = Math.max(displayWidth, displayHeight);
+    const minor = Math.min(displayWidth, displayHeight);
+    const minAspectRatio = 0.2;
+    if (major > 0 && minor / major < minAspectRatio) {
+      const boostedMinor = major * minAspectRatio;
+      if (displayWidth >= displayHeight) {
+        displayHeight = boostedMinor;
+      } else {
+        displayWidth = boostedMinor;
+      }
+    }
   }
 
   return {
-    width: width * spacingY,
-    height: height * spacingZ,
+    width: displayWidth,
+    height: displayHeight,
   };
 }
 
@@ -647,6 +690,9 @@ export async function loadNiftiVolume(assetUrl: string) {
   const affine = readNiftiAffine(
     view,
     littleEndian,
+    dimX,
+    dimY,
+    dimZ,
     spacingX,
     spacingY,
     spacingZ,
@@ -676,7 +722,8 @@ export async function loadNiftiVolume(assetUrl: string) {
     sourceUrl: assetUrl,
     dims: [dimX, dimY, dimZ],
     spacing: [spacingX, spacingY, spacingZ],
-    affine,
+    hasSpatialTransform: affine.hasSpatialTransform,
+    affine: affine.affine,
     data,
     min,
     max,
@@ -731,6 +778,7 @@ export function resampleMaskVolumeToDims(
     sourceUrl: `${maskVolume.sourceUrl}#resampled`,
     dims: [dstX, dstY, dstZ],
     spacing: maskVolume.spacing,
+    hasSpatialTransform: maskVolume.hasSpatialTransform,
     affine: maskVolume.affine,
     data: nextData,
     min,
@@ -1051,6 +1099,7 @@ export function renderSliceToCanvas(options: {
   maskVolume: VolumeData | null;
   visibleSegmentIds: Set<number>;
   plane: Plane;
+  aspectMode?: DisplayAspectMode;
   slices: { x: number; y: number; z: number };
   windowRange: { min: number; max: number };
   overlayOpacity: number;
@@ -1064,6 +1113,7 @@ export function renderSliceToCanvas(options: {
     maskVolume,
     visibleSegmentIds,
     plane,
+    aspectMode = "anatomical",
     slices,
     windowRange,
     overlayOpacity,
@@ -1072,7 +1122,7 @@ export function renderSliceToCanvas(options: {
     viewport,
   } = options;
   const { width, height } = getPlaneDimensions(imageVolume, plane);
-  const displaySize = getPlaneDisplayDimensions(imageVolume, plane);
+  const displaySize = getPlaneDisplayDimensions(imageVolume, plane, aspectMode);
   const config = getPlaneDisplayConfig(imageVolume, plane);
   const offscreen = document.createElement("canvas");
   offscreen.width = width;
@@ -1312,15 +1362,25 @@ export function pointerToVoxel(options: {
   canvas: HTMLCanvasElement;
   plane: Plane;
   imageVolume: VolumeData;
+  aspectMode?: DisplayAspectMode;
   slices: { x: number; y: number; z: number };
   viewport: { zoom: number; panX: number; panY: number };
   clientX: number;
   clientY: number;
 }) {
-  const { canvas, plane, imageVolume, slices, viewport, clientX, clientY } =
+  const {
+    canvas,
+    plane,
+    imageVolume,
+    aspectMode = "anatomical",
+    slices,
+    viewport,
+    clientX,
+    clientY,
+  } =
     options;
   const { width, height } = getPlaneDimensions(imageVolume, plane);
-  const displaySize = getPlaneDisplayDimensions(imageVolume, plane);
+  const displaySize = getPlaneDisplayDimensions(imageVolume, plane, aspectMode);
   const config = getPlaneDisplayConfig(imageVolume, plane);
   const rect = canvas.getBoundingClientRect();
   const canvasX = ((clientX - rect.left) / rect.width) * canvas.width;

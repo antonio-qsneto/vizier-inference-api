@@ -143,6 +143,40 @@ class NiftiConverterAlignmentTest(TestCase):
             # Axis transpose must preserve voxel count (resize would usually change this).
             self.assertEqual(int(aligned.sum()), int(mask_zyx.sum()))
 
+    def test_align_mask_uses_deterministic_inverse_transpose_for_ambiguous_shapes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Ambiguous case: two equal in-plane dimensions (X == Y).
+            reference_shape = (256, 256, 23)
+            reference_data = np.zeros(reference_shape, dtype=np.float32)
+            reference_path = os.path.join(tmpdir, "original_image.nii.gz")
+            nib.save(nib.Nifti1Image(reference_data, np.eye(4)), reference_path)
+
+            # Model output in ZYX layout.
+            mask_zyx = np.zeros((23, 256, 256), dtype=np.uint8)
+            mask_zyx[10, 20, 30] = 1
+            mask_zyx[3, 180, 40] = 1
+            mask_path = os.path.join(tmpdir, "mask_raw.nii.gz")
+            nib.save(nib.Nifti1Image(mask_zyx, np.eye(4)), mask_path)
+
+            aligned_path = os.path.join(tmpdir, "mask_aligned.nii.gz")
+            ok = NiftiConverter.align_mask_to_reference(
+                mask_nifti_path=mask_path,
+                reference_nifti_path=reference_path,
+                output_path=aligned_path,
+            )
+            self.assertTrue(ok)
+
+            aligned = np.asarray(nib.load(aligned_path).get_fdata(), dtype=np.uint8)
+            self.assertEqual(tuple(aligned.shape), reference_shape)
+
+            # Correct inverse transpose is (2,1,0): (z,y,x) -> (x,y,z)
+            self.assertEqual(int(aligned[30, 20, 10]), 1)
+            self.assertEqual(int(aligned[40, 180, 3]), 1)
+
+            # Wrong ambiguous transpose (1,2,0) would swap X/Y and hit these coords.
+            self.assertEqual(int(aligned[20, 30, 10]), 0)
+            self.assertEqual(int(aligned[180, 40, 3]), 0)
+
 
 class InferencePromptCatalogTest(TestCase):
     def test_build_text_prompts_from_category_catalog(self):
