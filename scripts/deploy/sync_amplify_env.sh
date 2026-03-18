@@ -355,29 +355,38 @@ if [[ -z "${EXISTING_CUSTOM_RULES_JSON}" || "${EXISTING_CUSTOM_RULES_JSON}" == "
   EXISTING_CUSTOM_RULES_JSON='[]'
 fi
 
-SPA_SOURCE_REGEX='</^[^.]+$|\.(?!(css|gif|ico|jpg|jpeg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>'
+SPA_SOURCE_REGEX='</^[^.]+$|\.(?!(css|gif|ico|jpg|jpeg|js|png|txt|svg|woff|woff2|ttf|map|json|webp|mp4|webm|ogg|ogv|m4v|mov|avif)$)([^.]+$)/>'
+STATIC_VIDEO_RULE_SOURCE='/site/videos/<*>'
 
 if [[ "${ENABLE_API_PROXY}" == "true" ]]; then
   UPDATED_CUSTOM_RULES_JSON="$(jq \
     --arg proxy_target "${BACKEND_API_ORIGIN}/api/<*>" \
     --arg spa_source "${SPA_SOURCE_REGEX}" \
+    --arg static_video_source "${STATIC_VIDEO_RULE_SOURCE}" \
     '
     (if type == "array" then . else [] end)
     | map(
         select(
           (.source // "") != "/api/<*>"
+          and (.source // "") != $static_video_source
           and ((.target // "") != "/index.html" or (.status // "") != "200")
         )
       )
-    | [{ source: "/api/<*>", target: $proxy_target, status: "200" }] + . + [{ source: $spa_source, target: "/index.html", status: "200" }]
+    | [{ source: $static_video_source, target: $static_video_source, status: "200" }, { source: "/api/<*>", target: $proxy_target, status: "200" }] + . + [{ source: $spa_source, target: "/index.html", status: "200" }]
     ' <<< "${EXISTING_CUSTOM_RULES_JSON}")"
 else
   UPDATED_CUSTOM_RULES_JSON="$(jq \
     --arg spa_source "${SPA_SOURCE_REGEX}" \
+    --arg static_video_source "${STATIC_VIDEO_RULE_SOURCE}" \
     '
     (if type == "array" then . else [] end)
-    | map(select((.target // "") != "/index.html" or (.status // "") != "200"))
-    | . + [{ source: $spa_source, target: "/index.html", status: "200" }]
+    | map(
+        select(
+          (.source // "") != $static_video_source
+          and ((.target // "") != "/index.html" or (.status // "") != "200")
+        )
+      )
+    | [{ source: $static_video_source, target: $static_video_source, status: "200" }] + . + [{ source: $spa_source, target: "/index.html", status: "200" }]
     ' <<< "${EXISTING_CUSTOM_RULES_JSON}")"
 fi
 
