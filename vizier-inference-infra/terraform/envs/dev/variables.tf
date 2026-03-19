@@ -318,6 +318,18 @@ variable "stripe_price_id_individual_annual" {
   default     = ""
 }
 
+variable "stripe_price_id_clinic_monthly" {
+  type        = string
+  description = "Stripe price id for clinic monthly plan."
+  default     = ""
+}
+
+variable "stripe_price_id_clinic_yearly" {
+  type        = string
+  description = "Stripe price id for clinic yearly plan."
+  default     = ""
+}
+
 variable "stripe_price_lookup_key_individual_monthly" {
   type        = string
   description = "Stripe lookup key for individual monthly price."

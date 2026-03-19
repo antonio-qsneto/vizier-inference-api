@@ -32,6 +32,8 @@ stripe_webhook_secret = "whsec_change_me"
 # stripe_product_id = "prod_xxx"
 # stripe_price_id_individual_monthly = "price_xxx"
 # stripe_price_id_individual_annual = "price_xxx"
+# stripe_price_id_clinic_monthly = "price_xxx"
+# stripe_price_id_clinic_yearly = "price_xxx"
 # stripe_price_lookup_key_individual_monthly = "individual_monthly"
 # stripe_price_lookup_key_individual_annual = "individual_annual"
 

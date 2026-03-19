@@ -345,6 +345,8 @@ module "ecs_fargate_django" {
     var.stripe_product_id != "" ? { STRIPE_PRODUCT_ID = var.stripe_product_id } : {},
     var.stripe_price_id_individual_monthly != "" ? { STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY = var.stripe_price_id_individual_monthly } : {},
     var.stripe_price_id_individual_annual != "" ? { STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL = var.stripe_price_id_individual_annual } : {},
+    var.stripe_price_id_clinic_monthly != "" ? { STRIPE_PRICE_ID_CLINIC_MONTHLY = var.stripe_price_id_clinic_monthly } : {},
+    var.stripe_price_id_clinic_yearly != "" ? { STRIPE_PRICE_ID_CLINIC_YEARLY = var.stripe_price_id_clinic_yearly } : {},
     var.stripe_price_lookup_key_individual_monthly != "" ? { STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY = var.stripe_price_lookup_key_individual_monthly } : {},
     var.stripe_price_lookup_key_individual_annual != "" ? { STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL = var.stripe_price_lookup_key_individual_annual } : {}
   )

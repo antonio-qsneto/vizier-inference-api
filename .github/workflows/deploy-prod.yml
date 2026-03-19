@@ -46,6 +46,8 @@ env:
   TF_VAR_stripe_product_id: ${{ vars.TF_VAR_STRIPE_PRODUCT_ID || '' }}
   TF_VAR_stripe_price_id_individual_monthly: ${{ vars.TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY || '' }}
   TF_VAR_stripe_price_id_individual_annual: ${{ vars.TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL || '' }}
+  TF_VAR_stripe_price_id_clinic_monthly: ${{ vars.TF_VAR_STRIPE_PRICE_ID_CLINIC_MONTHLY || '' }}
+  TF_VAR_stripe_price_id_clinic_yearly: ${{ vars.TF_VAR_STRIPE_PRICE_ID_CLINIC_YEARLY || '' }}
   TF_VAR_stripe_price_lookup_key_individual_monthly: ${{ vars.TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY || '' }}
   TF_VAR_stripe_price_lookup_key_individual_annual: ${{ vars.TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL || '' }}
   TF_VAR_stripe_allowed_redirect_origins: ${{ vars.TF_VAR_STRIPE_ALLOWED_REDIRECT_ORIGINS || '[]' }}

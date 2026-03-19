@@ -183,6 +183,8 @@ gh variable set TF_VAR_ENABLE_STRIPE_BILLING --repo "$GH_REPO" --env development
 # recomendado definir IDs de preço explícitos:
 # gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env development --body "price_xxx"
 # gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL --repo "$GH_REPO" --env development --body "price_yyy"
+# gh variable set TF_VAR_STRIPE_PRICE_ID_CLINIC_MONTHLY --repo "$GH_REPO" --env development --body "price_xxx"
+# gh variable set TF_VAR_STRIPE_PRICE_ID_CLINIC_YEARLY --repo "$GH_REPO" --env development --body "price_yyy"
 # opcional fallback por produto/lookup:
 # gh variable set TF_VAR_STRIPE_PRODUCT_ID --repo "$GH_REPO" --env development --body "prod_xxx"
 # gh variable set TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env development --body "individual_monthly"
@@ -229,6 +231,8 @@ gh variable set TF_VAR_ENABLE_STRIPE_BILLING --repo "$GH_REPO" --env production 
 # recomendado definir IDs de preço explícitos:
 # gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env production --body "price_xxx"
 # gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL --repo "$GH_REPO" --env production --body "price_yyy"
+# gh variable set TF_VAR_STRIPE_PRICE_ID_CLINIC_MONTHLY --repo "$GH_REPO" --env production --body "price_xxx"
+# gh variable set TF_VAR_STRIPE_PRICE_ID_CLINIC_YEARLY --repo "$GH_REPO" --env production --body "price_yyy"
 # opcional fallback por produto/lookup:
 # gh variable set TF_VAR_STRIPE_PRODUCT_ID --repo "$GH_REPO" --env production --body "prod_xxx"
 # gh variable set TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env production --body "individual_monthly"
