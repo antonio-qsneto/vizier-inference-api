@@ -124,9 +124,48 @@ export default function ProfilePage() {
     <section className="space-y-6">
       <PageIntro
         eyebrow="Perfil"
-        title="Gerenciar perfil e encerramento de conta"
-        description="Cancelamento de assinatura e exclusão de conta com validações de cobrança."
+        title="Perfil, termos de uso e encerramento de conta"
+        description="Leia os termos de uso do assistente de IA e gerencie assinatura e conta."
       />
+
+      <Panel className="space-y-4 border-amber-300/25 bg-amber-500/5">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-200">
+          Termos de uso
+        </p>
+        <p className="text-sm leading-7 text-slate-200">
+          A plataforma Vizier Med é um sistema de <strong>assistência</strong> para
+          análise de imagens médicas (ex.: lesões, tumores e outras alterações), e
+          <strong> não realiza diagnóstico médico</strong>.
+        </p>
+        <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4 text-sm leading-7 text-slate-300">
+          <p>
+            1. O sistema não substitui médico, radiologista, segunda opinião, exame
+            clínico, histórico do paciente, protocolos institucionais ou laudo médico.
+          </p>
+          <p>
+            2. As saídas do modelo podem conter erros, incluindo falso-positivo,
+            falso-negativo e segmentações imperfeitas.
+          </p>
+          <p>
+            3. Toda decisão clínica, terapêutica, cirúrgica ou de conduta deve ser
+            tomada exclusivamente por profissional de saúde habilitado.
+          </p>
+          <p>
+            4. É proibido utilizar o sistema como única base para diagnóstico ou para
+            definir tratamento.
+          </p>
+          <p>
+            5. Ao utilizar a plataforma, você reconhece que o uso é de apoio e que a
+            responsabilidade final pela decisão clínica é sempre humana e profissional.
+          </p>
+        </div>
+        <InlineNotice title="Isenção de responsabilidade" tone="warning">
+          Você declara ciência de que o software é apenas assistivo. O provedor da
+          plataforma não se responsabiliza por decisões equivocadas, diagnósticos
+          incorretos, condutas inadequadas ou quaisquer danos decorrentes do uso das
+          saídas do sistema como decisão final.
+        </InlineNotice>
+      </Panel>
 
       <Panel className="space-y-4">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
