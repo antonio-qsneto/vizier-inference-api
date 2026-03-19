@@ -720,6 +720,28 @@ async function fetchBuffer(url: string) {
     );
   }
 
+  const responseContentType = (
+    response.headers.get("content-type") || ""
+  ).toLowerCase();
+  if (responseContentType.includes("text/html")) {
+    let bodyPreview = "";
+    try {
+      bodyPreview = (await response.clone().text()).slice(0, 220);
+    } catch {
+      bodyPreview = "";
+    }
+    logViewerDebug("fetch:unexpected-html", {
+      url,
+      resolvedUrl,
+      responseUrl: response.url,
+      contentType: responseContentType,
+      bodyPreview,
+    });
+    throw new Error(
+      "O arquivo do volume não foi encontrado no deploy (recebido HTML em vez de NIfTI).",
+    );
+  }
+
   const rawBuffer = await response.arrayBuffer();
   logViewerDebug("fetch:buffer-loaded", {
     url,
@@ -736,7 +758,17 @@ async function fetchBuffer(url: string) {
       resolvedUrl,
       compressedBytes: rawBuffer.byteLength,
     });
-    const gunzipped = await gunzipBuffer(rawBuffer);
+    let gunzipped: ArrayBuffer;
+    try {
+      gunzipped = await gunzipBuffer(rawBuffer);
+    } catch (gunzipError) {
+      logViewerDebug("fetch:gunzip-error", {
+        url,
+        resolvedUrl,
+        error: asErrorMessage(gunzipError),
+      });
+      throw new Error("Não foi possível descompactar o arquivo NIfTI (.nii.gz).");
+    }
     logViewerDebug("fetch:gunzip-done", {
       url,
       resolvedUrl,
