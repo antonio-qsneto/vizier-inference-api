@@ -206,6 +206,7 @@ export function OrthogonalViewer({
 
   const loadVolumes = useCallback(async () => {
     setLoading(true);
+    console.info("[ViewerDebug] orthogonal-load:start", { imageUrl, maskUrl });
     try {
       const [nextImageVolume, nextMaskVolume] = await Promise.all([
         loadNiftiVolume(imageUrl),
@@ -220,6 +221,11 @@ export function OrthogonalViewer({
         toast.warning(
           "As dimensões da máscara não correspondiam à imagem. O visualizador aplicou alinhamento por vizinho mais próximo.",
         );
+        console.warn("[ViewerDebug] orthogonal-load:mask-resampled", {
+          imageDims: nextImageVolume.dims.join("x"),
+          maskDims: nextMaskVolume.dims.join("x"),
+          alignedMaskDims: alignedMaskVolume.dims.join("x"),
+        });
       }
 
       setImageVolume(nextImageVolume);
@@ -238,7 +244,21 @@ export function OrthogonalViewer({
       setDraggedPlane(null);
       setSingleDropActive(false);
       setError(null);
+      console.info("[ViewerDebug] orthogonal-load:success", {
+        imageDims: nextImageVolume.dims.join("x"),
+        maskDims: nextMaskVolume.dims.join("x"),
+        alignedMaskDims: alignedMaskVolume.dims.join("x"),
+        imageSpacing: nextImageVolume.spacing.join("x"),
+        maskSpacing: alignedMaskVolume.spacing.join("x"),
+      });
     } catch (viewerError) {
+      console.error("[ViewerDebug] orthogonal-load:error", {
+        imageUrl,
+        maskUrl,
+        error:
+          viewerError instanceof Error ? viewerError.message : String(viewerError),
+        stack: viewerError instanceof Error ? viewerError.stack : undefined,
+      });
       if (viewerError instanceof Error) {
         setError(viewerError.message);
       } else {

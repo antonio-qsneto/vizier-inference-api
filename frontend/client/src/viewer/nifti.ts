@@ -88,6 +88,25 @@ const paletteMap: Record<Exclude<PaletteId, "legend">, string[]> = {
   contrast: ["#60a5fa", "#f472b6", "#facc15", "#4ade80", "#fb7185", "#c084fc"],
 };
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const VIEWER_DEBUG_PREFIX = "[ViewerDebug]";
+
+function asErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+function logViewerDebug(event: string, payload?: Record<string, unknown>) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (payload) {
+    console.info(`${VIEWER_DEBUG_PREFIX} ${event}`, payload);
+    return;
+  }
+  console.info(`${VIEWER_DEBUG_PREFIX} ${event}`);
+}
 
 const planeConfig = {
   axial: {
@@ -650,101 +669,173 @@ function isGzipPayload(buffer: ArrayBuffer) {
 
 async function fetchBuffer(url: string) {
   const resolvedUrl = normalizeViewerAssetUrl(url);
+  logViewerDebug("fetch:start", { url, resolvedUrl });
   let response: Response;
   try {
     response = await fetch(resolvedUrl);
   } catch (networkError) {
+    logViewerDebug("fetch:network-error", {
+      url,
+      resolvedUrl,
+      error: asErrorMessage(networkError),
+    });
     if (resolvedUrl.startsWith("/") && typeof window !== "undefined") {
+      const fallbackUrl = `${window.location.origin}${resolvedUrl}`;
+      logViewerDebug("fetch:fallback-origin", { fallbackUrl });
       response = await fetch(`${window.location.origin}${resolvedUrl}`);
     } else {
       throw networkError;
     }
   }
 
+  logViewerDebug("fetch:response", {
+    url,
+    resolvedUrl,
+    responseUrl: response.url,
+    status: response.status,
+    statusText: response.statusText,
+    ok: response.ok,
+    contentType: response.headers.get("content-type") || "",
+    contentLength: response.headers.get("content-length") || "",
+    cacheControl: response.headers.get("cache-control") || "",
+  });
+
   if (!response.ok) {
+    let responsePreview = "";
+    try {
+      responsePreview = (await response.clone().text()).slice(0, 280);
+    } catch {
+      responsePreview = "";
+    }
+    logViewerDebug("fetch:http-error", {
+      url,
+      resolvedUrl,
+      responseUrl: response.url,
+      status: response.status,
+      statusText: response.statusText,
+      bodyPreview: responsePreview,
+    });
     throw new Error(
       `Falha ao carregar volume: ${response.status} ${response.statusText}`,
     );
   }
 
   const rawBuffer = await response.arrayBuffer();
+  logViewerDebug("fetch:buffer-loaded", {
+    url,
+    resolvedUrl,
+    bytes: rawBuffer.byteLength,
+  });
   const shouldGunzip =
     hasGzipExtension(url) ||
     hasGzipExtension(resolvedUrl) ||
     isGzipPayload(rawBuffer);
   if (shouldGunzip) {
-    return gunzipBuffer(rawBuffer);
+    logViewerDebug("fetch:gunzip-start", {
+      url,
+      resolvedUrl,
+      compressedBytes: rawBuffer.byteLength,
+    });
+    const gunzipped = await gunzipBuffer(rawBuffer);
+    logViewerDebug("fetch:gunzip-done", {
+      url,
+      resolvedUrl,
+      uncompressedBytes: gunzipped.byteLength,
+    });
+    return gunzipped;
   }
   return rawBuffer;
 }
 
 export async function loadNiftiVolume(assetUrl: string) {
-  const buffer = await fetchBuffer(assetUrl);
-  const view = new DataView(buffer);
+  logViewerDebug("load-volume:start", { assetUrl });
+  try {
+    const buffer = await fetchBuffer(assetUrl);
+    const view = new DataView(buffer);
 
-  const littleEndian =
-    view.getInt32(0, true) === 348
-      ? true
-      : view.getInt32(0, false) === 348
-        ? false
-        : (() => {
-            throw new Error("Cabeçalho NIfTI inválido");
-          })();
+    const littleEndian =
+      view.getInt32(0, true) === 348
+        ? true
+        : view.getInt32(0, false) === 348
+          ? false
+          : (() => {
+              throw new Error("Cabeçalho NIfTI inválido");
+            })();
 
-  const dimX = Math.max(view.getInt16(42, littleEndian), 1);
-  const dimY = Math.max(view.getInt16(44, littleEndian), 1);
-  const dimZ = Math.max(view.getInt16(46, littleEndian), 1);
-  const datatype = view.getInt16(70, littleEndian);
-  const voxOffset = Math.max(
-    Math.floor(view.getFloat32(108, littleEndian)),
-    352,
-  );
-  const scaleSlope = view.getFloat32(112, littleEndian) || 1;
-  const scaleIntercept = view.getFloat32(116, littleEndian) || 0;
-  const spacingX = Math.abs(view.getFloat32(80, littleEndian)) || 1;
-  const spacingY = Math.abs(view.getFloat32(84, littleEndian)) || 1;
-  const spacingZ = Math.abs(view.getFloat32(88, littleEndian)) || 1;
-  const affine = readNiftiAffine(
-    view,
-    littleEndian,
-    dimX,
-    dimY,
-    dimZ,
-    spacingX,
-    spacingY,
-    spacingZ,
-  );
+    const dimX = Math.max(view.getInt16(42, littleEndian), 1);
+    const dimY = Math.max(view.getInt16(44, littleEndian), 1);
+    const dimZ = Math.max(view.getInt16(46, littleEndian), 1);
+    const datatype = view.getInt16(70, littleEndian);
+    const voxOffset = Math.max(
+      Math.floor(view.getFloat32(108, littleEndian)),
+      352,
+    );
+    const scaleSlope = view.getFloat32(112, littleEndian) || 1;
+    const scaleIntercept = view.getFloat32(116, littleEndian) || 0;
+    const spacingX = Math.abs(view.getFloat32(80, littleEndian)) || 1;
+    const spacingY = Math.abs(view.getFloat32(84, littleEndian)) || 1;
+    const spacingZ = Math.abs(view.getFloat32(88, littleEndian)) || 1;
+    const affine = readNiftiAffine(
+      view,
+      littleEndian,
+      dimX,
+      dimY,
+      dimZ,
+      spacingX,
+      spacingY,
+      spacingZ,
+    );
 
-  const reader = getReader(datatype);
-  const voxelCount = dimX * dimY * dimZ;
-  const data = new Float32Array(voxelCount);
+    const reader = getReader(datatype);
+    const voxelCount = dimX * dimY * dimZ;
+    const data = new Float32Array(voxelCount);
 
-  let min = Number.POSITIVE_INFINITY;
-  let max = Number.NEGATIVE_INFINITY;
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
 
-  for (let voxelIndex = 0; voxelIndex < voxelCount; voxelIndex += 1) {
-    const offset = voxOffset + voxelIndex * reader.bytes;
-    const rawValue = reader.read(view, offset, littleEndian);
-    const scaledValue = rawValue * scaleSlope + scaleIntercept;
-    data[voxelIndex] = scaledValue;
-    if (scaledValue < min) {
-      min = scaledValue;
+    for (let voxelIndex = 0; voxelIndex < voxelCount; voxelIndex += 1) {
+      const offset = voxOffset + voxelIndex * reader.bytes;
+      const rawValue = reader.read(view, offset, littleEndian);
+      const scaledValue = rawValue * scaleSlope + scaleIntercept;
+      data[voxelIndex] = scaledValue;
+      if (scaledValue < min) {
+        min = scaledValue;
+      }
+      if (scaledValue > max) {
+        max = scaledValue;
+      }
     }
-    if (scaledValue > max) {
-      max = scaledValue;
-    }
+
+    logViewerDebug("load-volume:parsed", {
+      assetUrl,
+      bytes: buffer.byteLength,
+      littleEndian,
+      dims: `${dimX}x${dimY}x${dimZ}`,
+      datatype,
+      voxOffset,
+      spacing: [spacingX, spacingY, spacingZ].join("x"),
+      hasSpatialTransform: affine.hasSpatialTransform,
+      min,
+      max,
+    });
+
+    return {
+      sourceUrl: assetUrl,
+      dims: [dimX, dimY, dimZ],
+      spacing: [spacingX, spacingY, spacingZ],
+      hasSpatialTransform: affine.hasSpatialTransform,
+      affine: affine.affine,
+      data,
+      min,
+      max,
+    } satisfies VolumeData;
+  } catch (parseError) {
+    logViewerDebug("load-volume:error", {
+      assetUrl,
+      error: asErrorMessage(parseError),
+    });
+    throw parseError;
   }
-
-  return {
-    sourceUrl: assetUrl,
-    dims: [dimX, dimY, dimZ],
-    spacing: [spacingX, spacingY, spacingZ],
-    hasSpatialTransform: affine.hasSpatialTransform,
-    affine: affine.affine,
-    data,
-    min,
-    max,
-  } satisfies VolumeData;
 }
 
 export function resampleMaskVolumeToDims(

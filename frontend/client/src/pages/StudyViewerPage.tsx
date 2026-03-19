@@ -338,13 +338,37 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     return new URL(DEMO_STUDY_MASK_URL, window.location.origin).toString();
   }, []);
 
+  useEffect(() => {
+    if (!isDemoStudy) {
+      return;
+    }
+    console.info("[ViewerDebug] demo-study:urls", {
+      studyId,
+      demoImageUrl,
+      demoMaskUrl,
+      origin: typeof window !== "undefined" ? window.location.origin : "ssr",
+    });
+  }, [demoImageUrl, demoMaskUrl, isDemoStudy, studyId]);
+
   const loadAsyncAssets = useCallback(async (statusPayload?: InferenceJobStatus | null) => {
     if (!accessToken) {
       return;
     }
 
+    console.info("[ViewerDebug] async-assets:start", {
+      studyId,
+      hasStatusPayload: Boolean(statusPayload),
+      status: statusPayload?.status || null,
+    });
+
     const outputsPayload = await fetchInferenceJobOutputs(accessToken, studyId);
     const outputs = outputsPayload.outputs || [];
+    console.info("[ViewerDebug] async-assets:outputs", {
+      studyId,
+      count: outputs.length,
+      kinds: outputs.map((output) => output.kind),
+      keys: outputs.map((output) => output.key),
+    });
     const imageOutput = findOutputByKind(outputs, "ORIGINAL_NIFTI", [
       "original_image.nii.gz",
       "image.nii.gz",
@@ -374,6 +398,12 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
         ? presignInferenceOutputDownload(accessToken, studyId, summaryOutput.id)
         : Promise.resolve(null),
     ]);
+    console.info("[ViewerDebug] async-assets:presigned", {
+      studyId,
+      imageUrl: imageSigned?.url || null,
+      maskUrl: maskSigned?.url || null,
+      summaryUrl: summarySigned?.url || null,
+    });
 
     let segmentsLegend: SegmentLegendItem[] = [];
     let descriptiveAnalysis: string | null = null;
@@ -382,12 +412,27 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     if (summarySigned?.url) {
       try {
         const response = await fetch(summarySigned.url);
+        console.info("[ViewerDebug] async-assets:summary-fetch", {
+          studyId,
+          ok: response.ok,
+          status: response.status,
+          contentType: response.headers.get("content-type") || "",
+          contentLength: response.headers.get("content-length") || "",
+          responseUrl: response.url,
+        });
         if (response.ok) {
           const summaryPayload = await response.json();
           segmentsLegend = parseAsyncSummaryLegend(summaryPayload);
           descriptiveAnalysis = parseAsyncSummaryAnalysis(summaryPayload);
         }
-      } catch {
+      } catch (summaryError) {
+        console.warn("[ViewerDebug] async-assets:summary-error", {
+          studyId,
+          error:
+            summaryError instanceof Error
+              ? summaryError.message
+              : String(summaryError),
+        });
         // Summary parsing is best-effort; viewer still works with fallback labels.
       }
     }
@@ -418,6 +463,13 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
       fallbackSegmentNames,
       descriptiveAnalysis,
       availableOutputKinds: outputs.map((output) => output.kind),
+    });
+    console.info("[ViewerDebug] async-assets:ready", {
+      studyId,
+      imageUrl: imageSigned.url,
+      maskUrl: maskSigned.url,
+      legendCount: segmentsLegend.length,
+      fallbackNamesCount: fallbackSegmentNames.length,
     });
   }, [accessToken, studyId]);
 
