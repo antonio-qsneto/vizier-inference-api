@@ -17,6 +17,7 @@ import StudyDetailPage from "@/pages/StudyDetailPage";
 import StudiesPage from "@/pages/StudiesPage";
 import StudyUploadPage from "@/pages/StudyUploadPage";
 import StudyViewerPage from "@/pages/StudyViewerPage";
+import TermsPage from "@/pages/TermsPage";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
@@ -40,6 +41,7 @@ function Router() {
     <Switch>
       <Route path="/" component={HomePage} />
       <Route path="/login" component={HomePage} />
+      <Route path="/termo" component={TermsPage} />
       <Route path="/auth/callback" component={AuthCallbackPage} />
 
       <Route path="/dashboard">
