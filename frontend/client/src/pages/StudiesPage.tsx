@@ -199,15 +199,36 @@ export default function StudiesPage() {
     });
   }, [caseRows, search, statusFilter]);
 
+  const loadedRealCount = useMemo(
+    () => caseRows.filter((study) => study.id !== DEMO_STUDY_ID).length,
+    [caseRows],
+  );
+  const demoRowVisible = useMemo(
+    () => visibleStudies.find((study) => study.id === DEMO_STUDY_ID) || null,
+    [visibleStudies],
+  );
+  const visibleRealStudies = useMemo(
+    () => visibleStudies.filter((study) => study.id !== DEMO_STUDY_ID),
+    [visibleStudies],
+  );
+
   const shouldApplyClientPaginationFallback =
-    caseRows.length > pageSize && totalCount === caseRows.length;
+    loadedRealCount > pageSize && totalCount <= loadedRealCount;
   const effectiveTotalCount = shouldApplyClientPaginationFallback
     ? visibleStudies.length
-    : totalCount;
+    : totalCount + (demoRowVisible ? 1 : 0);
   const totalPages = Math.max(1, Math.ceil(effectiveTotalCount / pageSize));
   const displayedStudies = shouldApplyClientPaginationFallback
     ? visibleStudies.slice((page - 1) * pageSize, page * pageSize)
-    : visibleStudies;
+    : (() => {
+        if (!demoRowVisible || page !== totalPages) {
+          return visibleRealStudies;
+        }
+        if (visibleRealStudies.length >= pageSize) {
+          return visibleRealStudies;
+        }
+        return [...visibleRealStudies, demoRowVisible];
+      })();
 
   useEffect(() => {
     if (page > totalPages) {
