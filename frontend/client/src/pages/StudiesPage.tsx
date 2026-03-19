@@ -174,9 +174,10 @@ export default function StudiesPage() {
       };
     });
 
-    return [demoRow, ...asyncRows, ...legacyRows].sort((left, right) =>
+    const sortedRows = [...asyncRows, ...legacyRows].sort((left, right) =>
       (right.createdAt || "").localeCompare(left.createdAt || ""),
     );
+    return [...sortedRows, demoRow];
   }, [inferenceJobs, studies]);
 
   const visibleStudies = useMemo(() => {
