@@ -12,13 +12,8 @@ import type {
 
 export type ClinicPlanId = "clinic_monthly" | "clinic_yearly";
 
-export const CLINIC_STRIPE_PRICE_IDS: Record<ClinicPlanId, string> = {
-  clinic_monthly: "price_1T8SaSRVF2Q4eoQbLMeyYW3u",
-  clinic_yearly: "price_1T8ScTRVF2Q4eoQbCpsCFqN1",
-};
-
-const MONTHLY_SEAT_BRL = 697;
-const YEARLY_SEAT_BRL = 7527.6;
+const MONTHLY_SEAT_BRL = 679;
+const YEARLY_SEAT_BRL = 7333;
 
 export function getClinicSeatPrice(planId: ClinicPlanId) {
   return planId === "clinic_yearly" ? YEARLY_SEAT_BRL : MONTHLY_SEAT_BRL;

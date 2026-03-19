@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   calculateClinicTotalPrice,
-  CLINIC_STRIPE_PRICE_IDS,
   formatBrlCurrency,
   getClinicSeatPrice,
   type ClinicPlanId,
@@ -176,9 +175,6 @@ export default function PlanUpgrade({
                 Total: {formatBrlCurrency(totalPrice)} / {cycleLabel}
               </p>
             </div>
-            <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">
-              ID de preço Stripe: {CLINIC_STRIPE_PRICE_IDS[planId]}
-            </p>
           </div>
         </div>
 
