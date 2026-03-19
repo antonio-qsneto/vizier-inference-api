@@ -515,7 +515,7 @@ export default function DataFlowVisualization() {
   const currentPhase = flowSteps.find((step) => step.active)?.phase || "idle";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+    <div className="relative isolate z-0 min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       <div className="relative z-10 mx-auto mb-6 max-w-7xl px-6 pt-8">
         <div className="mb-6 text-center">
           <h1 className="mb-2 text-4xl text-white">IA de Análise de Imagens Médicas</h1>
