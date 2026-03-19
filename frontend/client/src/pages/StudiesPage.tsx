@@ -318,11 +318,6 @@ export default function StudiesPage() {
                     <div className="space-y-1">
                       <p className="font-medium text-white">
                         {study.caseIdentification}
-                        {study.isAsync ? (
-                          <span className="ml-2 rounded-full border border-sky-300/30 bg-sky-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-sky-200">
-                            Assíncrono
-                          </span>
-                        ) : null}
                       </p>
                       <p className="text-sm text-slate-500">
                         {formatDateTime(study.createdAt)}
