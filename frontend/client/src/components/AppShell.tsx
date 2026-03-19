@@ -243,7 +243,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <img src="/favcon.png" alt="Vizier icon" className="h-5 w-5 object-contain" />
                   </div>
                   <div className="min-w-0">
-                    <img src="/site/vizier_white.svg" alt="Vizier Med" className="h-6 w-auto" />
+                    <a
+                      href="https://viziermed.com/"
+                      className="inline-flex"
+                      title="Ir para página inicial"
+                    >
+                      <img src="/site/vizier_white.svg" alt="Vizier Med" className="h-6 w-auto" />
+                    </a>
                     <p className="text-xs text-slate-400">Assistente médico com IA</p>
                   </div>
                 </div>
