@@ -19,6 +19,8 @@ Options:
   --enable-api-proxy            Force Amplify reverse-proxy rule /api/<*> -> ALB
   --disable-api-proxy           Disable Amplify reverse-proxy rule automation
   --async-upload <true|false>   Value for VITE_USE_ASYNC_S3_UPLOAD (default: true)
+  --enable-billing <true|false> Value for VITE_ENABLE_BILLING
+                                (default: TF_VAR_enable_stripe_billing or false)
   --keep-app-level-vite-vars    Keep managed VITE_* vars at Amplify app level
                                 (default behavior is to remove them to avoid duplicates)
   --dry-run                     Print merged variables without applying
@@ -37,6 +39,7 @@ FRONTEND_BASE_URL=""
 API_SCHEME="http"
 API_BASE_URL_OVERRIDE=""
 ASYNC_UPLOAD="true"
+ENABLE_BILLING=""
 DRY_RUN="false"
 KEEP_APP_LEVEL_VITE_VARS="false"
 ENABLE_API_PROXY="auto"
@@ -77,6 +80,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --async-upload)
       ASYNC_UPLOAD="${2:-}"
+      shift 2
+      ;;
+    --enable-billing)
+      ENABLE_BILLING="${2:-}"
       shift 2
       ;;
     --dry-run)
@@ -245,11 +252,21 @@ fi
 
 BILLING_CHECKOUT_ENDPOINT="${API_BASE_URL}/api/auth/billing/checkout/"
 BILLING_PORTAL_ENDPOINT="${API_BASE_URL}/api/auth/billing/portal/"
+ENABLE_BILLING_RAW="${ENABLE_BILLING:-${TF_VAR_enable_stripe_billing:-false}}"
+case "${ENABLE_BILLING_RAW,,}" in
+  1|true|yes|on)
+    ENABLE_BILLING_VALUE="true"
+    ;;
+  *)
+    ENABLE_BILLING_VALUE="false"
+    ;;
+esac
 
 NEW_VARS_JSON="$(jq -n \
   --arg api_base_url "${API_BASE_URL}" \
   --arg billing_checkout_endpoint "${BILLING_CHECKOUT_ENDPOINT}" \
   --arg billing_portal_endpoint "${BILLING_PORTAL_ENDPOINT}" \
+  --arg enable_billing "${ENABLE_BILLING_VALUE}" \
   --arg async_upload "${ASYNC_UPLOAD}" \
   --arg cognito_region "${REGION}" \
   --arg cognito_user_pool_id "${COGNITO_USER_POOL_ID}" \
@@ -259,6 +276,7 @@ NEW_VARS_JSON="$(jq -n \
   --arg logout_uri "${LOGOUT_URI}" \
   '{
     VITE_API_BASE_URL: $api_base_url,
+    VITE_ENABLE_BILLING: $enable_billing,
     VITE_BILLING_CHECKOUT_ENDPOINT: $billing_checkout_endpoint,
     VITE_BILLING_PORTAL_ENDPOINT: $billing_portal_endpoint,
     VITE_USE_ASYNC_S3_UPLOAD: $async_upload,
@@ -284,6 +302,7 @@ MERGED_VARS_JSON="$(jq -s '.[0] * .[1]' <(echo "${EXISTING_VARS_JSON}") <(echo "
 
 MANAGED_KEYS_JSON='[
   "VITE_API_BASE_URL",
+  "VITE_ENABLE_BILLING",
   "VITE_BILLING_CHECKOUT_ENDPOINT",
   "VITE_BILLING_PORTAL_ENDPOINT",
   "VITE_USE_ASYNC_S3_UPLOAD",
@@ -316,6 +335,7 @@ if [[ -n "${BACKEND_API_HTTPS_EDGE}" ]]; then
   echo "Backend API HTTPS edge: ${BACKEND_API_HTTPS_EDGE}"
 fi
 echo "VITE_API_BASE_URL: ${API_BASE_URL} (source: ${API_BASE_URL_SOURCE})"
+echo "VITE_ENABLE_BILLING: ${ENABLE_BILLING_VALUE}"
 echo "VITE_BILLING_CHECKOUT_ENDPOINT: ${BILLING_CHECKOUT_ENDPOINT}"
 echo "VITE_BILLING_PORTAL_ENDPOINT: ${BILLING_PORTAL_ENDPOINT}"
 echo "Amplify API proxy automation: ${ENABLE_API_PROXY}"
