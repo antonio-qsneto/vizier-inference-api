@@ -650,7 +650,16 @@ function isGzipPayload(buffer: ArrayBuffer) {
 
 async function fetchBuffer(url: string) {
   const resolvedUrl = normalizeViewerAssetUrl(url);
-  const response = await fetch(resolvedUrl);
+  let response: Response;
+  try {
+    response = await fetch(resolvedUrl);
+  } catch (networkError) {
+    if (resolvedUrl.startsWith("/") && typeof window !== "undefined") {
+      response = await fetch(`${window.location.origin}${resolvedUrl}`);
+    } else {
+      throw networkError;
+    }
+  }
 
   if (!response.ok) {
     throw new Error(

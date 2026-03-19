@@ -325,6 +325,18 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
   const [asyncAssets, setAsyncAssets] = useState<AsyncViewerAssets | null>(
     null,
   );
+  const demoImageUrl = useMemo(() => {
+    if (typeof window === "undefined") {
+      return DEMO_STUDY_IMAGE_URL;
+    }
+    return new URL(DEMO_STUDY_IMAGE_URL, window.location.origin).toString();
+  }, []);
+  const demoMaskUrl = useMemo(() => {
+    if (typeof window === "undefined") {
+      return DEMO_STUDY_MASK_URL;
+    }
+    return new URL(DEMO_STUDY_MASK_URL, window.location.origin).toString();
+  }, []);
 
   const loadAsyncAssets = useCallback(async (statusPayload?: InferenceJobStatus | null) => {
     if (!accessToken) {
@@ -574,8 +586,8 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
 
         <div className="-mx-4 md:-mx-6 lg:-mx-8">
           <OrthogonalViewer
-            imageUrl={DEMO_STUDY_IMAGE_URL}
-            maskUrl={DEMO_STUDY_MASK_URL}
+            imageUrl={demoImageUrl}
+            maskUrl={demoMaskUrl}
             modality={DEMO_STUDY_MODALITY}
             categoryId={DEMO_STUDY_CATEGORY}
             segmentsLegend={DEMO_STUDY_SEGMENTS_LEGEND}

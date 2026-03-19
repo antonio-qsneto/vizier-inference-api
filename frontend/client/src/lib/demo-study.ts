@@ -2,6 +2,7 @@ import type { SegmentLegendItem } from "@/types/api";
 
 export const DEMO_STUDY_ID = "demo";
 export const DEMO_STUDY_VIEWER_HREF = `/studies/${DEMO_STUDY_ID}/viewer`;
+export const DEMO_STUDY_CREATED_AT = "2099-01-01T00:00:00.000Z";
 
 export const DEMO_STUDY_CASE_TITLE = "Demo: Esclerose múltipla";
 export const DEMO_STUDY_PATIENT_NAME = "Paciente demo - Esclerose múltipla";

@@ -21,6 +21,8 @@ import { formatDateTime } from "@/lib/format";
 import {
   DEMO_STUDY_CASE_TITLE,
   DEMO_STUDY_CATEGORY,
+  DEMO_STUDY_CREATED_AT,
+  DEMO_STUDY_ID,
   DEMO_STUDY_MODALITY,
   DEMO_STUDY_PATIENT_NAME,
   DEMO_STUDY_VIEWER_HREF,
@@ -121,6 +123,19 @@ export default function StudiesPage() {
   }, [loadStudies]);
 
   const caseRows = useMemo<ClinicalCaseRow[]>(() => {
+    const demoRow: ClinicalCaseRow = {
+      id: DEMO_STUDY_ID,
+      caseIdentification: DEMO_STUDY_CASE_TITLE,
+      patientName: DEMO_STUDY_PATIENT_NAME,
+      category: DEMO_STUDY_CATEGORY,
+      examModality: DEMO_STUDY_MODALITY,
+      ownerEmail: "--",
+      status: "COMPLETED",
+      createdAt: DEMO_STUDY_CREATED_AT,
+      detailHref: DEMO_STUDY_VIEWER_HREF,
+      isAsync: false,
+    };
+
     const legacyRows = studies.map<ClinicalCaseRow>((study) => ({
       id: study.id,
       caseIdentification:
@@ -159,7 +174,7 @@ export default function StudiesPage() {
       };
     });
 
-    return [...asyncRows, ...legacyRows].sort((left, right) =>
+    return [demoRow, ...asyncRows, ...legacyRows].sort((left, right) =>
       (right.createdAt || "").localeCompare(left.createdAt || ""),
     );
   }, [inferenceJobs, studies]);
@@ -227,24 +242,6 @@ export default function StudiesPage() {
       {error ? (
         <InlineNotice title="Falha ao carregar estudos">{error}</InlineNotice>
       ) : null}
-
-      <Panel className="flex flex-col gap-3 border-sky-300/25 bg-sky-500/8 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-200">
-            Estudo demo permanente
-          </p>
-          <p className="text-sm text-slate-200">
-            {DEMO_STUDY_CASE_TITLE} · {DEMO_STUDY_PATIENT_NAME} · {DEMO_STUDY_MODALITY} ·{" "}
-            {DEMO_STUDY_CATEGORY}
-          </p>
-        </div>
-        <Link href={DEMO_STUDY_VIEWER_HREF}>
-          <a className="inline-flex items-center gap-2 rounded-[10px] border border-sky-300/30 bg-sky-500/14 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500/22">
-            <Eye className="h-4 w-4" />
-            Abrir visualização demo
-          </a>
-        </Link>
-      </Panel>
 
       <Panel className="space-y-4">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px_180px]">
