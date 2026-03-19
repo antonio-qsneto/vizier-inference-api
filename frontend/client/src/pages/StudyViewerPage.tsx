@@ -23,6 +23,16 @@ import {
   useStudyStatusPolling,
 } from "@/hooks/useStudyStatusPolling";
 import { env } from "@/env";
+import {
+  DEMO_STUDY_ANALYSIS,
+  DEMO_STUDY_CATEGORY,
+  DEMO_STUDY_ID,
+  DEMO_STUDY_IMAGE_URL,
+  DEMO_STUDY_MASK_URL,
+  DEMO_STUDY_MODALITY,
+  DEMO_STUDY_PATIENT_NAME,
+  DEMO_STUDY_SEGMENTS_LEGEND,
+} from "@/lib/demo-study";
 import { OrthogonalViewer } from "@/viewer/OrthogonalViewer";
 import type {
   InferenceJobStatus,
@@ -300,6 +310,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     }
     return new URLSearchParams(window.location.search).get("async") === "1";
   }, []);
+  const isDemoStudy = useMemo(() => studyId === DEMO_STUDY_ID, [studyId]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -399,6 +410,17 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
   }, [accessToken, studyId]);
 
   const loadViewerData = useCallback(async () => {
+    if (isDemoStudy) {
+      setStudy(null);
+      setStatusSnapshot(null);
+      setResult(null);
+      setAsyncStatus(null);
+      setAsyncAssets(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     if (!accessToken) {
       return;
     }
@@ -429,7 +451,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, isAsyncFlow, loadAsyncAssets, studyId]);
+  }, [accessToken, isAsyncFlow, isDemoStudy, loadAsyncAssets, studyId]);
 
   useEffect(() => {
     void loadViewerData();
@@ -441,6 +463,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     initialValue: statusSnapshot,
     enabled: Boolean(
       !isAsyncFlow &&
+        !isDemoStudy &&
         statusSnapshot &&
         !isTerminalStudyStatus(statusSnapshot.status),
     ),
@@ -465,7 +488,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
   }, [polling.value]);
 
   useEffect(() => {
-    if (!isAsyncFlow || !accessToken || !asyncStatus) {
+    if (!isAsyncFlow || isDemoStudy || !accessToken || !asyncStatus) {
       return;
     }
     if (isAsyncTerminalStatus(asyncStatus.status)) {
@@ -487,10 +510,10 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
     }, 5000);
 
     return () => window.clearInterval(timer);
-  }, [accessToken, asyncStatus, isAsyncFlow, loadAsyncAssets, studyId]);
+  }, [accessToken, asyncStatus, isAsyncFlow, isDemoStudy, loadAsyncAssets, studyId]);
 
   const loadResult = useCallback(async () => {
-    if (!accessToken || !studyId || isAsyncFlow) {
+    if (!accessToken || !studyId || isAsyncFlow || isDemoStudy) {
       return;
     }
 
@@ -503,16 +526,64 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
         setError(requestError.message);
       }
     }
-  }, [accessToken, isAsyncFlow, studyId]);
+  }, [accessToken, isAsyncFlow, isDemoStudy, studyId]);
 
   useEffect(() => {
-    if (!isAsyncFlow && (statusSnapshot?.status || study?.status) === "COMPLETED") {
+    if (
+      !isAsyncFlow &&
+      !isDemoStudy &&
+      (statusSnapshot?.status || study?.status) === "COMPLETED"
+    ) {
       void loadResult();
     }
-  }, [isAsyncFlow, loadResult, statusSnapshot?.status, study?.status]);
+  }, [isAsyncFlow, isDemoStudy, loadResult, statusSnapshot?.status, study?.status]);
 
   if (loading) {
     return <LoadingState label={isAsyncFlow ? "Preparando visualizador assíncrono..." : "Preparando visualizador..."} />;
+  }
+
+  if (isDemoStudy) {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+        className="space-y-4"
+      >
+        <div className="flex flex-col gap-3 rounded-[10px] border border-white/8 bg-[#23252d] px-4 py-3 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <h1 className="mt-1 truncate text-xl font-semibold tracking-tight text-white">
+              {DEMO_STUDY_PATIENT_NAME}
+            </h1>
+            <p className="mt-1 text-sm text-slate-300">{DEMO_STUDY_MODALITY}</p>
+            <p className="mt-1 text-xs text-slate-400">
+              Alvos de segmentação: {DEMO_STUDY_SEGMENTS_LEGEND[0]?.label}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill status="COMPLETED" />
+            <Link href="/studies">
+              <a className="inline-flex items-center gap-2 rounded-[8px] border border-white/10 bg-[#2a2c34] px-3 py-2 text-sm font-semibold text-slate-100 transition hover:bg-[#31343d]">
+                <FolderOpen className="h-4 w-4" />
+                Voltar para estudos
+              </a>
+            </Link>
+          </div>
+        </div>
+
+        <div className="-mx-4 md:-mx-6 lg:-mx-8">
+          <OrthogonalViewer
+            imageUrl={DEMO_STUDY_IMAGE_URL}
+            maskUrl={DEMO_STUDY_MASK_URL}
+            modality={DEMO_STUDY_MODALITY}
+            categoryId={DEMO_STUDY_CATEGORY}
+            segmentsLegend={DEMO_STUDY_SEGMENTS_LEGEND}
+            descriptiveAnalysis={DEMO_STUDY_ANALYSIS}
+          />
+        </div>
+      </motion.section>
+    );
   }
 
   if (isAsyncFlow) {
