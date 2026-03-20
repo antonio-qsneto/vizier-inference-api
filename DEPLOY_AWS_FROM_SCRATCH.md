@@ -161,6 +161,8 @@ gh secret set TF_VAR_INFERENCE_API_BEARER_TOKEN --repo "$GH_REPO" --env developm
 gh secret set TF_VAR_GOOGLE_API_KEY --repo "$GH_REPO" --env development --body "<google_api_key_temporaria_ou_real>"
 gh secret set TF_VAR_STRIPE_SECRET_KEY --repo "$GH_REPO" --env development --body "<sk_live_ou_sk_test>"
 gh secret set TF_VAR_STRIPE_WEBHOOK_SECRET --repo "$GH_REPO" --env development --body "<whsec_...>"
+gh secret set TF_VAR_EMAIL_HOST_USER --repo "$GH_REPO" --env development --body "<smtp_user>"
+gh secret set TF_VAR_EMAIL_HOST_PASSWORD --repo "$GH_REPO" --env development --body "<smtp_password>"
 # opcional:
 # gh secret set SMOKE_AUTH_TOKEN --repo "$GH_REPO" --env development --body "<jwt-valido>"
 
@@ -180,6 +182,15 @@ gh variable set AMPLIFY_API_SCHEME --repo "$GH_REPO" --env development --body "h
 gh variable set TF_VAR_COGNITO_CALLBACK_URLS --repo "$GH_REPO" --env development --body '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]'
 gh variable set TF_VAR_COGNITO_LOGOUT_URLS --repo "$GH_REPO" --env development --body '["http://localhost:3000/","http://localhost:8000/","https://viziermed.com/"]'
 gh variable set TF_VAR_ENABLE_STRIPE_BILLING --repo "$GH_REPO" --env development --body "true"
+gh variable set TF_VAR_EMAIL_BACKEND --repo "$GH_REPO" --env development --body "django.core.mail.backends.smtp.EmailBackend"
+gh variable set TF_VAR_EMAIL_HOST --repo "$GH_REPO" --env development --body "email-smtp.${AWS_REGION}.amazonaws.com"
+gh variable set TF_VAR_EMAIL_PORT --repo "$GH_REPO" --env development --body "587"
+gh variable set TF_VAR_EMAIL_USE_TLS --repo "$GH_REPO" --env development --body "true"
+gh variable set TF_VAR_EMAIL_USE_SSL --repo "$GH_REPO" --env development --body "false"
+gh variable set TF_VAR_EMAIL_TIMEOUT --repo "$GH_REPO" --env development --body "10"
+gh variable set TF_VAR_DEFAULT_FROM_EMAIL --repo "$GH_REPO" --env development --body "no-reply@viziermed.com"
+gh variable set TF_VAR_INVITATION_PLATFORM_NAME --repo "$GH_REPO" --env development --body "Vizier Med"
+gh variable set TF_VAR_INVITATION_LOGIN_URL --repo "$GH_REPO" --env development --body "https://viziermed.com/"
 # recomendado definir IDs de preço explícitos:
 # gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env development --body "price_xxx"
 # gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL --repo "$GH_REPO" --env development --body "price_yyy"
@@ -209,6 +220,8 @@ gh secret set TF_VAR_INFERENCE_API_BEARER_TOKEN --repo "$GH_REPO" --env producti
 gh secret set TF_VAR_GOOGLE_API_KEY --repo "$GH_REPO" --env production --body "<google_api_key_temporaria_ou_real>"
 gh secret set TF_VAR_STRIPE_SECRET_KEY --repo "$GH_REPO" --env production --body "<sk_live_...>"
 gh secret set TF_VAR_STRIPE_WEBHOOK_SECRET --repo "$GH_REPO" --env production --body "<whsec_...>"
+gh secret set TF_VAR_EMAIL_HOST_USER --repo "$GH_REPO" --env production --body "<smtp_user>"
+gh secret set TF_VAR_EMAIL_HOST_PASSWORD --repo "$GH_REPO" --env production --body "<smtp_password>"
 # opcional:
 # gh secret set SMOKE_AUTH_TOKEN --repo "$GH_REPO" --env production --body "<jwt-valido>"
 
@@ -228,6 +241,15 @@ gh variable set AMPLIFY_API_SCHEME --repo "$GH_REPO" --env production --body "ht
 gh variable set TF_VAR_COGNITO_CALLBACK_URLS --repo "$GH_REPO" --env production --body '["https://oauth.pstmn.io/v1/callback","http://localhost:3000/auth/callback","http://localhost:8000/auth/callback","https://viziermed.com/auth/callback"]'
 gh variable set TF_VAR_COGNITO_LOGOUT_URLS --repo "$GH_REPO" --env production --body '["http://localhost:3000/","http://localhost:8000/","https://viziermed.com/"]'
 gh variable set TF_VAR_ENABLE_STRIPE_BILLING --repo "$GH_REPO" --env production --body "true"
+gh variable set TF_VAR_EMAIL_BACKEND --repo "$GH_REPO" --env production --body "django.core.mail.backends.smtp.EmailBackend"
+gh variable set TF_VAR_EMAIL_HOST --repo "$GH_REPO" --env production --body "email-smtp.${AWS_REGION}.amazonaws.com"
+gh variable set TF_VAR_EMAIL_PORT --repo "$GH_REPO" --env production --body "587"
+gh variable set TF_VAR_EMAIL_USE_TLS --repo "$GH_REPO" --env production --body "true"
+gh variable set TF_VAR_EMAIL_USE_SSL --repo "$GH_REPO" --env production --body "false"
+gh variable set TF_VAR_EMAIL_TIMEOUT --repo "$GH_REPO" --env production --body "10"
+gh variable set TF_VAR_DEFAULT_FROM_EMAIL --repo "$GH_REPO" --env production --body "no-reply@viziermed.com"
+gh variable set TF_VAR_INVITATION_PLATFORM_NAME --repo "$GH_REPO" --env production --body "Vizier Med"
+gh variable set TF_VAR_INVITATION_LOGIN_URL --repo "$GH_REPO" --env production --body "https://viziermed.com/"
 # recomendado definir IDs de preço explícitos:
 # gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY --repo "$GH_REPO" --env production --body "price_xxx"
 # gh variable set TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_ANNUAL --repo "$GH_REPO" --env production --body "price_yyy"

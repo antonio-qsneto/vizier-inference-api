@@ -300,6 +300,74 @@ variable "google_api_key" {
   default     = ""
 }
 
+variable "email_backend" {
+  type        = string
+  description = "Django email backend path. Example: django.core.mail.backends.smtp.EmailBackend"
+  default     = ""
+}
+
+variable "email_host" {
+  type        = string
+  description = "SMTP host used to deliver clinic invitation emails."
+  default     = ""
+}
+
+variable "email_port" {
+  type        = number
+  description = "SMTP port."
+  default     = 587
+}
+
+variable "email_host_user" {
+  type        = string
+  description = "SMTP username."
+  sensitive   = true
+  default     = ""
+}
+
+variable "email_host_password" {
+  type        = string
+  description = "SMTP password."
+  sensitive   = true
+  default     = ""
+}
+
+variable "email_use_tls" {
+  type        = bool
+  description = "Whether SMTP should use STARTTLS."
+  default     = true
+}
+
+variable "email_use_ssl" {
+  type        = bool
+  description = "Whether SMTP should use SSL."
+  default     = false
+}
+
+variable "email_timeout" {
+  type        = number
+  description = "SMTP timeout in seconds."
+  default     = 10
+}
+
+variable "default_from_email" {
+  type        = string
+  description = "Sender used by invitation emails."
+  default     = ""
+}
+
+variable "invitation_platform_name" {
+  type        = string
+  description = "Platform name shown in invitation emails."
+  default     = "Vizier Med"
+}
+
+variable "invitation_login_url" {
+  type        = string
+  description = "Frontend login URL included in invitation emails."
+  default     = "https://viziermed.com/"
+}
+
 variable "stripe_product_id" {
   type        = string
   description = "Stripe product id used as fallback for price resolution."
@@ -416,7 +484,7 @@ variable "gpu_off_hours_desired_capacity" {
 
 variable "gpu_off_hours_max_size" {
   type    = number
-  default = 0
+  default = 1
 }
 
 variable "bio_ecs_task_poll_seconds" {

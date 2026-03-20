@@ -175,6 +175,8 @@ module "app_secrets" {
     GOOGLE_API_KEY             = var.google_api_key
     STRIPE_SECRET_KEY          = var.stripe_secret_key
     STRIPE_WEBHOOK_SECRET      = var.stripe_webhook_secret
+    EMAIL_HOST_USER            = var.email_host_user
+    EMAIL_HOST_PASSWORD        = var.email_host_password
   })
   tags = local.tags
 }
@@ -360,7 +362,16 @@ module "ecs_fargate_django" {
     var.stripe_price_id_clinic_monthly != "" ? { STRIPE_PRICE_ID_CLINIC_MONTHLY = var.stripe_price_id_clinic_monthly } : {},
     var.stripe_price_id_clinic_yearly != "" ? { STRIPE_PRICE_ID_CLINIC_YEARLY = var.stripe_price_id_clinic_yearly } : {},
     var.stripe_price_lookup_key_individual_monthly != "" ? { STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY = var.stripe_price_lookup_key_individual_monthly } : {},
-    var.stripe_price_lookup_key_individual_annual != "" ? { STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL = var.stripe_price_lookup_key_individual_annual } : {}
+    var.stripe_price_lookup_key_individual_annual != "" ? { STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL = var.stripe_price_lookup_key_individual_annual } : {},
+    var.email_backend != "" ? { EMAIL_BACKEND = var.email_backend } : {},
+    var.email_host != "" ? { EMAIL_HOST = var.email_host } : {},
+    var.email_host != "" ? { EMAIL_PORT = tostring(var.email_port) } : {},
+    var.email_host != "" ? { EMAIL_USE_TLS = tostring(var.email_use_tls) } : {},
+    var.email_host != "" ? { EMAIL_USE_SSL = tostring(var.email_use_ssl) } : {},
+    var.email_host != "" ? { EMAIL_TIMEOUT = tostring(var.email_timeout) } : {},
+    var.default_from_email != "" ? { DEFAULT_FROM_EMAIL = var.default_from_email } : {},
+    var.invitation_platform_name != "" ? { INVITATION_PLATFORM_NAME = var.invitation_platform_name } : {},
+    var.invitation_login_url != "" ? { INVITATION_LOGIN_URL = var.invitation_login_url } : {}
   )
   secrets = [
     { name = "DATABASE_URL", valueFrom = "${module.app_secrets.secret_arn}:DATABASE_URL::" },
@@ -369,6 +380,8 @@ module "ecs_fargate_django" {
     { name = "GOOGLE_API_KEY", valueFrom = "${module.app_secrets.secret_arn}:GOOGLE_API_KEY::" },
     { name = "STRIPE_SECRET_KEY", valueFrom = "${module.app_secrets.secret_arn}:STRIPE_SECRET_KEY::" },
     { name = "STRIPE_WEBHOOK_SECRET", valueFrom = "${module.app_secrets.secret_arn}:STRIPE_WEBHOOK_SECRET::" },
+    { name = "EMAIL_HOST_USER", valueFrom = "${module.app_secrets.secret_arn}:EMAIL_HOST_USER::" },
+    { name = "EMAIL_HOST_PASSWORD", valueFrom = "${module.app_secrets.secret_arn}:EMAIL_HOST_PASSWORD::" },
   ]
   tags = local.tags
 }

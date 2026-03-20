@@ -33,6 +33,8 @@ env:
   TF_VAR_django_secret_key: ${{ secrets.TF_VAR_DJANGO_SECRET_KEY }}
   TF_VAR_inference_api_bearer_token: ${{ secrets.TF_VAR_INFERENCE_API_BEARER_TOKEN }}
   TF_VAR_google_api_key: ${{ secrets.TF_VAR_GOOGLE_API_KEY }}
+  TF_VAR_email_host_user: ${{ secrets.TF_VAR_EMAIL_HOST_USER }}
+  TF_VAR_email_host_password: ${{ secrets.TF_VAR_EMAIL_HOST_PASSWORD }}
   TF_VAR_stripe_secret_key: ${{ secrets.TF_VAR_STRIPE_SECRET_KEY }}
   TF_VAR_stripe_webhook_secret: ${{ secrets.TF_VAR_STRIPE_WEBHOOK_SECRET }}
   TF_VAR_biomedparse_image_override: ${{ vars.BIOMEDPARSE_IMAGE_OVERRIDE || '996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse@sha256:4651856870d28c6770d3c7fc8114db2f50501e3ca58e336a711d053a446ba35d' }}
@@ -42,6 +44,15 @@ env:
   TF_VAR_external_biomedparse_ecr_repository_url: ${{ vars.BIOMEDPARSE_ECR_REPOSITORY_URL || '' }}
   TF_VAR_enable_nat_gateway: ${{ vars.TF_VAR_ENABLE_NAT_GATEWAY || 'true' }}
   TF_VAR_enable_vpc_endpoints: ${{ vars.TF_VAR_ENABLE_VPC_ENDPOINTS || 'false' }}
+  TF_VAR_email_backend: ${{ vars.TF_VAR_EMAIL_BACKEND || '' }}
+  TF_VAR_email_host: ${{ vars.TF_VAR_EMAIL_HOST || '' }}
+  TF_VAR_email_port: ${{ vars.TF_VAR_EMAIL_PORT || '587' }}
+  TF_VAR_email_use_tls: ${{ vars.TF_VAR_EMAIL_USE_TLS || 'true' }}
+  TF_VAR_email_use_ssl: ${{ vars.TF_VAR_EMAIL_USE_SSL || 'false' }}
+  TF_VAR_email_timeout: ${{ vars.TF_VAR_EMAIL_TIMEOUT || '10' }}
+  TF_VAR_default_from_email: ${{ vars.TF_VAR_DEFAULT_FROM_EMAIL || '' }}
+  TF_VAR_invitation_platform_name: ${{ vars.TF_VAR_INVITATION_PLATFORM_NAME || 'Vizier Med' }}
+  TF_VAR_invitation_login_url: ${{ vars.TF_VAR_INVITATION_LOGIN_URL || 'https://viziermed.com/' }}
   TF_VAR_enable_stripe_billing: ${{ vars.TF_VAR_ENABLE_STRIPE_BILLING || 'false' }}
   TF_VAR_stripe_product_id: ${{ vars.TF_VAR_STRIPE_PRODUCT_ID || '' }}
   TF_VAR_stripe_price_id_individual_monthly: ${{ vars.TF_VAR_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY || '' }}

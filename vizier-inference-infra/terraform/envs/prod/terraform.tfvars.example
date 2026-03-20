@@ -23,6 +23,18 @@ inference_api_bearer_token = ""
 enable_stripe_billing = true
 stripe_secret_key = "sk_live_change_me"
 stripe_webhook_secret = "whsec_change_me"
+# convite por e-mail (SMTP/SES):
+# email_backend = "django.core.mail.backends.smtp.EmailBackend"
+# email_host = "email-smtp.us-east-1.amazonaws.com"
+# email_port = 587
+# email_host_user = "AKIA..."
+# email_host_password = "smtp_password"
+# email_use_tls = true
+# email_use_ssl = false
+# email_timeout = 10
+# default_from_email = "no-reply@viziermed.com"
+# invitation_platform_name = "Vizier Med"
+# invitation_login_url = "https://viziermed.com/"
 # opcional:
 # stripe_product_id = "prod_xxx"
 # stripe_price_id_individual_monthly = "price_xxx"

@@ -93,7 +93,7 @@ variable "off_hours_desired_capacity" {
 
 variable "off_hours_max_size" {
   type    = number
-  default = 0
+  default = 1
 }
 
 variable "biomedparse_image" {

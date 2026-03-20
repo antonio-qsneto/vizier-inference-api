@@ -16,6 +16,8 @@ Criar dois GitHub Environments:
 3. `TF_VAR_STRIPE_SECRET_KEY`
 4. `TF_VAR_STRIPE_WEBHOOK_SECRET`
 5. `TF_VAR_GOOGLE_API_KEY` (para Gemini no endpoint `/api/studies/result/`)
+6. `TF_VAR_EMAIL_HOST_USER` (SMTP user para convite de clínica)
+7. `TF_VAR_EMAIL_HOST_PASSWORD` (SMTP password para convite de clínica)
 
 ## Variables obrigatórias (por environment)
 1. `AWS_REGION` (ex.: `us-east-1`)
@@ -46,10 +48,19 @@ Criar dois GitHub Environments:
 22. `TF_VAR_STRIPE_PRICE_ID_CLINIC_YEARLY` (opcional)
 23. `TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_MONTHLY` (opcional)
 24. `TF_VAR_STRIPE_PRICE_LOOKUP_KEY_INDIVIDUAL_ANNUAL` (opcional)
-25. `TF_VAR_STRIPE_ALLOWED_REDIRECT_ORIGINS` (JSON array string opcional; ex.: `["https://viziermed.com"]`)
-26. `TF_VAR_API_CUSTOM_DOMAIN_NAME` (ex.: `api.viziermed.com`)
-27. `TF_VAR_API_ROUTE53_ZONE_ID` (Hosted Zone ID do domínio raiz no Route53)
-28. `TF_VAR_API_CLOUDFRONT_CERTIFICATE_ARN` (opcional; se vazio, Terraform cria ACM em `us-east-1` via DNS)
+25. `TF_VAR_EMAIL_BACKEND` (ex.: `django.core.mail.backends.smtp.EmailBackend`)
+26. `TF_VAR_EMAIL_HOST` (ex.: endpoint SMTP/SES)
+27. `TF_VAR_EMAIL_PORT` (ex.: `587`)
+28. `TF_VAR_EMAIL_USE_TLS` (`true` recomendado)
+29. `TF_VAR_EMAIL_USE_SSL` (`false` com `587`)
+30. `TF_VAR_EMAIL_TIMEOUT` (ex.: `10`)
+31. `TF_VAR_DEFAULT_FROM_EMAIL` (ex.: `no-reply@viziermed.com`)
+32. `TF_VAR_INVITATION_PLATFORM_NAME` (ex.: `Vizier Med`)
+33. `TF_VAR_INVITATION_LOGIN_URL` (ex.: `https://viziermed.com/`)
+34. `TF_VAR_STRIPE_ALLOWED_REDIRECT_ORIGINS` (JSON array string opcional; ex.: `["https://viziermed.com"]`)
+35. `TF_VAR_API_CUSTOM_DOMAIN_NAME` (ex.: `api.viziermed.com`)
+36. `TF_VAR_API_ROUTE53_ZONE_ID` (Hosted Zone ID do domínio raiz no Route53)
+37. `TF_VAR_API_CLOUDFRONT_CERTIFICATE_ARN` (opcional; se vazio, Terraform cria ACM em `us-east-1` via DNS)
 
 Valor recomendado no seu cenário:
 - `996561439065.dkr.ecr.us-east-1.amazonaws.com/biomedparse:v2-20260317-164247-03338460`
