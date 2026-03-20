@@ -81,6 +81,21 @@ variable "business_hours_desired_capacity" {
   default = 1
 }
 
+variable "off_hours_min_size" {
+  type    = number
+  default = 0
+}
+
+variable "off_hours_desired_capacity" {
+  type    = number
+  default = 0
+}
+
+variable "off_hours_max_size" {
+  type    = number
+  default = 0
+}
+
 variable "biomedparse_image" {
   type = string
 }

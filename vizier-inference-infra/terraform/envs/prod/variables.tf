@@ -404,6 +404,21 @@ variable "gpu_business_hours_desired_capacity" {
   default = 1
 }
 
+variable "gpu_off_hours_min_size" {
+  type    = number
+  default = 0
+}
+
+variable "gpu_off_hours_desired_capacity" {
+  type    = number
+  default = 0
+}
+
+variable "gpu_off_hours_max_size" {
+  type    = number
+  default = 0
+}
+
 variable "bio_ecs_task_poll_seconds" {
   type    = number
   default = 15

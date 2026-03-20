@@ -202,6 +202,9 @@ module "ecs_gpu" {
   business_hours_scale_down_cron  = var.gpu_business_hours_scale_down_cron
   business_hours_min_size         = var.gpu_business_hours_min_size
   business_hours_desired_capacity = var.gpu_business_hours_desired_capacity
+  off_hours_min_size              = var.gpu_off_hours_min_size
+  off_hours_desired_capacity      = var.gpu_off_hours_desired_capacity
+  off_hours_max_size              = var.gpu_off_hours_max_size
 
   worker_task_execution_role_arn = module.iam_runtime.ecs_task_execution_role_arn
   worker_task_role_arn           = module.iam_runtime.worker_task_role_arn
