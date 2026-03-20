@@ -224,6 +224,7 @@ export interface InferenceJobStatus {
   id: string;
   tenant: string;
   owner: number;
+  study?: string | null;
   request_payload?: Record<string, unknown> | null;
   status: InferenceJobStatusValue;
   progress_percent: number;

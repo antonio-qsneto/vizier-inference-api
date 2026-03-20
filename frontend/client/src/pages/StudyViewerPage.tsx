@@ -413,6 +413,39 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
       }
     }
 
+    const linkedStudyId = String(
+      statusPayload?.study || asyncStatus?.study || "",
+    ).trim();
+    if (!String(descriptiveAnalysis ?? "").trim()) {
+      if (linkedStudyId) {
+        try {
+          const studyResultPayload = await fetchStudyResult(accessToken, linkedStudyId);
+          const studyAnalysis = String(
+            studyResultPayload.descriptive_analysis ?? "",
+          ).trim();
+          if (studyAnalysis) {
+            descriptiveAnalysis = studyAnalysis;
+          }
+          console.info("[GeminiDebug] async-assets:study-result-fallback", {
+            studyId,
+            linkedStudyId,
+            hasDescriptiveAnalysis: Boolean(studyAnalysis),
+          });
+        } catch (fallbackError) {
+          console.warn("[GeminiDebug] async-assets:study-result-fallback-error", {
+            studyId,
+            linkedStudyId,
+            error:
+              fallbackError instanceof Error
+                ? fallbackError.message
+                : String(fallbackError),
+          });
+        }
+      } else {
+        console.warn("[GeminiDebug] async-assets:no-linked-study", { studyId });
+      }
+    }
+
     if (!segmentsLegend.length && statusPayload?.request_payload) {
       const requestPayload = statusPayload.request_payload as Record<string, unknown>;
       const examModality = String(requestPayload.exam_modality || "").trim();
@@ -445,7 +478,7 @@ export default function StudyViewerPage({ studyId }: { studyId: string }) {
       hasDescriptiveAnalysis: Boolean(String(descriptiveAnalysis ?? "").trim()),
       fallbackSegmentNamesCount: fallbackSegmentNames.length,
     });
-  }, [accessToken, studyId]);
+  }, [accessToken, asyncStatus?.study, studyId]);
 
   const loadViewerData = useCallback(async () => {
     if (isDemoStudy) {
