@@ -20,7 +20,7 @@ from services.queue_service import QueueService
 from services.s3_utils import S3Utils
 
 from .models import AuditEvent, InferenceJob, InputArtifact, JobStatusHistory, ModelVersion, OutputArtifact, Tenant
-from .object_layout import raw_input_key
+from .object_layout import audit_processing_metadata_key, raw_input_key
 from .prompt_catalog import build_text_prompts_for_job
 from .serializers import (
     InferenceJobCreateRequestSerializer,
@@ -119,6 +119,24 @@ def _emit_audit_event(*, job: InferenceJob, action: str, user=None, payload: dic
         correlation_id=job.correlation_id,
         payload=payload or {},
     )
+
+
+def _collect_job_artifact_keys(job: InferenceJob, *, include_study_assets: bool = False) -> set[str]:
+    keys: set[str] = set()
+    for artifact in job.input_artifacts.all():
+        if artifact.key:
+            keys.add(str(artifact.key))
+    for artifact in job.output_artifacts.all():
+        if artifact.key:
+            keys.add(str(artifact.key))
+
+    if include_study_assets and job.study_id and job.study:
+        for key in [job.study.s3_key, job.study.image_s3_key, job.study.mask_s3_key]:
+            if key:
+                keys.add(str(key))
+
+    keys.add(audit_processing_metadata_key(str(job.tenant_id), str(job.id)))
+    return keys
 
 
 class InferenceJobCreateView(APIView):
@@ -526,6 +544,71 @@ class InferenceJobOutputsView(APIView):
             }
         )
         return Response(serializer.data)
+
+
+class InferenceJobDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, job_id: str):
+        if not getattr(settings, "INFERENCE_ASYNC_S3_ENABLED", False):
+            return Response({"detail": "Async inference API is disabled"}, status=status.HTTP_404_NOT_FOUND)
+
+        job = get_object_or_404(
+            InferenceJob.objects.select_related("tenant", "owner", "study").prefetch_related("input_artifacts", "output_artifacts"),
+            id=job_id,
+        )
+        if not _job_accessible_by_user(job, request.user):
+            return Response({"detail": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
+
+        if not job.is_terminal:
+            return Response(
+                {"detail": "Only completed or failed jobs can be deleted."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        linked_study = job.study
+        has_other_jobs = False
+        if linked_study:
+            has_other_jobs = InferenceJob.objects.filter(study_id=linked_study.id).exclude(id=job.id).exists()
+
+        artifact_keys = _collect_job_artifact_keys(job, include_study_assets=bool(linked_study and not has_other_jobs))
+        deleted_artifacts = 0
+        failed_artifacts = 0
+
+        s3 = S3Utils()
+        for key in sorted(artifact_keys):
+            try:
+                if s3.delete_object(key):
+                    deleted_artifacts += 1
+                else:
+                    failed_artifacts += 1
+            except Exception:
+                failed_artifacts += 1
+                logger.warning(
+                    "Failed deleting inference artifact during job cleanup key=%s job=%s",
+                    key,
+                    job.id,
+                    exc_info=True,
+                )
+
+        linked_study_id = str(job.study_id) if job.study_id else None
+        delete_linked_study = bool(linked_study and not has_other_jobs)
+
+        with transaction.atomic():
+            job.delete()
+            if delete_linked_study and linked_study:
+                linked_study.delete()
+
+        return Response(
+            {
+                "detail": "Inference job deleted permanently.",
+                "deleted_artifacts": deleted_artifacts,
+                "failed_artifacts": failed_artifacts,
+                "deleted_linked_study": bool(delete_linked_study and linked_study),
+                "linked_study_id": linked_study_id,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class InferenceOutputPresignDownloadView(APIView):

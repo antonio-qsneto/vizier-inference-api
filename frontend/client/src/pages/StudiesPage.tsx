@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { ArrowUpFromLine, Eye, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import {
+  deleteInferenceJob,
   deleteStudy,
   fetchInferenceJobsPage,
   fetchStudiesPage,
@@ -239,7 +240,7 @@ export default function StudiesPage() {
   }, [page, totalPages]);
 
   async function handleDeleteStudy(studyId: string, isAsync: boolean) {
-    if (!accessToken || isAsync || studyId === DEMO_STUDY_ID) {
+    if (!accessToken || studyId === DEMO_STUDY_ID) {
       return;
     }
 
@@ -252,8 +253,13 @@ export default function StudiesPage() {
 
     setDeletingStudyId(studyId);
     try {
-      await deleteStudy(accessToken, studyId);
+      if (isAsync) {
+        await deleteInferenceJob(accessToken, studyId);
+      } else {
+        await deleteStudy(accessToken, studyId);
+      }
       await loadStudies();
+      setError(null);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -423,7 +429,10 @@ export default function StudiesPage() {
                           Ver
                         </a>
                       </Link>
-                      {!study.isAsync && study.id !== DEMO_STUDY_ID ? (
+                      {study.id !== DEMO_STUDY_ID &&
+                      (!study.isAsync ||
+                        study.status === "COMPLETED" ||
+                        study.status === "FAILED") ? (
                         <button
                           type="button"
                           onClick={() => void handleDeleteStudy(study.id, study.isAsync)}

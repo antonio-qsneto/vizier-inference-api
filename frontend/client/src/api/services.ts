@@ -595,6 +595,19 @@ export async function fetchInferenceJobOutputs(
   );
 }
 
+export async function deleteInferenceJob(token: string, jobId: string) {
+  return apiRequest<{
+    detail: string;
+    deleted_artifacts?: number;
+    failed_artifacts?: number;
+    deleted_linked_study?: boolean;
+    linked_study_id?: string | null;
+  }>(`/api/inference/jobs/${jobId}/`, {
+    method: "DELETE",
+    token,
+  });
+}
+
 export async function presignInferenceOutputDownload(
   token: string,
   jobId: string,

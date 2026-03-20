@@ -1,18 +1,22 @@
 import os
 import tempfile
 import zipfile
+from unittest.mock import patch
 
 import nibabel as nib
 import numpy as np
 from django.test import TestCase
+from django.test.utils import override_settings
+from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.inference.executors.biomedparse_ecs_executor import BiomedParseECSExecutor
 from apps.inference.executors.preprocessing_executor import InferencePreprocessor
-from apps.inference.models import InferenceJob, ModelVersion, Tenant
-from apps.inference.object_layout import output_mask_npz_key, output_summary_key
+from apps.inference.models import InferenceJob, InputArtifact, ModelVersion, OutputArtifact, Tenant
+from apps.inference.object_layout import audit_processing_metadata_key, output_mask_npz_key, output_summary_key
 from apps.inference.prompt_catalog import build_text_prompts_for_job
 from apps.inference.state_machine import transition_job
+from apps.studies.models import Study
 from services.dicom_pipeline import DicomZipToNpzService
 from services.nifti_converter import NiftiConverter
 
@@ -326,3 +330,82 @@ class BiomedParseECSExecutorTest(TestCase):
                 )
 
         self.assertIn("ECS task not found", str(raised.exception))
+
+
+@override_settings(INFERENCE_ASYNC_S3_ENABLED=True)
+class InferenceJobDeleteViewTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email="delete-jobs@example.com",
+            cognito_sub="delete-jobs-sub",
+            role="INDIVIDUAL",
+        )
+        self.client.force_authenticate(user=self.user)
+        self.tenant = Tenant.resolve_for_user(self.user)
+        self.model_version = ModelVersion.objects.create(name="biomedparse", version="v1")
+
+    def _create_job(self, *, status: str) -> tuple[InferenceJob, Study]:
+        study = Study.objects.create(
+            owner=self.user,
+            category="head_multiple_sclerosis",
+            status="COMPLETED",
+            s3_key="output/study/original.nii.gz",
+            image_s3_key="output/study/image.nii.gz",
+            mask_s3_key="output/study/mask.nii.gz",
+        )
+        job = InferenceJob.objects.create(
+            tenant=self.tenant,
+            owner=self.user,
+            study=study,
+            requested_model_version=self.model_version,
+            status=status,
+            correlation_id="corr-delete-test",
+        )
+        InputArtifact.objects.create(
+            job=job,
+            bucket="test-bucket",
+            key="input/test/input.zip",
+            kind=InputArtifact.KIND_RAW_UPLOAD,
+        )
+        OutputArtifact.objects.create(
+            job=job,
+            bucket="test-bucket",
+            key="output/test/mask.nii.gz",
+            kind=OutputArtifact.KIND_MASK_NIFTI,
+        )
+        return job, study
+
+    @patch("apps.inference.views.S3Utils")
+    def test_delete_terminal_job_deletes_job_study_and_artifacts(self, s3_utils_cls):
+        s3_utils_cls.return_value.delete_object.return_value = True
+        job, study = self._create_job(status=InferenceJob.STATUS_COMPLETED)
+
+        response = self.client.delete(f"/api/inference/jobs/{job.id}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(InferenceJob.objects.filter(id=job.id).exists())
+        self.assertFalse(Study.objects.filter(id=study.id).exists())
+        self.assertEqual(response.data.get("detail"), "Inference job deleted permanently.")
+        self.assertTrue(response.data.get("deleted_linked_study"))
+        self.assertEqual(str(study.id), response.data.get("linked_study_id"))
+
+        called_keys = {str(call.args[0]) for call in s3_utils_cls.return_value.delete_object.call_args_list}
+        self.assertIn("input/test/input.zip", called_keys)
+        self.assertIn("output/test/mask.nii.gz", called_keys)
+        self.assertIn("output/study/original.nii.gz", called_keys)
+        self.assertIn("output/study/image.nii.gz", called_keys)
+        self.assertIn("output/study/mask.nii.gz", called_keys)
+        self.assertIn(audit_processing_metadata_key(str(self.tenant.id), str(job.id)), called_keys)
+
+    @patch("apps.inference.views.S3Utils")
+    def test_delete_non_terminal_job_returns_409_and_keeps_records(self, s3_utils_cls):
+        job, study = self._create_job(status=InferenceJob.STATUS_RUNNING)
+
+        response = self.client.delete(f"/api/inference/jobs/{job.id}/")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data.get("detail"), "Only completed or failed jobs can be deleted.")
+        self.assertTrue(InferenceJob.objects.filter(id=job.id).exists())
+        self.assertTrue(Study.objects.filter(id=study.id).exists())
+        s3_utils_cls.assert_not_called()
