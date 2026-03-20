@@ -1,13 +1,11 @@
 import {
   cancelClinicSubscription,
-  changeClinicSeats,
   syncClinicBilling,
   startClinicBillingCheckout,
   startClinicBillingPortal,
 } from "@/api/services";
 import type {
   ClinicBillingCheckoutResponse,
-  ClinicSeatChangeResponse,
 } from "@/types/api";
 
 export type ClinicPlanId = "clinic_monthly" | "clinic_yearly";
@@ -55,11 +53,6 @@ export async function openClinicBillingPortal(token: string, returnUrl?: string)
   return response.url;
 }
 
-export async function updateClinicSeatQuantity(token: string, targetQuantity: number) {
-  const response = await changeClinicSeats(token, targetQuantity);
-  return normalizeSeatChangeResponse(response);
-}
-
 export async function syncClinicBillingState(token: string, checkoutSessionId?: string) {
   return syncClinicBilling(token, checkoutSessionId);
 }
@@ -78,17 +71,5 @@ function normalizeClinicCheckoutResponse(
     checkout_session_id: payload.checkout_session_id,
     seat_limit: payload.seat_limit,
     seat_used: payload.seat_used,
-  };
-}
-
-function normalizeSeatChangeResponse(
-  payload: ClinicSeatChangeResponse,
-): ClinicSeatChangeResponse {
-  return {
-    detail: payload.detail,
-    seat_limit: payload.seat_limit,
-    seat_used: payload.seat_used,
-    scheduled_seat_limit: payload.scheduled_seat_limit,
-    scheduled_seat_effective_at: payload.scheduled_seat_effective_at,
   };
 }

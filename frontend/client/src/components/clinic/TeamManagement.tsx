@@ -1,14 +1,8 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
-
-import {
-  calculateClinicTotalPrice,
-  formatBrlCurrency,
-} from "@/billing/clinicAdapter";
+import { FormEvent, useMemo, useState } from "react";
 import { InlineNotice, Panel, StatusPill } from "@/components/primitives";
 import type { Clinic, ClinicSubscriptionPlan, UserSummary } from "@/types/api";
 
 import DoctorList from "./DoctorList";
-import SeatSelector from "./SeatSelector";
 
 interface TeamManagementProps {
   clinic: Clinic;
@@ -18,7 +12,6 @@ interface TeamManagementProps {
   openingPortal?: boolean;
   onInviteDoctor: (email: string) => Promise<void>;
   onRemoveDoctor: (doctorId: number) => Promise<void>;
-  onChangeSeats: (targetQuantity: number) => Promise<void>;
   onOpenBillingPortal: () => Promise<void>;
 }
 
@@ -40,15 +33,9 @@ export default function TeamManagement({
   openingPortal = false,
   onInviteDoctor,
   onRemoveDoctor,
-  onChangeSeats,
   onOpenBillingPortal,
 }: TeamManagementProps) {
   const [inviteEmail, setInviteEmail] = useState("");
-  const [targetSeats, setTargetSeats] = useState(Math.max(1, clinic.seat_limit || 1));
-
-  useEffect(() => {
-    setTargetSeats(Math.max(1, clinic.seat_limit || 1));
-  }, [clinic.seat_limit]);
 
   const seatsUsed = clinic.seat_used ?? clinic.active_doctors_count ?? doctors.length;
   const seatsLimit = Math.max(0, clinic.seat_limit || 0);
@@ -64,10 +51,6 @@ export default function TeamManagement({
     isAdmin &&
     clinic.subscription_plan !== "free" &&
     clinic.account_status !== "canceled";
-  const expectedTotal =
-    clinic.subscription_plan === "clinic_yearly" || clinic.subscription_plan === "clinic_monthly"
-      ? calculateClinicTotalPrice(clinic.subscription_plan, targetSeats)
-      : 0;
 
   async function handleInviteDoctor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -76,14 +59,6 @@ export default function TeamManagement({
     }
     await onInviteDoctor(inviteEmail.trim().toLowerCase());
     setInviteEmail("");
-  }
-
-  async function handleChangeSeats(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!isAdmin) {
-      return;
-    }
-    await onChangeSeats(targetSeats);
   }
 
   return (
@@ -96,7 +71,7 @@ export default function TeamManagement({
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-white">Assentos e médicos da clínica</h2>
             <p className="mt-2 text-sm leading-7 text-slate-300">
-              Gerencie equipe médica, assentos comprados e cobrança Stripe da clínica.
+              Gerencie equipe médica, uso de assentos e cobrança Stripe da clínica.
             </p>
           </div>
           <StatusPill status={clinic.account_status || "unknown"} />
@@ -131,20 +106,15 @@ export default function TeamManagement({
           </p>
         </div>
 
-        {clinic.has_pending_seat_reduction ? (
-          <InlineNotice title="Redução de assentos agendada" tone="warning">
-            Redução agendada para {clinic.scheduled_seat_limit} assentos em
-            {" "}
-            {clinic.scheduled_seat_effective_at
-              ? new Date(clinic.scheduled_seat_effective_at).toLocaleString("pt-BR")
-              : "próximo ciclo"}
-            .
+        {isAdmin ? (
+          <InlineNotice title="Assentos contratados bloqueados" tone="warning">
+            Para este plano, não é possível aumentar ou reduzir assentos manualmente.
           </InlineNotice>
         ) : null}
 
         {seatsReached ? (
           <InlineNotice title="Limite de assentos atingido" tone="warning">
-            Não é possível convidar mais médicos até aumentar os assentos comprados.
+            Não é possível convidar mais médicos porque a clínica atingiu o limite contratado.
           </InlineNotice>
         ) : null}
 
@@ -193,44 +163,6 @@ export default function TeamManagement({
               className="rounded-2xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Convidar médico
-            </button>
-          </form>
-        </Panel>
-      ) : null}
-
-      {isAdmin ? (
-        <Panel className="space-y-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-              Alterar assentos
-            </p>
-            <h3 className="mt-2 text-xl font-semibold text-white">Atualizar assentos contratados</h3>
-          </div>
-
-          <form className="space-y-4" onSubmit={handleChangeSeats}>
-            <SeatSelector
-              value={targetSeats}
-              onChange={setTargetSeats}
-              min={Math.max(1, seatsUsed)}
-              disabled={submitting}
-              description={`Mínimo atual: ${Math.max(1, seatsUsed)} médico(s)`}
-            />
-
-            {clinic.subscription_plan === "clinic_monthly" ||
-            clinic.subscription_plan === "clinic_yearly" ? (
-              <p className="text-sm text-slate-300">
-                Estimativa para {targetSeats} assentos: {formatBrlCurrency(expectedTotal)} /
-                {" "}
-                {clinic.subscription_plan === "clinic_yearly" ? "ano" : "mês"}
-              </p>
-            ) : null}
-
-            <button
-              type="submit"
-              disabled={submitting || targetSeats === seatsLimit}
-              className="rounded-2xl border border-sky-300/30 bg-sky-500/10 px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Alterar assentos
             </button>
           </form>
         </Panel>

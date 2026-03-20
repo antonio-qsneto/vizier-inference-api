@@ -397,7 +397,7 @@ class ClinicDoctorInviteApiTest(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(
             response.data['error'],
-            'This account is already a clinic admin and cannot be invited as a doctor.',
+            'This account already belongs to a clinic and cannot be invited as a doctor.',
         )
         send_email_mock.assert_not_called()
 
@@ -444,7 +444,123 @@ class ClinicDoctorInviteApiTest(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(
             response.data['error'],
-            'This account is already a clinic admin and cannot be invited as a doctor.',
+            'This account already belongs to a clinic and cannot be invited as a doctor.',
+        )
+        send_email_mock.assert_not_called()
+
+    @patch('apps.tenants.views.send_doctor_invitation_email')
+    def test_invite_blocks_existing_clinic_doctor_account(self, send_email_mock):
+        clinic_doctor = User.objects.create_user(
+            email='doctor-in-other-clinic@example.com',
+            cognito_sub='doctor-in-other-clinic-sub',
+            role='CLINIC_DOCTOR',
+        )
+        other_owner = User.objects.create_user(
+            email='other-owner-2@example.com',
+            cognito_sub='other-owner-2-sub',
+            role='CLINIC_ADMIN',
+        )
+        other_clinic = Clinic.objects.create(
+            name='Clinic B',
+            owner=other_owner,
+            account_status=Clinic.ACCOUNT_STATUS_ACTIVE,
+            plan_type=Clinic.PLAN_TYPE_CLINIC,
+            seat_limit=3,
+        )
+        clinic_doctor.clinic = other_clinic
+        clinic_doctor.save(update_fields=['clinic', 'updated_at'])
+
+        response = self.client.post(
+            '/api/clinics/clinics/invite/',
+            {'email': 'doctor-in-other-clinic@example.com'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data['error'],
+            'This account already belongs to a clinic and cannot be invited as a doctor.',
+        )
+        send_email_mock.assert_not_called()
+
+    @patch('apps.tenants.views.send_doctor_invitation_email')
+    def test_invite_blocks_user_with_active_individual_subscription(self, send_email_mock):
+        paid_user = User.objects.create_user(
+            email='paid-individual@example.com',
+            cognito_sub='paid-individual-sub',
+            role='INDIVIDUAL',
+        )
+        UserSubscription.objects.create(
+            user=paid_user,
+            plan=UserSubscription.PLAN_INDIVIDUAL_MONTHLY,
+            status=UserSubscription.STATUS_ACTIVE,
+            current_period_end=timezone.now() + timedelta(days=10),
+        )
+
+        response = self.client.post(
+            '/api/clinics/clinics/invite/',
+            {'email': 'paid-individual@example.com'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data['error'],
+            'This account already has an active individual subscription and cannot be invited to a clinic.',
+        )
+        send_email_mock.assert_not_called()
+
+    @patch('apps.tenants.views.send_doctor_invitation_email')
+    def test_accept_invitation_blocks_when_seat_limit_is_reached(self, send_email_mock):
+        self.clinic.seat_limit = 1
+        self.clinic.save(update_fields=['seat_limit', 'updated_at'])
+
+        occupied_doctor = User.objects.create_user(
+            email='occupied-seat@example.com',
+            cognito_sub='occupied-seat-sub',
+            role='CLINIC_DOCTOR',
+            clinic=self.clinic,
+        )
+        Membership.objects.create(
+            account=self.clinic,
+            user=occupied_doctor,
+            role=Membership.ROLE_DOCTOR,
+        )
+
+        invitee = User.objects.create_user(
+            email='invitee-seat-limit@example.com',
+            cognito_sub='invitee-seat-limit-sub',
+            role='INDIVIDUAL',
+        )
+
+        response = self.client.post(
+            '/api/clinics/clinics/invite/',
+            {'email': invitee.email},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data['error'],
+            'Seat limit reached for this clinic plan. Remove a doctor before inviting another one.',
+        )
+
+        invitation = DoctorInvitation.objects.create(
+            clinic=self.clinic,
+            email=invitee.email,
+            invited_by=self.admin,
+            status='PENDING',
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+        self.client.force_authenticate(user=invitee)
+        accept_response = self.client.post(
+            f'/api/clinics/doctor-invitations/{invitation.id}/accept/',
+            format='json',
+        )
+
+        self.assertEqual(accept_response.status_code, 409)
+        self.assertEqual(
+            accept_response.data['error'],
+            'Seat limit reached for this clinic. Ask an admin to free a seat before accepting this invitation.',
         )
         send_email_mock.assert_not_called()
 
@@ -617,10 +733,8 @@ class ClinicSeatBillingApiTest(TestCase):
 
     @patch('apps.tenants.views.update_subscription_price')
     @patch('apps.tenants.views.apply_subscription_payload')
-    @patch('apps.tenants.views.sync_seat_quantity_with_stripe')
     def test_billing_checkout_updates_existing_subscription_plan(
         self,
-        sync_seat_quantity_mock,
         apply_subscription_payload_mock,
         update_subscription_price_mock,
     ):
@@ -643,7 +757,37 @@ class ClinicSeatBillingApiTest(TestCase):
             quantity=1,
         )
         apply_subscription_payload_mock.assert_called_once()
-        sync_seat_quantity_mock.assert_called_once()
+
+    @patch('apps.tenants.views.update_subscription_price')
+    @patch('apps.tenants.views.apply_subscription_payload')
+    def test_billing_checkout_existing_subscription_ignores_requested_quantity(
+        self,
+        apply_subscription_payload_mock,
+        update_subscription_price_mock,
+    ):
+        self.clinic.seat_limit = 2
+        self.clinic.save(update_fields=['seat_limit', 'updated_at'])
+        update_subscription_price_mock.return_value = (
+            {'id': 'sub_clinic_test', 'customer': 'cus_clinic_test'},
+            'price_monthly_test',
+        )
+
+        response = self.client.post(
+            '/api/clinics/clinics/billing_checkout/',
+            {
+                'plan_id': Clinic.SUBSCRIPTION_PLAN_CLINIC_MONTHLY,
+                'quantity': 5,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        update_subscription_price_mock.assert_called_once_with(
+            clinic=self.clinic,
+            plan_id=Clinic.SUBSCRIPTION_PLAN_CLINIC_MONTHLY,
+            quantity=2,
+        )
+        apply_subscription_payload_mock.assert_called_once()
 
     @patch('apps.tenants.views.create_checkout_session')
     def test_billing_checkout_new_subscription_uses_requested_quantity(
@@ -778,6 +922,7 @@ class ClinicSeatBillingApiTest(TestCase):
 
         retrieve_checkout_session_mock.return_value = {
             'id': 'cs_test_sync_123',
+            'status': 'complete',
             'customer': 'cus_sync_123',
             'subscription': 'sub_sync_123',
             'client_reference_id': str(self.clinic.id),
@@ -823,6 +968,7 @@ class ClinicSeatBillingApiTest(TestCase):
 
         retrieve_checkout_session_mock.return_value = {
             'id': 'cs_test_pending_123',
+            'status': 'open',
             'customer': 'cus_pending_123',
             'subscription': None,
             'client_reference_id': str(self.clinic.id),
@@ -858,6 +1004,7 @@ class ClinicSeatBillingApiTest(TestCase):
 
         retrieve_checkout_session_mock.return_value = {
             'id': 'cs_test_missing_owner_meta_123',
+            'status': 'complete',
             'customer': 'cus_pending_123',
             'subscription': 'sub_pending_123',
             'metadata': {},
@@ -897,8 +1044,7 @@ class ClinicSeatBillingApiTest(TestCase):
             ).exists()
         )
 
-    @patch('apps.tenants.views.schedule_seat_reduction')
-    def test_remove_doctor_yearly_schedules_reduction(self, schedule_seat_reduction_mock):
+    def test_remove_doctor_yearly_does_not_change_contracted_seats(self):
         extra_doctor = User.objects.create_user(
             email='seat-doctor-yearly@example.com',
             cognito_sub='seat-doctor-yearly-sub',
@@ -919,13 +1065,10 @@ class ClinicSeatBillingApiTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        schedule_seat_reduction_mock.assert_called_once()
+        self.clinic.refresh_from_db()
+        self.assertEqual(self.clinic.seat_limit, 2)
 
-    @patch('apps.tenants.views.schedule_seat_reduction')
-    def test_remove_doctor_monthly_schedules_reduction_for_next_cycle(
-        self,
-        schedule_seat_reduction_mock,
-    ):
+    def test_remove_doctor_monthly_does_not_change_contracted_seats(self):
         replacement_doctor = User.objects.create_user(
             email='seat-doctor-2@example.com',
             cognito_sub='seat-doctor-2-sub',
@@ -945,94 +1088,24 @@ class ClinicSeatBillingApiTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        schedule_seat_reduction_mock.assert_called_once_with(
-            clinic=self.clinic,
-            target_quantity=1,
-        )
+        self.clinic.refresh_from_db()
+        self.assertEqual(self.clinic.seat_limit, 2)
 
-    @patch('apps.tenants.views.update_subscription_quantity')
-    @patch('apps.tenants.views.apply_subscription_payload')
-    def test_change_seats_updates_quantity_immediately_for_monthly(
-        self,
-        apply_subscription_payload_mock,
-        update_subscription_quantity_mock,
-    ):
-        update_subscription_quantity_mock.return_value = {'id': 'sub_clinic_test'}
-        self.clinic.seat_limit = 1
-        self.clinic.subscription_plan = Clinic.SUBSCRIPTION_PLAN_CLINIC_MONTHLY
-        self.clinic.save(update_fields=['seat_limit', 'subscription_plan', 'updated_at'])
-
+    def test_change_seats_endpoint_returns_gone(self):
         response = self.client.post(
             '/api/clinics/clinics/change_seats/',
             {'target_quantity': 2},
             format='json',
         )
+        self.assertEqual(response.status_code, 410)
 
-        self.assertEqual(response.status_code, 200)
-        update_subscription_quantity_mock.assert_called_once_with(
-            clinic=self.clinic,
-            quantity=2,
-            proration_behavior='create_prorations',
-        )
-        apply_subscription_payload_mock.assert_called_once()
-
-    @patch('apps.tenants.views.schedule_seat_reduction')
-    def test_change_seats_yearly_decrease_schedules_reduction(self, schedule_seat_reduction_mock):
-        replacement_doctor = User.objects.create_user(
-            email='seat-doctor-yearly-change@example.com',
-            cognito_sub='seat-doctor-yearly-change-sub',
-            role='CLINIC_DOCTOR',
-            clinic=self.clinic,
-        )
-        Membership.objects.create(
-            account=self.clinic,
-            user=replacement_doctor,
-            role=Membership.ROLE_DOCTOR,
-        )
-        self.clinic.seat_limit = 3
-        self.clinic.subscription_plan = Clinic.SUBSCRIPTION_PLAN_CLINIC_YEARLY
-        self.clinic.save(update_fields=['seat_limit', 'subscription_plan', 'updated_at'])
-
+    def test_upgrade_seats_endpoint_returns_gone(self):
         response = self.client.post(
-            '/api/clinics/clinics/change_seats/',
-            {'target_quantity': 2},
+            '/api/clinics/clinics/upgrade_seats/',
+            {},
             format='json',
         )
-
-        self.assertEqual(response.status_code, 200)
-        schedule_seat_reduction_mock.assert_called_once_with(
-            clinic=self.clinic,
-            target_quantity=2,
-        )
-
-    @patch('apps.tenants.views.schedule_seat_reduction')
-    def test_change_seats_monthly_decrease_schedules_reduction(self, schedule_seat_reduction_mock):
-        replacement_doctor = User.objects.create_user(
-            email='seat-doctor-monthly-change@example.com',
-            cognito_sub='seat-doctor-monthly-change-sub',
-            role='CLINIC_DOCTOR',
-            clinic=self.clinic,
-        )
-        Membership.objects.create(
-            account=self.clinic,
-            user=replacement_doctor,
-            role=Membership.ROLE_DOCTOR,
-        )
-        self.clinic.seat_limit = 3
-        self.clinic.subscription_plan = Clinic.SUBSCRIPTION_PLAN_CLINIC_MONTHLY
-        self.clinic.save(update_fields=['seat_limit', 'subscription_plan', 'updated_at'])
-
-        response = self.client.post(
-            '/api/clinics/clinics/change_seats/',
-            {'target_quantity': 2},
-            format='json',
-        )
-
-        self.assertEqual(response.status_code, 200)
-        schedule_seat_reduction_mock.assert_called_once_with(
-            clinic=self.clinic,
-            target_quantity=2,
-        )
+        self.assertEqual(response.status_code, 410)
 
     def test_downgrade_to_individual_endpoint_is_gone(self):
         response = self.client.post(

@@ -35,10 +35,7 @@ from .billing import (
     record_and_process_webhook_event,
     retrieve_checkout_session,
     retrieve_subscription,
-    schedule_seat_reduction,
-    sync_seat_quantity_with_stripe,
     update_subscription_price,
-    update_subscription_quantity,
 )
 from .emails import send_doctor_invitation_email
 from .models import Clinic, DoctorInvitation, Membership
@@ -46,7 +43,6 @@ from .serializers import (
     ClinicBillingCheckoutSerializer,
     ClinicBillingPortalSerializer,
     ClinicBillingSyncSerializer,
-    ClinicSeatUpdateSerializer,
     ClinicDoctorSerializer,
     ClinicSerializer,
     DoctorInvitationCreateSerializer,
@@ -65,19 +61,6 @@ def _clinic_required_response() -> Response:
 
 def _billing_error_response(exc: Exception) -> Response:
     return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-
-
-def _is_effective_clinic_admin(user: User) -> bool:
-    if getattr(user, 'role', None) == 'CLINIC_ADMIN':
-        return True
-
-    if resolve_effective_role(user) == RBACRole.CLINIC_ADMIN:
-        return True
-
-    if Membership.objects.filter(user=user, role=Membership.ROLE_ADMIN).exists():
-        return True
-
-    return Clinic.objects.filter(owner=user).exists()
 
 
 def _is_clinic_subscription_ended(clinic: Clinic) -> bool:
@@ -100,6 +83,17 @@ def _has_active_individual_paid_subscription(user: User) -> bool:
         return False
 
     return subscription.has_active_access()
+
+
+def _is_clinic_account_user(user: User) -> bool:
+    effective_role = resolve_effective_role(user)
+    if effective_role in {RBACRole.CLINIC_ADMIN, RBACRole.CLINIC_DOCTOR}:
+        return True
+    if getattr(user, 'clinic_id', None):
+        return True
+    if getattr(user, 'role', None) in {'CLINIC_ADMIN', 'CLINIC_DOCTOR'}:
+        return True
+    return False
 
 
 class ClinicViewSet(viewsets.ModelViewSet):
@@ -239,7 +233,7 @@ class ClinicViewSet(viewsets.ModelViewSet):
                 Clinic.ACCOUNT_STATUS_ACTIVE,
                 Clinic.ACCOUNT_STATUS_PAST_DUE,
             }:
-                quantity = requested_quantity or count_doctor_seats(clinic)
+                quantity = clinic.get_seat_limit()
                 if quantity < 1:
                     return Response(
                         {'detail': 'At least one doctor is required to keep clinic billing active'},
@@ -267,13 +261,6 @@ class ClinicViewSet(viewsets.ModelViewSet):
                     clinic=clinic,
                     stripe_subscription_payload=updated_subscription_payload,
                     fallback_plan_id=payload['plan_id'],
-                )
-
-                # If the account moved to monthly, reductions can be immediate.
-                sync_seat_quantity_with_stripe(
-                    clinic=clinic,
-                    allow_yearly_decrease_now=payload['plan_id']
-                    == Clinic.SUBSCRIPTION_PLAN_CLINIC_MONTHLY,
                 )
                 AuditService.log_action(
                     clinic=clinic,
@@ -411,6 +398,12 @@ class ClinicViewSet(viewsets.ModelViewSet):
             except (ClinicBillingConfigurationError, ClinicBillingProviderError) as exc:
                 return _billing_error_response(exc)
 
+            if str(checkout_session.get('status') or '').strip().lower() != 'complete':
+                return Response(
+                    {'detail': 'Checkout session is not completed yet. Try again in a few seconds.'},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
             metadata = checkout_session.get('metadata', {}) or {}
             clinic_id_from_session = metadata.get('clinic_id') or checkout_session.get(
                 'client_reference_id'
@@ -436,6 +429,12 @@ class ClinicViewSet(viewsets.ModelViewSet):
             stripe_customer_id = checkout_session.get('customer')
             stripe_subscription_id = checkout_session.get('subscription')
             fallback_plan_id = metadata.get('plan_id') or fallback_plan_id
+
+            if not stripe_subscription_id:
+                return Response(
+                    {'detail': 'Checkout session is not completed yet. Try again in a few seconds.'},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
             fields_to_update = []
             if stripe_customer_id and stripe_customer_id != clinic.stripe_customer_id:
@@ -489,11 +488,7 @@ class ClinicViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, CanManageClinicBilling])
     def upgrade_seats(self, request):
-        """
-        Synchronize Stripe quantity to current doctor memberships.
-
-        This endpoint exists for explicit admin-triggered seat sync.
-        """
+        """Deprecated: manual seat changes were removed from clinic billing."""
         if not is_stripe_billing_enabled():
             return Response(
                 {'detail': 'Stripe billing is disabled'},
@@ -509,36 +504,14 @@ class ClinicViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        if not clinic.stripe_subscription_id:
-            return Response(
-                {'detail': 'Clinic has no active Stripe subscription to update'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            sync_seat_quantity_with_stripe(clinic=clinic)
-        except (ClinicBillingConfigurationError, ClinicBillingProviderError) as exc:
-            return _billing_error_response(exc)
-
         return Response(
-            {
-                'detail': 'Seat quantity synchronized with doctor memberships',
-                'seat_limit': clinic.get_seat_limit(),
-                'seat_used': clinic.get_seat_usage(),
-                'scheduled_seat_limit': clinic.scheduled_seat_limit,
-                'scheduled_seat_effective_at': clinic.scheduled_seat_effective_at,
-            },
-            status=status.HTTP_200_OK,
+            {'detail': 'Atualização manual de assentos foi removida.'},
+            status=status.HTTP_410_GONE,
         )
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, CanManageClinicBilling])
     def change_seats(self, request):
-        """
-        Change purchased seats for the clinic subscription.
-
-        - Increases apply immediately.
-        - Decreases are always scheduled for the next billing cycle.
-        """
+        """Deprecated: manual seat changes were removed from clinic billing."""
         if not is_stripe_billing_enabled():
             return Response(
                 {'detail': 'Stripe billing is disabled'},
@@ -554,84 +527,9 @@ class ClinicViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        if not clinic.stripe_subscription_id:
-            return Response(
-                {'detail': 'Clinic has no active Stripe subscription to update'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        serializer = ClinicSeatUpdateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        target_quantity = serializer.validated_data['target_quantity']
-        seat_used = count_doctor_seats(clinic)
-
-        if target_quantity < seat_used:
-            return Response(
-                {
-                    'detail': (
-                        f'Target seats ({target_quantity}) cannot be lower than '
-                        f'active doctors ({seat_used}).'
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        current_quantity = clinic.get_seat_limit()
-        if target_quantity == current_quantity:
-            return Response(
-                {
-                    'detail': 'Seat quantity is already up to date',
-                    'seat_limit': clinic.get_seat_limit(),
-                    'seat_used': seat_used,
-                    'scheduled_seat_limit': clinic.scheduled_seat_limit,
-                    'scheduled_seat_effective_at': clinic.scheduled_seat_effective_at,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        try:
-            if target_quantity < current_quantity:
-                schedule_seat_reduction(clinic=clinic, target_quantity=target_quantity)
-                detail = 'Seat reduction scheduled for next billing cycle'
-            else:
-                updated_subscription_payload = update_subscription_quantity(
-                    clinic=clinic,
-                    quantity=target_quantity,
-                    proration_behavior='create_prorations',
-                )
-                apply_subscription_payload(
-                    clinic=clinic,
-                    stripe_subscription_payload=updated_subscription_payload,
-                )
-                detail = 'Seat quantity updated successfully'
-        except (ClinicBillingConfigurationError, ClinicBillingProviderError) as exc:
-            return _billing_error_response(exc)
-
-        AuditService.log_action(
-            clinic=clinic,
-            action='BILLING_SEATS_UPDATED',
-            user=request.user,
-            details={
-                'target_quantity': target_quantity,
-                'seat_limit': clinic.get_seat_limit(),
-                'seat_used': seat_used,
-                'scheduled_seat_limit': clinic.scheduled_seat_limit,
-                'scheduled_seat_effective_at': (
-                    clinic.scheduled_seat_effective_at.isoformat()
-                    if clinic.scheduled_seat_effective_at
-                    else None
-                ),
-            },
-        )
         return Response(
-            {
-                'detail': detail,
-                'seat_limit': clinic.get_seat_limit(),
-                'seat_used': seat_used,
-                'scheduled_seat_limit': clinic.scheduled_seat_limit,
-                'scheduled_seat_effective_at': clinic.scheduled_seat_effective_at,
-            },
-            status=status.HTTP_200_OK,
+            {'detail': 'Atualização manual de assentos foi removida.'},
+            status=status.HTTP_410_GONE,
         )
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, CanManageClinicBilling])
@@ -797,8 +695,8 @@ class ClinicViewSet(viewsets.ModelViewSet):
             return Response(
                 {
                     'error': (
-                        'Seat limit reached. Increase purchased seats before inviting '
-                        'another doctor.'
+                        'Seat limit reached for this clinic plan. '
+                        'Remove a doctor before inviting another one.'
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -816,12 +714,23 @@ class ClinicViewSet(viewsets.ModelViewSet):
             )
 
         existing_user = User.objects.filter(email=email).first()
-        if existing_user and _is_effective_clinic_admin(existing_user):
+        if existing_user and _is_clinic_account_user(existing_user):
             return Response(
                 {
                     'error': (
-                        'This account is already a clinic admin and cannot be invited '
+                        'This account already belongs to a clinic and cannot be invited '
                         'as a doctor.'
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if existing_user and _has_active_individual_paid_subscription(existing_user):
+            return Response(
+                {
+                    'error': (
+                        'This account already has an active individual subscription and '
+                        'cannot be invited to a clinic.'
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -978,15 +887,6 @@ class ClinicViewSet(viewsets.ModelViewSet):
                     },
                 )
 
-                # Seat reduction behavior:
-                # Always schedule seat reductions for the next billing cycle.
-                if clinic_locked.stripe_subscription_id:
-                    target_quantity = current_doctors - 1
-                    schedule_seat_reduction(
-                        clinic=clinic_locked,
-                        target_quantity=target_quantity,
-                    )
-
                 AuditService.log_doctor_remove(clinic_locked, request.user, doctor)
 
             return Response({'status': 'Doctor removed'}, status=status.HTTP_200_OK)
@@ -1058,14 +958,6 @@ class ClinicViewSet(viewsets.ModelViewSet):
                 subscription.current_period_end = None
                 subscription.billing_grace_until = None
                 subscription.save()
-
-                if clinic.stripe_subscription_id:
-                    remaining_doctors = count_doctor_seats(clinic)
-                    if remaining_doctors >= 1:
-                        schedule_seat_reduction(
-                            clinic=clinic,
-                            target_quantity=remaining_doctors,
-                        )
 
                 AuditService.log_action(
                     clinic=clinic,
@@ -1215,6 +1107,17 @@ class DoctorInvitationViewSet(viewsets.ReadOnlyModelViewSet):
                 clinic = Clinic.objects.select_for_update().get(id=invitation.clinic_id)
                 ensure_owner_membership(clinic)
 
+                if clinic.get_seat_usage() >= clinic.get_seat_limit():
+                    return Response(
+                        {
+                            'error': (
+                                'Seat limit reached for this clinic. Ask an admin to free a seat '
+                                'before accepting this invitation.'
+                            )
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
                 invitation.accept()
 
                 request.user.clinic = clinic
@@ -1229,9 +1132,6 @@ class DoctorInvitationViewSet(viewsets.ReadOnlyModelViewSet):
                 if not created and membership.role != Membership.ROLE_DOCTOR:
                     membership.role = Membership.ROLE_DOCTOR
                     membership.save(update_fields=['role', 'updated_at'])
-
-                if clinic.stripe_subscription_id:
-                    sync_seat_quantity_with_stripe(clinic=clinic)
 
                 AuditService.log_action(
                     clinic=clinic,

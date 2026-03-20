@@ -21,7 +21,6 @@ import {
   checkoutClinicPlan,
   openClinicBillingPortal,
   syncClinicBillingState,
-  updateClinicSeatQuantity,
   type ClinicPlanId,
 } from "@/billing/clinicAdapter";
 import PlanUpgrade from "@/components/clinic/PlanUpgrade";
@@ -300,7 +299,7 @@ export default function ClinicPage() {
       (clinic.seat_limit ?? 0) > 0 &&
       (clinic.seat_used ?? 0) >= (clinic.seat_limit ?? 0)
     ) {
-      toast.error("Limite de assentos atingido. Aumente assentos antes de convidar.");
+      toast.error("Limite de assentos atingido para esta clínica.");
       return;
     }
 
@@ -331,25 +330,6 @@ export default function ClinicPage() {
     } catch (requestError) {
       toast.error(
         requestError instanceof Error ? requestError.message : "Falha ao remover médico",
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleChangeSeats(targetQuantity: number) {
-    if (!accessToken) {
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const response = await updateClinicSeatQuantity(accessToken, targetQuantity);
-      toast.success(response.detail);
-      await loadClinicData();
-    } catch (requestError) {
-      toast.error(
-        requestError instanceof Error ? requestError.message : "Falha ao atualizar assentos",
       );
     } finally {
       setSubmitting(false);
@@ -510,7 +490,6 @@ export default function ClinicPage() {
               openingPortal={openingPortal}
               onInviteDoctor={handleInviteDoctor}
               onRemoveDoctor={handleRemoveDoctor}
-              onChangeSeats={handleChangeSeats}
               onOpenBillingPortal={handleOpenBillingPortal}
             />
 
