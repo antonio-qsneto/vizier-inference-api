@@ -7,8 +7,10 @@ import numpy as np
 from django.test import TestCase
 
 from apps.accounts.models import User
+from apps.inference.executors.biomedparse_ecs_executor import BiomedParseECSExecutor
 from apps.inference.executors.preprocessing_executor import InferencePreprocessor
 from apps.inference.models import InferenceJob, ModelVersion, Tenant
+from apps.inference.object_layout import output_mask_npz_key, output_summary_key
 from apps.inference.prompt_catalog import build_text_prompts_for_job
 from apps.inference.state_machine import transition_job
 from services.dicom_pipeline import DicomZipToNpzService
@@ -204,3 +206,123 @@ class InferencePromptCatalogTest(TestCase):
         )
         self.assertEqual(prompts.get("instance_label"), 0)
         self.assertIn("1", prompts)
+
+
+class _FakeS3:
+    def __init__(self, existing_keys):
+        self.existing_keys = set(existing_keys)
+
+    def generate_presigned_url(self, key, expires_in, method, extra_params=None):
+        return f"https://example.invalid/{key}?method={method}"
+
+    def object_exists(self, key):
+        return key in self.existing_keys
+
+    def download_file(self, key, destination):
+        if key not in self.existing_keys:
+            return False
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        with open(destination, "wb") as output_file:
+            output_file.write(b"ok")
+        return True
+
+
+class _FakeECS:
+    def __init__(self, describe_responses):
+        self.describe_responses = list(describe_responses)
+        self.describe_calls = 0
+
+    def run_task(self, **kwargs):
+        return {
+            "tasks": [
+                {
+                    "taskArn": "arn:aws:ecs:us-east-1:123456789012:task/test-cluster/task-id",
+                }
+            ],
+            "failures": [],
+        }
+
+    def describe_tasks(self, **kwargs):
+        if self.describe_calls < len(self.describe_responses):
+            response = self.describe_responses[self.describe_calls]
+        elif self.describe_responses:
+            response = self.describe_responses[-1]
+        else:
+            response = {"tasks": [], "failures": []}
+        self.describe_calls += 1
+        return response
+
+
+class BiomedParseECSExecutorTest(TestCase):
+    def _build_executor(self, fake_s3, fake_ecs, *, missing_grace_seconds=0):
+        executor = BiomedParseECSExecutor.__new__(BiomedParseECSExecutor)
+        executor.s3 = fake_s3
+        executor.ecs_client = fake_ecs
+        executor.cluster = "test-cluster"
+        executor.task_definition = "task-def:1"
+        executor.capacity_provider = "test-cp"
+        executor.subnets = ["subnet-123"]
+        executor.security_groups = ["sg-123"]
+        executor.container_name = "biomedparse"
+        executor.poll_seconds = 1
+        executor.timeout_seconds = 60
+        executor.presign_expires_seconds = 900
+        executor.task_not_found_grace_seconds = missing_grace_seconds
+        return executor
+
+    def test_run_succeeds_when_task_missing_but_outputs_exist(self):
+        tenant_id = "tenant-1"
+        job_id = "job-1"
+        mask_key = output_mask_npz_key(tenant_id, job_id)
+        summary_key = output_summary_key(tenant_id, job_id)
+
+        fake_s3 = _FakeS3(existing_keys={mask_key, summary_key})
+        fake_ecs = _FakeECS(
+            describe_responses=[
+                {
+                    "tasks": [],
+                    "failures": [{"arn": "arn:missing", "reason": "MISSING"}],
+                }
+            ]
+        )
+        executor = self._build_executor(fake_s3, fake_ecs, missing_grace_seconds=0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            outputs = executor.run(
+                job_id=job_id,
+                tenant_id=tenant_id,
+                normalized_input_key="normalized/test/input.npz",
+                work_dir=tmpdir,
+                requested_device="cuda",
+            )
+            self.assertTrue(os.path.exists(outputs["mask_npz_local"]))
+            self.assertTrue(os.path.exists(outputs["summary_json_local"]))
+
+        self.assertEqual(outputs["mask_npz_key"], mask_key)
+        self.assertEqual(outputs["summary_key"], summary_key)
+
+    def test_run_raises_when_task_missing_and_outputs_absent(self):
+        tenant_id = "tenant-2"
+        job_id = "job-2"
+        fake_s3 = _FakeS3(existing_keys=set())
+        fake_ecs = _FakeECS(
+            describe_responses=[
+                {
+                    "tasks": [],
+                    "failures": [{"arn": "arn:missing", "reason": "MISSING"}],
+                }
+            ]
+        )
+        executor = self._build_executor(fake_s3, fake_ecs, missing_grace_seconds=0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(RuntimeError) as raised:
+                executor.run(
+                    job_id=job_id,
+                    tenant_id=tenant_id,
+                    normalized_input_key="normalized/test/input.npz",
+                    work_dir=tmpdir,
+                    requested_device="cuda",
+                )
+
+        self.assertIn("ECS task not found", str(raised.exception))

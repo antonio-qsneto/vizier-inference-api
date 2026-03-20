@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import textwrap
 import time
 from pathlib import Path
@@ -14,6 +15,8 @@ from django.conf import settings
 from services.s3_utils import S3Utils
 
 from ..object_layout import output_mask_npz_key, output_summary_key
+
+logger = logging.getLogger(__name__)
 
 
 def _container_command() -> str:
@@ -143,6 +146,10 @@ class BiomedParseECSExecutor:
             900,
             min(604800, configured_presign_seconds if configured_presign_seconds > 0 else fallback_presign_seconds),
         )
+        self.task_not_found_grace_seconds = max(
+            0,
+            int(getattr(settings, "BIO_ECS_TASK_NOT_FOUND_GRACE_SECONDS", 60) or 60),
+        )
 
     def _validate_config(self) -> None:
         missing = []
@@ -234,12 +241,43 @@ class BiomedParseECSExecutor:
 
         task_arn = response["tasks"][0]["taskArn"]
         started = time.monotonic()
+        task_missing_since: float | None = None
         while True:
             task_resp = self.ecs_client.describe_tasks(cluster=self.cluster, tasks=[task_arn])
             tasks = task_resp.get("tasks", [])
             if not tasks:
-                raise RuntimeError(f"ECS task not found: {task_arn}")
+                if on_poll is not None:
+                    on_poll()
+
+                has_mask_output = self.s3.object_exists(mask_npz_key)
+                has_summary_output = self.s3.object_exists(summary_key)
+                if has_mask_output and has_summary_output:
+                    logger.warning(
+                        "ECS task missing in describe_tasks, but outputs already exist; proceeding as success",
+                        extra={
+                            "job_id": job_id,
+                            "task_arn": task_arn,
+                            "mask_npz_key": mask_npz_key,
+                            "summary_key": summary_key,
+                        },
+                    )
+                    break
+
+                if task_missing_since is None:
+                    task_missing_since = time.monotonic()
+
+                missing_seconds = time.monotonic() - task_missing_since
+                if missing_seconds <= self.task_not_found_grace_seconds:
+                    if time.monotonic() - started > self.timeout_seconds:
+                        raise TimeoutError(f"ECS task timeout for job {job_id}")
+                    time.sleep(max(1, self.poll_seconds))
+                    continue
+
+                failures = task_resp.get("failures", [])
+                failure_blob = json.dumps(failures) if failures else "[]"
+                raise RuntimeError(f"ECS task not found: {task_arn}; failures={failure_blob}")
             task = tasks[0]
+            task_missing_since = None
 
             if on_poll is not None:
                 on_poll()
