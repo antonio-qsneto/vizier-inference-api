@@ -614,8 +614,26 @@ export async function fetchStudyResult(
   studyId: string,
   signal?: AbortSignal,
 ) {
-  return apiRequest<StudyResult>(`/api/studies/${studyId}/result/`, {
-    token,
-    signal,
-  });
+  try {
+    const payload = await apiRequest<StudyResult>(`/api/studies/${studyId}/result/`, {
+      token,
+      signal,
+    });
+    const descriptiveAnalysis = String(payload.descriptive_analysis ?? "").trim();
+    console.info("[GeminiDebug] fetchStudyResult:success", {
+      studyId,
+      hasDescriptiveAnalysis: Boolean(descriptiveAnalysis),
+      descriptiveAnalysisLength: descriptiveAnalysis.length,
+      segmentsLegendCount: Array.isArray(payload.segments_legend)
+        ? payload.segments_legend.length
+        : 0,
+    });
+    return payload;
+  } catch (error) {
+    console.error("[GeminiDebug] fetchStudyResult:error", {
+      studyId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }

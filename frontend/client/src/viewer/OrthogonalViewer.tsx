@@ -1106,6 +1106,23 @@ export function OrthogonalViewer({
     );
   }
 
+  useEffect(() => {
+    const normalized = String(descriptiveAnalysis ?? "").trim();
+    if (!normalized) {
+      console.warn("[GeminiDebug] descriptive-analysis:fallback", {
+        modality: modality || null,
+        categoryId: categoryId || null,
+        hasSegmentsLegend: Array.isArray(segmentsLegend) && segmentsLegend.length > 0,
+      });
+      return;
+    }
+    console.info("[GeminiDebug] descriptive-analysis:present", {
+      textLength: normalized.length,
+      modality: modality || null,
+      categoryId: categoryId || null,
+    });
+  }, [categoryId, descriptiveAnalysis, modality, segmentsLegend]);
+
   const descriptiveAnalysisText =
     descriptiveAnalysis?.trim() || "análise descritiva não disponível";
 
