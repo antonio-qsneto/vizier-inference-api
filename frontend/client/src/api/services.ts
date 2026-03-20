@@ -256,6 +256,8 @@ export async function startClinicBillingCheckout(
     quantity?: number;
     success_url?: string;
     cancel_url?: string;
+    clinic_name?: string;
+    cnpj?: string;
   },
 ) {
   return apiRequest<ClinicBillingCheckoutResponse>("/api/clinics/clinics/billing_checkout/", {
@@ -469,6 +471,16 @@ export async function fetchStudy(
     token,
     signal,
   });
+}
+
+export async function deleteStudy(token: string, studyId: string) {
+  return apiRequest<{ detail: string; deleted_artifacts?: number; failed_artifacts?: number }>(
+    `/api/studies/${studyId}/`,
+    {
+      method: "DELETE",
+      token,
+    },
+  );
 }
 
 export async function uploadStudy(token: string, input: StudyUploadInput) {

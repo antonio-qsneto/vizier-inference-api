@@ -37,12 +37,16 @@ export async function checkoutClinicPlan(params: {
   quantity?: number;
   successUrl?: string;
   cancelUrl?: string;
+  clinicName?: string;
+  cnpj?: string;
 }) {
   const payload = await startClinicBillingCheckout(params.token, {
     plan_id: params.planId,
     quantity: params.quantity,
     success_url: params.successUrl,
     cancel_url: params.cancelUrl,
+    clinic_name: params.clinicName,
+    cnpj: params.cnpj,
   });
 
   return normalizeClinicCheckoutResponse(payload);

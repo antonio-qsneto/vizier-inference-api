@@ -28,6 +28,7 @@ from .billing import (
     construct_webhook_event,
     count_doctor_seats,
     create_checkout_session,
+    create_checkout_session_for_new_clinic_owner,
     create_customer_portal_session,
     ensure_owner_membership,
     is_stripe_billing_enabled,
@@ -145,6 +146,17 @@ class ClinicViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response(
+                {
+                    'detail': (
+                        'A criação direta de clínica foi desativada. '
+                        'Finalize o checkout de assinatura para criar a clínica.'
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -196,7 +208,7 @@ class ClinicViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, CanManageClinicBilling])
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def billing_checkout(self, request):
         if not is_stripe_billing_enabled():
             return Response(
@@ -205,9 +217,15 @@ class ClinicViewSet(viewsets.ModelViewSet):
             )
 
         clinic = request.user.clinic
-        if not clinic:
-            return _clinic_required_response()
-        if _is_clinic_subscription_ended(clinic):
+        effective_role = resolve_effective_role(request.user)
+
+        if clinic and effective_role != RBACRole.CLINIC_ADMIN:
+            return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+        if not clinic and effective_role != RBACRole.INDIVIDUAL:
+            return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+        if clinic and _is_clinic_subscription_ended(clinic):
             return Response(
                 {'detail': 'Clinic subscription has already ended and billing features are disabled'},
                 status=status.HTTP_409_CONFLICT,
@@ -229,83 +247,114 @@ class ClinicViewSet(viewsets.ModelViewSet):
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            if clinic.stripe_subscription_id and clinic.account_status in {
-                Clinic.ACCOUNT_STATUS_ACTIVE,
-                Clinic.ACCOUNT_STATUS_PAST_DUE,
-            }:
-                quantity = clinic.get_seat_limit()
-                if quantity < 1:
-                    return Response(
-                        {'detail': 'At least one doctor is required to keep clinic billing active'},
-                        status=status.HTTP_400_BAD_REQUEST,
+            if clinic:
+                if clinic.stripe_subscription_id and clinic.account_status in {
+                    Clinic.ACCOUNT_STATUS_ACTIVE,
+                    Clinic.ACCOUNT_STATUS_PAST_DUE,
+                }:
+                    quantity = clinic.get_seat_limit()
+                    if quantity < 1:
+                        return Response(
+                            {'detail': 'At least one doctor is required to keep clinic billing active'},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+                    seat_usage = count_doctor_seats(clinic)
+                    if quantity < seat_usage:
+                        return Response(
+                            {
+                                'detail': (
+                                    f'Seat quantity ({quantity}) cannot be lower than '
+                                    f'active doctors ({seat_usage})'
+                                )
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+                    updated_subscription_payload, price_id = update_subscription_price(
+                        clinic=clinic,
+                        plan_id=payload['plan_id'],
+                        quantity=quantity,
+                    )
+                    apply_subscription_payload(
+                        clinic=clinic,
+                        stripe_subscription_payload=updated_subscription_payload,
+                        fallback_plan_id=payload['plan_id'],
+                    )
+                    AuditService.log_action(
+                        clinic=clinic,
+                        action='BILLING_SUBSCRIPTION_UPDATED',
+                        user=request.user,
+                        details={
+                            'plan_id': payload['plan_id'],
+                            'quantity': quantity,
+                        },
                     )
 
-                seat_usage = count_doctor_seats(clinic)
-                if quantity < seat_usage:
+                    return Response(
+                        {
+                            'mode': 'subscription_updated',
+                            'detail': 'Clinic subscription updated successfully',
+                            'plan': clinic.subscription_plan,
+                            'account_status': clinic.account_status,
+                            'seat_limit': clinic.get_seat_limit(),
+                            'seat_used': clinic.get_seat_usage(),
+                            'stripe_price_id': price_id,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+
+                checkout_session, price_id, quantity = create_checkout_session(
+                    clinic=clinic,
+                    initiated_by_user_id=request.user.id,
+                    plan_id=payload['plan_id'],
+                    success_url=success_url,
+                    cancel_url=cancel_url,
+                    requested_quantity=requested_quantity,
+                )
+            else:
+                if _has_active_individual_paid_subscription(request.user):
                     return Response(
                         {
                             'detail': (
-                                f'Seat quantity ({quantity}) cannot be lower than '
-                                f'active doctors ({seat_usage})'
+                                'Usuários com assinatura individual ativa não podem criar clínica. '
+                                'Cancele o plano individual e aguarde o fim do ciclo para prosseguir.'
                             )
                         },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+                clinic_name = str(payload.get('clinic_name') or '').strip()
+                if not clinic_name:
+                    return Response(
+                        {'detail': 'clinic_name is required when creating a clinic subscription'},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                updated_subscription_payload, price_id = update_subscription_price(
-                    clinic=clinic,
+                checkout_session, price_id, quantity = create_checkout_session_for_new_clinic_owner(
+                    owner_email=request.user.email,
+                    owner_user_id=request.user.id,
                     plan_id=payload['plan_id'],
-                    quantity=quantity,
+                    success_url=success_url,
+                    cancel_url=cancel_url,
+                    clinic_name=clinic_name,
+                    cnpj=str(payload.get('cnpj') or '').strip(),
+                    requested_quantity=requested_quantity,
                 )
-                apply_subscription_payload(
-                    clinic=clinic,
-                    stripe_subscription_payload=updated_subscription_payload,
-                    fallback_plan_id=payload['plan_id'],
-                )
-                AuditService.log_action(
-                    clinic=clinic,
-                    action='BILLING_SUBSCRIPTION_UPDATED',
-                    user=request.user,
-                    details={
-                        'plan_id': payload['plan_id'],
-                        'quantity': quantity,
-                    },
-                )
-
-                return Response(
-                    {
-                        'mode': 'subscription_updated',
-                        'detail': 'Clinic subscription updated successfully',
-                        'plan': clinic.subscription_plan,
-                        'account_status': clinic.account_status,
-                        'seat_limit': clinic.get_seat_limit(),
-                        'seat_used': clinic.get_seat_usage(),
-                        'stripe_price_id': price_id,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-
-            checkout_session, price_id, quantity = create_checkout_session(
-                clinic=clinic,
-                initiated_by_user_id=request.user.id,
-                plan_id=payload['plan_id'],
-                success_url=success_url,
-                cancel_url=cancel_url,
-                requested_quantity=requested_quantity,
-            )
         except (ClinicBillingConfigurationError, ClinicBillingProviderError) as exc:
             return _billing_error_response(exc)
 
-        AuditService.log_action(
-            clinic=clinic,
-            action='BILLING_CHECKOUT_CREATED',
-            user=request.user,
-            resource_id=str(checkout_session.get('id') or ''),
-            details={
-                'plan_id': payload['plan_id'],
-                'quantity': quantity,
-            },
-        )
+        if clinic:
+            AuditService.log_action(
+                clinic=clinic,
+                action='BILLING_CHECKOUT_CREATED',
+                user=request.user,
+                resource_id=str(checkout_session.get('id') or ''),
+                details={
+                    'plan_id': payload['plan_id'],
+                    'quantity': quantity,
+                },
+            )
         return Response(
             {
                 'checkout_url': checkout_session.get('url'),
@@ -370,7 +419,7 @@ class ClinicViewSet(viewsets.ModelViewSet):
         )
         return Response({'url': portal_session.get('url')}, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, CanManageClinicBilling])
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def billing_sync(self, request):
         """
         Force synchronization after Stripe checkout return.
@@ -384,13 +433,16 @@ class ClinicViewSet(viewsets.ModelViewSet):
             )
 
         clinic = request.user.clinic
-        if not clinic:
-            return _clinic_required_response()
+        effective_role = resolve_effective_role(request.user)
+        if clinic and effective_role != RBACRole.CLINIC_ADMIN:
+            return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        if not clinic and effective_role != RBACRole.INDIVIDUAL:
+            return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = ClinicBillingSyncSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         checkout_session_id = serializer.validated_data.get('checkout_session_id')
-        fallback_plan_id = clinic.subscription_plan
+        fallback_plan_id = clinic.subscription_plan if clinic else Clinic.SUBSCRIPTION_PLAN_FREE
 
         if checkout_session_id:
             try:
@@ -405,26 +457,39 @@ class ClinicViewSet(viewsets.ModelViewSet):
                 )
 
             metadata = checkout_session.get('metadata', {}) or {}
-            clinic_id_from_session = metadata.get('clinic_id') or checkout_session.get(
-                'client_reference_id'
-            )
-            if not clinic_id_from_session:
-                return Response(
-                    {'detail': 'Checkout session is missing clinic ownership metadata'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            if str(clinic_id_from_session) != str(clinic.id):
-                return Response(
-                    {'detail': 'Checkout session does not belong to this clinic account'},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
             initiated_by_user_id = metadata.get('initiated_by_user_id')
             if initiated_by_user_id and str(initiated_by_user_id) != str(request.user.id):
                 return Response(
                     {'detail': 'Checkout session was initiated by a different user'},
                     status=status.HTTP_403_FORBIDDEN,
                 )
+
+            if clinic:
+                clinic_id_from_session = metadata.get('clinic_id') or checkout_session.get(
+                    'client_reference_id'
+                )
+                if not clinic_id_from_session:
+                    return Response(
+                        {'detail': 'Checkout session is missing clinic ownership metadata'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if str(clinic_id_from_session) != str(clinic.id):
+                    return Response(
+                        {'detail': 'Checkout session does not belong to this clinic account'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            else:
+                pending_owner_id = metadata.get('pending_clinic_owner_user_id')
+                if not pending_owner_id:
+                    return Response(
+                        {'detail': 'Checkout session is missing clinic ownership metadata'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if str(pending_owner_id) != str(request.user.id):
+                    return Response(
+                        {'detail': 'Checkout session does not belong to this user account'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
 
             stripe_customer_id = checkout_session.get('customer')
             stripe_subscription_id = checkout_session.get('subscription')
@@ -435,6 +500,45 @@ class ClinicViewSet(viewsets.ModelViewSet):
                     {'detail': 'Checkout session is not completed yet. Try again in a few seconds.'},
                     status=status.HTTP_409_CONFLICT,
                 )
+
+            if not clinic:
+                clinic_name = str(metadata.get('pending_clinic_name') or '').strip()
+                clinic_cnpj = str(metadata.get('pending_clinic_cnpj') or '').strip()
+                if not clinic_name:
+                    return Response(
+                        {'detail': 'Checkout session is missing clinic creation metadata'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                with transaction.atomic():
+                    user_locked = User.objects.select_for_update().get(id=request.user.id)
+                    if user_locked.clinic_id:
+                        clinic = user_locked.clinic
+                    else:
+                        clinic = Clinic.objects.create(
+                            name=clinic_name,
+                            cnpj=clinic_cnpj or None,
+                            owner=user_locked,
+                            plan_type=Clinic.PLAN_TYPE_CLINIC,
+                            subscription_plan=Clinic.SUBSCRIPTION_PLAN_FREE,
+                            account_status=Clinic.ACCOUNT_STATUS_CANCELED,
+                            seat_limit=0,
+                        )
+                        user_locked.clinic = clinic
+                        user_locked.role = 'CLINIC_ADMIN'
+                        user_locked.save(update_fields=['clinic', 'role', 'updated_at'])
+                        Membership.objects.get_or_create(
+                            account=clinic,
+                            user=user_locked,
+                            defaults={'role': Membership.ROLE_ADMIN},
+                        )
+                        AuditService.log_action(
+                            clinic=clinic,
+                            action='CLINIC_CREATED',
+                            user=user_locked,
+                            resource_id=str(clinic.id),
+                            details={'name': clinic.name, 'source': 'billing_sync'},
+                        )
 
             fields_to_update = []
             if stripe_customer_id and stripe_customer_id != clinic.stripe_customer_id:
@@ -447,7 +551,7 @@ class ClinicViewSet(viewsets.ModelViewSet):
             if fields_to_update:
                 clinic.save(update_fields=fields_to_update + ['updated_at'])
 
-        if not clinic.stripe_subscription_id:
+        if not clinic or not clinic.stripe_subscription_id:
             return Response(
                 {'detail': 'Checkout session is not completed yet. Try again in a few seconds.'},
                 status=status.HTTP_409_CONFLICT,

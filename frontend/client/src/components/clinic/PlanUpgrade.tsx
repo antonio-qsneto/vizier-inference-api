@@ -104,16 +104,15 @@ export default function PlanUpgrade({
           </p>
         </div>
 
-        <InlineNotice title={isExistingClinic ? "Ativação da assinatura" : "Conversão de conta"}>
+        <InlineNotice title={isExistingClinic ? "Ativação da assinatura" : "Ativação da conta clínica"}>
           {isExistingClinic ? (
             <>
-              A clínica já foi criada. Agora finalize no Stripe para liberar recursos pagos
-              (incluindo upload).
+              Finalize no Stripe para ativar os recursos pagos da clínica.
             </>
           ) : (
             <>
-              O upgrade cria uma conta de clínica, define você como administrador e inicia o pagamento
-              Stripe com quantidade de assentos igual ao número de médicos planejado.
+              A clínica só será criada após confirmação do pagamento no Stripe.
+              Se o checkout não for concluído, nada é criado.
             </>
           )}
         </InlineNotice>

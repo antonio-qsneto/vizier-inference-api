@@ -106,12 +106,6 @@ export default function TeamManagement({
           </p>
         </div>
 
-        {isAdmin ? (
-          <InlineNotice title="Assentos contratados bloqueados" tone="warning">
-            Para este plano, não é possível aumentar ou reduzir assentos manualmente.
-          </InlineNotice>
-        ) : null}
-
         {seatsReached ? (
           <InlineNotice title="Limite de assentos atingido" tone="warning">
             Não é possível convidar mais médicos porque a clínica atingiu o limite contratado.

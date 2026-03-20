@@ -139,6 +139,8 @@ class ClinicBillingCheckoutSerializer(serializers.Serializer):
     quantity = serializers.IntegerField(min_value=1, required=False)
     success_url = serializers.URLField(required=False)
     cancel_url = serializers.URLField(required=False)
+    clinic_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    cnpj = serializers.CharField(max_length=20, required=False, allow_blank=True)
 
 
 class ClinicBillingPortalSerializer(serializers.Serializer):

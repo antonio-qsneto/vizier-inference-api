@@ -387,6 +387,76 @@ def create_checkout_session(
     return checkout_session, price_id, quantity
 
 
+def create_checkout_session_for_new_clinic_owner(
+    *,
+    owner_email: str,
+    owner_user_id: int,
+    plan_id: str,
+    success_url: str,
+    cancel_url: str,
+    clinic_name: str,
+    cnpj: str | None = None,
+    requested_quantity: int | None = None,
+):
+    """
+    Create Stripe checkout for a user that still does not have a clinic record.
+
+    The clinic must only be created after checkout completion, during billing sync.
+    """
+    stripe = _get_stripe_sdk()
+    stripe.api_key = _get_stripe_secret_key()
+
+    price_id = _price_id_for_plan(plan_id)
+    try:
+        quantity = int(requested_quantity or 1)
+    except (TypeError, ValueError) as exc:
+        raise ClinicBillingConfigurationError("Invalid checkout seat quantity") from exc
+
+    if quantity < 1:
+        raise ClinicBillingConfigurationError("Checkout seat quantity must be at least 1")
+
+    normalized_name = str(clinic_name or "").strip()
+    if not normalized_name:
+        raise ClinicBillingConfigurationError("Clinic name is required to start checkout")
+    normalized_cnpj = str(cnpj or "").strip()
+
+    payload = {
+        "line_items": [{"price": price_id, "quantity": quantity}],
+        "mode": "subscription",
+        "success_url": success_url,
+        "cancel_url": cancel_url,
+        "client_reference_id": f"pending_owner:{owner_user_id}",
+        "metadata": {
+            "initiated_by_user_id": str(owner_user_id),
+            "pending_clinic_owner_user_id": str(owner_user_id),
+            "pending_clinic_name": normalized_name,
+            "pending_clinic_cnpj": normalized_cnpj,
+            "plan_id": plan_id,
+            "quantity": str(quantity),
+        },
+        "subscription_data": {
+            "metadata": {
+                "pending_clinic_owner_user_id": str(owner_user_id),
+                "pending_clinic_name": normalized_name,
+                "pending_clinic_cnpj": normalized_cnpj,
+                "plan_id": plan_id,
+                "quantity": str(quantity),
+            }
+        },
+        "allow_promotion_codes": True,
+        "customer_email": owner_email,
+    }
+
+    try:
+        checkout_session = stripe.checkout.Session.create(**payload)
+    except Exception as exc:
+        raise ClinicBillingProviderError(
+            f"Failed to create clinic Stripe checkout session: {exc}"
+        ) from exc
+
+    return checkout_session, price_id, quantity
+
+
 def _resolve_subscription_item_id(clinic: Clinic, subscription_payload: Any) -> str:
     item_id = clinic.stripe_subscription_item_id or extract_subscription_item_id(subscription_payload)
     if not item_id:

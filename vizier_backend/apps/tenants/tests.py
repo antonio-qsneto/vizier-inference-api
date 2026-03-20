@@ -21,28 +21,16 @@ class ClinicCreateApiTest(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
-    def test_create_clinic_sets_owner_and_user_membership(self):
+    def test_create_clinic_endpoint_is_blocked_until_checkout_completion(self):
         response = self.client.post(
             '/api/clinics/clinics/',
             {'name': 'My Clinic', 'cnpj': '12345678000199'},
             format='json',
         )
 
-        self.assertEqual(response.status_code, 201)
-
-        clinic = Clinic.objects.get(id=response.data['id'])
-        self.user.refresh_from_db()
-
-        self.assertEqual(clinic.owner, self.user)
-        self.assertEqual(self.user.clinic, clinic)
-        self.assertEqual(self.user.role, 'CLINIC_ADMIN')
-        self.assertTrue(
-            Membership.objects.filter(
-                account=clinic,
-                user=self.user,
-                role=Membership.ROLE_ADMIN,
-            ).exists()
-        )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('checkout', response.data['detail'].lower())
+        self.assertFalse(Clinic.objects.filter(owner=self.user).exists())
 
     def test_create_clinic_fails_if_user_already_in_clinic(self):
         owner = User.objects.create_user(
@@ -1259,3 +1247,147 @@ class ClinicSeatBillingApiTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data['processed'])
+
+
+class ClinicCheckoutBeforeCreationApiTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='new-clinic-owner@example.com',
+            cognito_sub='new-clinic-owner-sub',
+            role='INDIVIDUAL',
+        )
+        self.client.force_authenticate(user=self.user)
+
+    @patch('apps.tenants.views.create_checkout_session_for_new_clinic_owner')
+    def test_billing_checkout_requires_clinic_name_for_user_without_clinic(
+        self,
+        create_checkout_mock,
+    ):
+        response = self.client.post(
+            '/api/clinics/clinics/billing_checkout/',
+            {
+                'plan_id': Clinic.SUBSCRIPTION_PLAN_CLINIC_MONTHLY,
+                'quantity': 2,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('clinic_name', response.data['detail'])
+        create_checkout_mock.assert_not_called()
+
+    @patch('apps.tenants.views.create_checkout_session_for_new_clinic_owner')
+    def test_billing_checkout_without_clinic_starts_pending_checkout(
+        self,
+        create_checkout_mock,
+    ):
+        create_checkout_mock.return_value = (
+            {'id': 'cs_pending_123', 'url': 'https://checkout.stripe.test/pending'},
+            'price_monthly_test',
+            3,
+        )
+
+        response = self.client.post(
+            '/api/clinics/clinics/billing_checkout/',
+            {
+                'plan_id': Clinic.SUBSCRIPTION_PLAN_CLINIC_MONTHLY,
+                'quantity': 3,
+                'clinic_name': 'Nova Clínica',
+                'cnpj': '12345678000199',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['checkout_session_id'], 'cs_pending_123')
+        create_checkout_mock.assert_called_once_with(
+            owner_email=self.user.email,
+            owner_user_id=self.user.id,
+            plan_id=Clinic.SUBSCRIPTION_PLAN_CLINIC_MONTHLY,
+            success_url=(
+                'http://localhost:3000/clinic?billing=success'
+                '&session_id={CHECKOUT_SESSION_ID}'
+            ),
+            cancel_url='http://localhost:3000/clinic?billing=cancel',
+            clinic_name='Nova Clínica',
+            cnpj='12345678000199',
+            requested_quantity=3,
+        )
+
+    @patch('apps.tenants.views.retrieve_checkout_session')
+    def test_billing_sync_does_not_create_clinic_when_checkout_not_completed(
+        self,
+        retrieve_checkout_session_mock,
+    ):
+        retrieve_checkout_session_mock.return_value = {
+            'id': 'cs_pending_123',
+            'status': 'open',
+            'metadata': {
+                'pending_clinic_owner_user_id': str(self.user.id),
+                'pending_clinic_name': 'Nova Clínica',
+                'plan_id': Clinic.SUBSCRIPTION_PLAN_CLINIC_MONTHLY,
+            },
+            'subscription': None,
+            'customer': None,
+        }
+
+        response = self.client.post(
+            '/api/clinics/clinics/billing_sync/',
+            {'checkout_session_id': 'cs_pending_123'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.clinic_id)
+        self.assertFalse(Clinic.objects.filter(owner=self.user).exists())
+
+    @patch('apps.tenants.views.retrieve_checkout_session')
+    @patch('apps.tenants.views.retrieve_subscription')
+    @patch('apps.tenants.views.apply_subscription_payload')
+    def test_billing_sync_creates_clinic_only_after_checkout_completion(
+        self,
+        apply_subscription_payload_mock,
+        retrieve_subscription_mock,
+        retrieve_checkout_session_mock,
+    ):
+        retrieve_checkout_session_mock.return_value = {
+            'id': 'cs_complete_123',
+            'status': 'complete',
+            'customer': 'cus_new_123',
+            'subscription': 'sub_new_123',
+            'metadata': {
+                'pending_clinic_owner_user_id': str(self.user.id),
+                'pending_clinic_name': 'Nova Clínica',
+                'pending_clinic_cnpj': '12345678000199',
+                'plan_id': Clinic.SUBSCRIPTION_PLAN_CLINIC_MONTHLY,
+            },
+        }
+        retrieve_subscription_mock.return_value = {'id': 'sub_new_123'}
+
+        response = self.client.post(
+            '/api/clinics/clinics/billing_sync/',
+            {'checkout_session_id': 'cs_complete_123'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertIsNotNone(self.user.clinic_id)
+        self.assertEqual(self.user.role, 'CLINIC_ADMIN')
+
+        clinic = Clinic.objects.get(owner=self.user)
+        self.assertEqual(clinic.name, 'Nova Clínica')
+        self.assertEqual(clinic.cnpj, '12345678000199')
+        self.assertEqual(clinic.stripe_customer_id, 'cus_new_123')
+        self.assertEqual(clinic.stripe_subscription_id, 'sub_new_123')
+        self.assertTrue(
+            Membership.objects.filter(
+                account=clinic,
+                user=self.user,
+                role=Membership.ROLE_ADMIN,
+            ).exists()
+        )
+        retrieve_subscription_mock.assert_called_once_with('sub_new_123')
+        apply_subscription_payload_mock.assert_called_once()

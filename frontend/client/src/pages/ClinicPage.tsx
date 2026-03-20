@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { ApiError } from "@/api/client";
 import {
   cancelInvitation,
-  createClinic,
   fetchClinicBillingPlans,
   fetchClinicInvitations,
   fetchClinicTeamMembers,
@@ -156,7 +155,10 @@ export default function ClinicPage() {
     billingReturnHandledRef.current = true;
     toast.success("Pagamento Stripe concluído.");
 
-    if (!accessToken || !isClinicAdmin) {
+    if (
+      !accessToken ||
+      !(isClinicAdmin || (effectiveRole === "individual" && !user?.clinic_id))
+    ) {
       return;
     }
 
@@ -200,12 +202,16 @@ export default function ClinicPage() {
     return () => {
       cancelled = true;
     };
-  }, [accessToken, isClinicAdmin, loadClinicData, refreshProfile]);
+  }, [accessToken, effectiveRole, isClinicAdmin, loadClinicData, refreshProfile, user?.clinic_id]);
 
   async function startClinicCheckout(
     token: string,
     planId: ClinicPlanId,
     seats: number,
+    options?: {
+      clinicName?: string;
+      cnpj?: string;
+    },
   ) {
     const successUrl = `${window.location.origin}/clinic?billing=success&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${window.location.origin}/clinic?billing=cancel`;
@@ -216,6 +222,8 @@ export default function ClinicPage() {
       quantity: seats,
       successUrl,
       cancelUrl,
+      clinicName: options?.clinicName,
+      cnpj: options?.cnpj,
     });
 
     if (checkoutResponse.checkout_url) {
@@ -240,20 +248,10 @@ export default function ClinicPage() {
 
     setSubmitting(true);
     try {
-      let currentClinic = clinic;
-
-      if (!currentClinic) {
-        currentClinic = await createClinic(accessToken, {
-          name: payload.clinicName,
-          cnpj: payload.cnpj,
-        });
-      }
-
-      if (!currentClinic) {
-        throw new Error("Não foi possível criar/recuperar a clínica para iniciar a assinatura.");
-      }
-
-      await startClinicCheckout(accessToken, payload.planId, payload.seats);
+      await startClinicCheckout(accessToken, payload.planId, payload.seats, {
+        clinicName: payload.clinicName,
+        cnpj: payload.cnpj,
+      });
     } catch (requestError) {
       toast.error(
         requestError instanceof Error

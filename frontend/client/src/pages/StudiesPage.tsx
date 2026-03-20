@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { ArrowUpFromLine, Eye, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowUpFromLine, Eye, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import {
+  deleteStudy,
   fetchInferenceJobsPage,
   fetchStudiesPage,
   getPageResults,
@@ -75,6 +76,7 @@ export default function StudiesPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
+  const [deletingStudyId, setDeletingStudyId] = useState<string | null>(null);
 
   const loadStudies = useCallback(async () => {
     if (!accessToken) {
@@ -236,6 +238,33 @@ export default function StudiesPage() {
     }
   }, [page, totalPages]);
 
+  async function handleDeleteStudy(studyId: string, isAsync: boolean) {
+    if (!accessToken || isAsync || studyId === DEMO_STUDY_ID) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Esta ação não poderá ser desfeita. O estudo e todos os artefatos serão excluídos permanentemente. Deseja continuar?",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingStudyId(studyId);
+    try {
+      await deleteStudy(accessToken, studyId);
+      await loadStudies();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Falha ao excluir estudo",
+      );
+    } finally {
+      setDeletingStudyId(null);
+    }
+  }
+
   if (loading) {
     return <LoadingState label="Carregando estudos..." />;
   }
@@ -344,7 +373,7 @@ export default function StudiesPage() {
         <Panel className="overflow-hidden p-0">
           <div className="overflow-x-auto">
             <div className="min-w-[980px]">
-              <div className="grid grid-cols-[1.1fr_1fr_0.7fr_0.9fr_0.9fr_0.65fr] gap-4 border-b border-white/6 px-6 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+              <div className="grid grid-cols-[1.1fr_1fr_0.7fr_0.9fr_0.9fr_0.95fr] gap-4 border-b border-white/6 px-6 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                 <span>Caso</span>
                 <span>Paciente</span>
                 <span>Modalidade</span>
@@ -357,7 +386,7 @@ export default function StudiesPage() {
                 {displayedStudies.map((study) => (
                   <div
                     key={study.id}
-                    className="grid grid-cols-[1.1fr_1fr_0.7fr_0.9fr_0.9fr_0.65fr] gap-4 px-6 py-4 transition hover:bg-white/4"
+                    className="grid grid-cols-[1.1fr_1fr_0.7fr_0.9fr_0.9fr_0.95fr] gap-4 px-6 py-4 transition hover:bg-white/4"
                   >
                     <div className="space-y-1">
                       <p className="font-medium text-white">
@@ -387,13 +416,24 @@ export default function StudiesPage() {
                       <StatusPill status={study.status} />
                     </div>
 
-                    <div className="flex items-center">
+                    <div className="flex items-center gap-3">
                       <Link href={study.detailHref}>
                         <a className="inline-flex items-center gap-2 text-sm font-semibold text-sky-400 transition hover:text-sky-300">
                           <Eye className="h-4 w-4" />
                           Ver
                         </a>
                       </Link>
+                      {!study.isAsync && study.id !== DEMO_STUDY_ID ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteStudy(study.id, study.isAsync)}
+                          disabled={deletingStudyId === study.id}
+                          className="inline-flex items-center gap-2 text-sm font-semibold text-rose-300 transition hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {deletingStudyId === study.id ? "Excluindo..." : "Excluir"}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 ))}

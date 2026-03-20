@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import nibabel as nib
 from unittest.mock import patch
-from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from apps.accounts.models import User, UserSubscription
 from apps.accounts.permissions import TenantQuerySetMixin
@@ -160,6 +160,60 @@ class StudyOwnershipModelTest(TestCase):
         self.assertEqual(audit_log.clinic, self.clinic)
         self.assertEqual(audit_log.action, 'STUDY_SUBMIT')
         self.assertEqual(audit_log.resource_id, str(study.id))
+
+
+class StudyDeleteApiTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='study-owner@example.com',
+            cognito_sub='study-owner-sub',
+            role='INDIVIDUAL',
+        )
+        self.client.force_authenticate(user=self.user)
+
+        self.study = Study.objects.create(
+            clinic=None,
+            owner=self.user,
+            category='demo',
+            status='COMPLETED',
+            s3_key='output/owner/study/result.nii.gz',
+            image_s3_key='output/owner/study/original_image.nii.gz',
+            mask_s3_key='output/owner/study/mask.nii.gz',
+        )
+
+    @patch('apps.studies.views.S3Utils')
+    def test_delete_study_removes_record_and_artifacts(self, s3_utils_cls_mock):
+        s3_utils = s3_utils_cls_mock.return_value
+        s3_utils.delete_object.return_value = True
+
+        response = self.client.delete(f'/api/studies/{self.study.id}/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('não pode ser desfeita', response.data['detail'])
+        self.assertFalse(Study.objects.filter(id=self.study.id).exists())
+
+        deleted_keys = {call.args[0] for call in s3_utils.delete_object.call_args_list}
+        self.assertSetEqual(
+            deleted_keys,
+            {
+                'output/owner/study/result.nii.gz',
+                'output/owner/study/original_image.nii.gz',
+                'output/owner/study/mask.nii.gz',
+            },
+        )
+
+    def test_delete_study_from_other_user_returns_not_found(self):
+        other_user = User.objects.create_user(
+            email='other-study-user@example.com',
+            cognito_sub='other-study-user-sub',
+            role='INDIVIDUAL',
+        )
+        self.client.force_authenticate(user=other_user)
+
+        response = self.client.delete(f'/api/studies/{self.study.id}/')
+
+        self.assertEqual(response.status_code, 404)
 
 
 class IndividualSubscriptionAccessTest(TestCase):

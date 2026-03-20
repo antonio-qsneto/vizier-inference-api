@@ -55,6 +55,89 @@ class StudyViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
             permission_code,
             resource_owner_user_id=study.owner_id,
         )
+
+    @staticmethod
+    def _collect_study_artifact_keys(study: Study) -> set[str]:
+        keys: set[str] = set()
+        for key in [study.s3_key, study.image_s3_key, study.mask_s3_key]:
+            if key:
+                keys.add(str(key))
+
+        try:
+            inference_jobs = study.inference_jobs.prefetch_related("input_artifacts", "output_artifacts")
+            for inference_job in inference_jobs:
+                for artifact in inference_job.input_artifacts.all():
+                    if artifact.key:
+                        keys.add(str(artifact.key))
+                for artifact in inference_job.output_artifacts.all():
+                    if artifact.key:
+                        keys.add(str(artifact.key))
+        except Exception:
+            logger.warning("Failed to collect inference artifacts for study cleanup", exc_info=True)
+
+        return keys
+
+    def destroy(self, request, *args, **kwargs):
+        study = self.get_object()
+        if not self._can_access_study(
+            request.user,
+            study,
+            permission_code=RBACPermission.STUDIES_READ,
+        ):
+            return Response(
+                {"error": "Permission denied to delete this study"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        artifact_keys = self._collect_study_artifact_keys(study)
+        deleted_artifacts = 0
+        failed_artifacts = 0
+        local_analysis_deleted = False
+
+        try:
+            s3_utils = S3Utils()
+        except Exception:
+            logger.warning("Failed to initialize S3 utils during study cleanup", exc_info=True)
+            s3_utils = None
+
+        if s3_utils:
+            for key in sorted(artifact_keys):
+                try:
+                    if s3_utils.delete_object(key):
+                        deleted_artifacts += 1
+                    else:
+                        failed_artifacts += 1
+                except Exception:
+                    failed_artifacts += 1
+                    logger.warning("Failed deleting study artifact key=%s", key, exc_info=True)
+
+        try:
+            analysis_dir = self._get_analysis_dir(study_id=str(study.id))
+            if analysis_dir.exists():
+                shutil.rmtree(analysis_dir, ignore_errors=True)
+                local_analysis_deleted = True
+        except Exception:
+            logger.warning("Failed deleting local analysis directory for study %s", study.id, exc_info=True)
+
+        study_id = str(study.id)
+        self.perform_destroy(study)
+
+        logger.info(
+            "study_deleted study_id=%s deleted_artifacts=%s failed_artifacts=%s local_analysis_deleted=%s",
+            study_id,
+            deleted_artifacts,
+            failed_artifacts,
+            local_analysis_deleted,
+        )
+
+        return Response(
+            {
+                "detail": "Estudo excluído permanentemente. Esta ação não pode ser desfeita.",
+                "deleted_artifacts": deleted_artifacts,
+                "failed_artifacts": failed_artifacts,
+            },
+            status=status.HTTP_200_OK,
+        )
     
     @action(detail=False, methods=['post'], parser_classes=(MultiPartParser, FormParser))
     def upload(self, request):
