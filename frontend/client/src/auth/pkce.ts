@@ -40,6 +40,7 @@ export async function createHostedUiRequest(intent: AuthIntent) {
     client_id: env.cognitoClientId,
     redirect_uri: env.cognitoRedirectUri,
     scope: "openid email profile",
+    lang: "pt-BR",
     state,
     code_challenge_method: "S256",
     code_challenge: codeChallenge,

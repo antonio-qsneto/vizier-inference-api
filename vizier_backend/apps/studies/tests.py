@@ -263,6 +263,14 @@ class IndividualSubscriptionAccessTest(TestCase):
 
         self.assertTrue(self.user.has_upload_access())
 
+    def test_whitelisted_test_email_has_upload_access_without_subscription(self):
+        whitelisted_user = User.objects.create_user(
+            email='testevizier@gmail.com',
+            cognito_sub='whitelisted-test-user-sub',
+            role='INDIVIDUAL',
+        )
+        self.assertTrue(whitelisted_user.has_upload_access())
+
 
 class ClinicSeatAccessControlTest(TestCase):
     def setUp(self):
